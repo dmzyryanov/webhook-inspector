@@ -1,0 +1,40 @@
+{
+  "name": "webhook-inspector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Webhook Inspector — temporary webhook URLs that show every request they receive; a service of the QA Tools platform.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "db:up": "node scripts/db.mjs up",
+    "db:rebuild": "node scripts/db.mjs rebuild",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && node scripts/db.mjs up",
+    "db:logs": "docker compose logs -f postgres",
+    "db:migrate": "node --env-file-if-exists=.env apps/backend/src/db/migrate.ts",
+    "dev:backend": "npm run dev -w @webhook-inspector/backend",
+    "dev:frontend": "npm run dev -w @webhook-inspector/frontend",
+    "build": "npm run build -w @webhook-inspector/frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json --noEmit",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "test:e2e:migrate": "node e2e/migrate.ts",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "check:native-ts": "node --input-type=module -e \"const m = await import('@webhook-inspector/shared'); if (typeof m.SESSION_IDLE_DAYS !== 'number') { throw new Error('shared did not load'); } console.log('native TypeScript resolution ok:', await import.meta.resolve('@webhook-inspector/shared'));\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
+    "eslint": "^10.9.0",
+    "prettier": "^3.9.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.67.0"
+  }
+}

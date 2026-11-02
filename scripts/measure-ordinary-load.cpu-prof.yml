@@ -1,0 +1,32 @@
+# Added to `measure-ordinary-load.compose.yml` by the script's `--cpu-prof DIR`
+# (#188): where the backend's CPU goes at a step, and what one capture takes.
+#
+# The backend runs under `node --cpu-prof`, which writes its CPU profile to
+# /tmp/qa-profile when the process exits, the script stopping it with SIGTERM
+# once the step is done; and with the probe `measure-ordinary-load.probe.mjs`
+# loaded before it, which writes the event loop's turns there four times a
+# second. PostgreSQL loads `pg_stat_statements`, whose counts the script reads
+# around a series of captures sent one after another, to count the statements
+# one capture runs. Nothing else changes; a profiled step is not a step of the
+# line, the profiler spending some of the backend's CPU itself.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron,pg_stat_statements
+      - -c
+      - cron.database_name=webhook_inspector
+      - -c
+      - cron.use_background_workers=on
+
+  backend:
+    command:
+      - node
+      - --cpu-prof
+      - --cpu-prof-dir=/tmp/qa-profile
+      - --import
+      - /probe/measure-ordinary-load.probe.mjs
+      - src/index.ts
+    volumes:
+      - ./measure-ordinary-load.probe.mjs:/probe/measure-ordinary-load.probe.mjs:ro

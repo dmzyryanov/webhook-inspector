@@ -1,0 +1,67 @@
+/*
+ * The Terms of Use and the Privacy Policy, /terms and /privacy (issue #112,
+ * D217): the frames T1 (1440, `760:15`), T2 (768, `760:131`), T3 (375,
+ * `760:238`), P1 (`760:346`), P2 (`760:466`) and P3 (`760:577`) of the Figma
+ * page `Webhook Inspector · Terms and Privacy (#112)`. They are /about's
+ * approved D1 frames with the same header, type, column and rows, so this
+ * stylesheet starts from /about's, which brings Inter and the header and the
+ * footer band every static page shares, and adds what the two pages draw
+ * differently: an introduction with a date line under it in place of the
+ * story, links in a section's lines, and 72 px below the content on the
+ * desktop. Pages of their own with no script: `terms/index.html` and
+ * `privacy/index.html` link this stylesheet.
+ */
+@import '../about/about.css';
+
+/* 72 px below the sections on the desktop, where /about has 48; 40 below 1024 px, as /about. */
+main {
+  padding-bottom: 72px;
+}
+
+/* The introduction, 15/24 in a 680 px column, and 12 px under it the date line, 13/20 in muted ink. */
+.lead {
+  display: flex;
+  max-width: 680px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lead p {
+  margin: 0;
+  color: #2e384d;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.lead .updated {
+  color: #5f697d;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* The contact address and `stability policy`, Medium in the link blue, as /about's mail link. */
+.fact dd a {
+  border-radius: 4px;
+  color: #1f5ca8;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.fact dd a:hover {
+  text-decoration: underline;
+}
+
+/*
+ * The contact address with the word before it and the text after it, on one
+ * line: it never ends up alone on a line and never breaks at its hyphen
+ * (`keptRuns` in scripts/site-chrome.mjs).
+ */
+.fact dd .keep {
+  white-space: nowrap;
+}
+
+@media (max-width: 1023.98px) {
+  main {
+    padding-bottom: 40px;
+  }
+}

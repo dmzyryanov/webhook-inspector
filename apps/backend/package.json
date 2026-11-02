@@ -1,0 +1,28 @@
+{
+  "name": "@webhook-inspector/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../../.env src/index.ts",
+    "start": "node --env-file-if-exists=../../.env src/index.ts",
+    "test": "node --env-file-if-exists=../../.env --import ./src/testing/exit-guard.ts --test --test-timeout=120000",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/proxy-addr": "^5.1.0",
+    "@fastify/websocket": "^11.3.0",
+    "@webhook-inspector/shared": "*",
+    "fastify": "^5.12.1",
+    "ipaddr.js": "^2.5.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@seriousme/openapi-schema-validator": "^2.10.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  }
+}

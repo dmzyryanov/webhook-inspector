@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+.env
+*.local
+.DS_Store
+npm-debug.log*
+coverage/
+
+# Browser smoke suite output and its browser cache (D108).
+playwright-report/
+test-results/
+e2e-results/
+blob-report/
+.cache/ms-playwright/
+
+# Machine-specific Claude permissions and configuration.
+.claude/settings.local.json
+
+# Worktrees a delivery run creates inside the repository, one per role. They
+# must be ignored rather than merely uncommitted: an untracked directory here
+# would appear in `git status --porcelain` and therefore change the working-tree
+# fingerprint (.claude/scripts/tree-fingerprint.sh) that decides whether a
+# tester run left the tree alone.
+.claude/worktrees/

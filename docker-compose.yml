@@ -1,0 +1,55 @@
+# Local development database (D050).
+#
+# Only PostgreSQL runs in Docker. The backend and frontend run natively through
+# npm scripts, which keeps restarts instant and preserves frontend hot reload.
+#
+# The project name is fixed rather than taken from the directory, so the main
+# checkout and every worktree address the same container
+# `webhook-inspector-postgres-1`, image `webhook-inspector-postgres` and volume
+# `webhook-inspector_postgres-data` (D159, D278). Start it with
+# `npm run db:up`, which never builds or pulls; `npm run db:rebuild` builds the
+# image, needed only on a new machine or after deploy/postgres/ changes. Until
+# 1.18.2 the project was `qa-tools` (D278): `db:up` stops its running container
+# and gives its image the new name, and leaves its volume as it is.
+name: webhook-inspector
+
+services:
+  postgres:
+    build: ./deploy/postgres
+    image: webhook-inspector-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-webhook_inspector}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webhook_inspector}
+      POSTGRES_DB: ${POSTGRES_DB:-webhook_inspector}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=${POSTGRES_DB:-webhook_inspector}
+      # Run jobs in background workers. Without this pg_cron opens a new libpq
+      # connection to localhost for every run, which then has to pass
+      # pg_hba/.pgpass authentication and fails silently under the default
+      # password authentication.
+      - -c
+      - cron.use_background_workers=on
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Healthy means the configured role can query the configured database over
+    # TCP. TCP skips the socket-only server the image runs while it initialises
+    # a new volume, and the query fails on a volume initialised with other
+    # credentials, which `pg_isready` alone reports as ready.
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'psql -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT 1"']
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+      start_interval: 1s
+
+volumes:
+  postgres-data:

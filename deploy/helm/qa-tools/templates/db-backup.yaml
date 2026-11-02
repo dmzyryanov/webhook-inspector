@@ -1,0 +1,314 @@
+{{- /*
+Nightly database backup (D176). A CronJob dumps the database into a directory
+on the node, restores each dump into a scratch server inside its own pod to
+check it, and keeps the newest few; the script is files/db-backup.sh, and the
+backup and restore runbook is the operator's, kept outside this repository.
+
+A notifier beside the backup in the same pod sends its outcome to
+Statuser.cloud as the `backup` heartbeat (D181, issue #68): the script is
+files/db-backup-notify.mjs, from the same ConfigMap.
+
+With backup.offsite.bucket set, each run also leaves an encrypted copy of its
+dump in object storage (D190, issue #89). The backup container encrypts the
+dump it has saved and checked to the public key in
+files/db-backup-recipient.asc and hands the ciphertext, through an emptyDir, to
+an uploader beside it, files/db-backup-offsite.mjs, which alone holds the
+storage credential; the dump itself never leaves the backup container, and the
+pod holds no private key. With the bucket empty none of this is rendered: no
+uploader, no shared directory, and nothing is encrypted.
+
+The deploy identity may manage CronJobs but not Jobs
+(deploy/cluster/gitlab-deployer.yaml), so the chart creates only the CronJob
+and the ConfigMap it mounts: never a Job, and never a hook.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "qa-tools.name" . }}-db-backup
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-backup
+data:
+  db-backup.sh: |-
+    {{- .Files.Get "files/db-backup.sh" | nindent 4 }}
+  db-backup-notify.mjs: |-
+    {{- .Files.Get "files/db-backup-notify.mjs" | nindent 4 }}
+  db-backup-offsite.mjs: |-
+    {{- .Files.Get "files/db-backup-offsite.mjs" | nindent 4 }}
+  # The owner's public key, to which the off-server copy is encrypted. Not a
+  # secret; the private key is with the owner only, never here.
+  db-backup-recipient.asc: |-
+    {{- .Files.Get "files/db-backup-recipient.asc" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "qa-tools.name" . }}-db-backup
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  # Never two scheduled runs at once. A run started by hand with
+  # `kubectl create job --from=cronjob/...` is not held back by this.
+  concurrencyPolicy: Forbid
+  # A run the controller missed, for instance while k3s restarted at 03:00,
+  # still starts within the hour.
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  # Failed Jobs are kept with their pods and logs, for reading what failed: the
+  # failure signal itself is the `backup` heartbeat, `backup/fail` or silence
+  # (D181, amending D176 item 9). Nothing deletes them on a timer either, so
+  # there is no ttlSecondsAfterFinished.
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "qa-tools.labels" . | nindent 8 }}
+        app.kubernetes.io/component: db-backup
+    spec:
+      # One attempt a night: a retry would only hide the failure the signal is
+      # there to show.
+      backoffLimit: 0
+      # Far above a run's few seconds today, and below the next night's run.
+      # At the deadline the pod is stopped with the image's stop signal (INT
+      # for the PostgreSQL image, or TERM), and the script removes what the run
+      # wrote.
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            {{- include "qa-tools.labels" . | nindent 12 }}
+            app.kubernetes.io/component: db-backup
+          annotations:
+            # `kubectl logs job/<name>` shows the backup's log, as before the
+            # notifier; its own is `-c db-backup-notify`.
+            kubectl.kubernetes.io/default-container: db-backup
+        spec:
+          restartPolicy: Never
+          # Kubernetes' default, written out because the notifier depends on
+          # it: a stopped pod has this long for the backup to clean up and
+          # write its status and then for the notifier to send it.
+          terminationGracePeriodSeconds: 30
+          # The pod needs neither the Kubernetes API nor the Services'
+          # environment variables.
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- if .Values.images.pullSecret }}
+          imagePullSecrets:
+            - name: {{ .Values.images.pullSecret }}
+          {{- end }}
+          # The postgres user of the image, which owns the backup directory on
+          # the node (999:999, mode 0700). initdb and the scratch server refuse
+          # to run as root in any case.
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            # The backup's heartbeat (D181). A native sidecar — an init
+            # container with restartPolicy Always — rather than a second
+            # container: it starts first, and the kubelet stops it only after
+            # the backup container has ended, so the Job ends when the backup
+            # does, Complete or Failed as the backup container decides, even
+            # when that container is killed without writing its status. It
+            # always exits 0; a missing Secret or an unreachable Statuser is
+            # logged and never touches the backup.
+            - name: db-backup-notify
+              image: {{ .Values.images.registry }}/{{ .Values.images.backend }}:{{ include "qa-tools.imageTag" . }}
+              restartPolicy: Always
+              command: ['node', '/opt/db-backup/db-backup-notify.mjs']
+              env:
+                - name: NOTIFY_STATUS_FILE
+                  value: /status/db-backup.status
+                - name: NOTIFY_HEARTBEAT_URL
+                  value: {{ .Values.alerts.heartbeatUrl | quote }}
+                # The heartbeat token is the credential; the chart names the
+                # Secret and never holds it (D087). Optional, so that without
+                # it the backup still runs and the notifier logs the outcome.
+                - name: NOTIFY_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.alerts.existingSecret }}
+                      key: backup
+                      optional: true
+              # The backend image's own user, `node`; it reads the status file,
+              # which the backup makes readable to everyone.
+              securityContext:
+                runAsUser: 1000
+                runAsGroup: 1000
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ['ALL']
+              resources:
+                {{- toYaml .Values.alerts.resources | nindent 16 }}
+              volumeMounts:
+                - name: status
+                  mountPath: /status
+                  readOnly: true
+                - name: script
+                  mountPath: /opt/db-backup
+                  readOnly: true
+            {{- if .Values.backup.offsite.bucket }}
+            # The off-server copy's uploader (D190): a native sidecar like the
+            # notifier, on the same image. It holds the storage credential and
+            # sees only the ciphertext the backup container hands over in
+            # /offsite, never the dump or the backup directory. The backup
+            # container waits for its answer before it ends, so the upload is
+            # never cut off by the stop that follows; after answering it waits
+            # to be stopped and exits 0. Listed after the notifier, it is
+            # stopped first, and leaves the notifier its time to send.
+            - name: db-backup-offsite
+              image: {{ .Values.images.registry }}/{{ .Values.images.backend }}:{{ include "qa-tools.imageTag" . }}
+              restartPolicy: Always
+              command: ['node', '/opt/db-backup/db-backup-offsite.mjs']
+              env:
+                - name: OFFSITE_DIR
+                  value: /offsite
+                - name: OFFSITE_ENDPOINT
+                  value: {{ .Values.backup.offsite.endpoint | quote }}
+                - name: OFFSITE_REGION
+                  value: {{ .Values.backup.offsite.region | quote }}
+                - name: OFFSITE_BUCKET
+                  value: {{ .Values.backup.offsite.bucket | quote }}
+                # Every copy's name starts with it, and only such copies are
+                # pruned.
+                - name: OFFSITE_DATABASE
+                  value: {{ .Values.postgres.database | quote }}
+                # The same retention as the directory on the node.
+                - name: OFFSITE_KEEP
+                  value: {{ .Values.backup.keep | quote }}
+                - name: OFFSITE_CHECK_VERSIONING
+                  value: {{ .Values.backup.offsite.checkVersioning | quote }}
+                # The static access key is the credential; the chart names the
+                # Secret and never holds it (D087). Optional, so that without
+                # it the pod still starts, the dump is still made, and the run
+                # fails saying the credential is missing.
+                - name: OFFSITE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.offsite.existingSecret }}
+                      key: access-key-id
+                      optional: true
+                - name: OFFSITE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.offsite.existingSecret }}
+                      key: secret-access-key
+                      optional: true
+              securityContext:
+                runAsUser: 1000
+                runAsGroup: 1000
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ['ALL']
+              resources:
+                {{- toYaml .Values.alerts.resources | nindent 16 }}
+              volumeMounts:
+                - name: offsite
+                  mountPath: /offsite
+                - name: script
+                  mountPath: /opt/db-backup
+                  readOnly: true
+            {{- end }}
+          containers:
+            - name: db-backup
+              # The database's own image, so pg_dump is the server's version.
+              image: {{ .Values.images.registry }}/{{ .Values.postgres.image }}:{{ .Values.postgres.tag }}
+              command: ['bash', '/opt/db-backup/db-backup.sh']
+              env:
+                - name: PGHOST
+                  value: {{ include "qa-tools.postgresHost" . | quote }}
+                - name: PGPORT
+                  value: {{ .Values.postgres.port | quote }}
+                - name: PGUSER
+                  value: {{ .Values.postgres.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.database | quote }}
+                # The existing database secret (D087); libpq reads it from the
+                # environment, so it is on no command line, and the script
+                # never prints it.
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.postgres.existingSecret }}
+                      key: {{ .Values.postgres.secretKey }}
+                - name: BACKUP_DIR
+                  value: /backup
+                - name: BACKUP_SCRATCH
+                  value: /scratch
+                - name: BACKUP_KEEP
+                  value: {{ .Values.backup.keep | quote }}
+                - name: BACKUP_MIN_FREE_GIB
+                  value: {{ .Values.backup.minFreeGiB | quote }}
+                # The root filesystem is read-only; anything that wants a
+                # temporary file gets the scratch volume.
+                - name: TMPDIR
+                  value: /scratch
+                # The outcome, for the notifier.
+                - name: BACKUP_STATUS_FILE
+                  value: /status/db-backup.status
+                {{- if .Values.backup.offsite.bucket }}
+                # The off-server copy (D190): where the encrypted dump is
+                # handed to the uploader, and the public key it is encrypted
+                # to. No storage credential reaches this container.
+                - name: BACKUP_OFFSITE_DIR
+                  value: /offsite
+                - name: BACKUP_OFFSITE_RECIPIENT_FILE
+                  value: /opt/db-backup/db-backup-recipient.asc
+                {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ['ALL']
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                - name: scratch
+                  mountPath: /scratch
+                - name: status
+                  mountPath: /status
+                {{- if .Values.backup.offsite.bucket }}
+                - name: offsite
+                  mountPath: /offsite
+                {{- end }}
+                - name: script
+                  mountPath: /opt/db-backup
+                  readOnly: true
+          volumes:
+            # Only the nightly directory is mounted, never its parent, so the
+            # files beside it are out of the pod's reach. `Directory` makes
+            # the pod fail rather than create the directory with the wrong
+            # owner when it is missing.
+            - name: backup
+              hostPath:
+                path: {{ .Values.backup.hostPath | quote }}
+                type: Directory
+            # The scratch server's data directory and the run's temporary
+            # files; gone with the pod.
+            - name: scratch
+              emptyDir:
+                sizeLimit: {{ .Values.backup.scratchSizeLimit }}
+            # The status file the backup writes and the notifier reads; an
+            # emptyDir is created writable by every uid.
+            - name: status
+              emptyDir:
+                sizeLimit: 1Mi
+            {{- if .Values.backup.offsite.bucket }}
+            # The encrypted copy on its way to the uploader, and the uploader's
+            # answer; about the dump's size, and gone with the pod.
+            - name: offsite
+              emptyDir:
+                sizeLimit: {{ .Values.backup.scratchSizeLimit }}
+            {{- end }}
+            - name: script
+              configMap:
+                name: {{ include "qa-tools.name" . }}-db-backup

@@ -1,0 +1,268 @@
+# The API's two paths, on an Ingress of their own because Traefik applies a
+# middleware annotation to every path of its Ingress, and the edge rate limit
+# (D264) is for these alone: not the frontend's pages, not /ws/ or /s/, not
+# the receive host's TCP route (templates/receive.yaml). Same host, entry
+# point and certificate as the site's Ingress below; cert-manager's
+# annotation stays there alone, so that one Certificate keeps the Secret both
+# name. First in this file, so that Helm, which applies documents of one kind
+# in their order, creates it before it takes these paths off the site's
+# Ingress at the deployment that splits them.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "qa-tools.name" . }}-api
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # <namespace>-<name>@kubernetescrd: the Middleware below, in this
+    # release's namespace. Traefik builds a middleware for each router that
+    # names it, so /api/ and /mcp each keep a bucket of their own per address.
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ include "qa-tools.name" . }}-api-rate-limit@kubernetescrd
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          # The MCP endpoint for AI agents (D203). A Prefix, not Exact: an Exact
+          # /mcp is Host(`qa-tools.ru`) && Path(`/mcp`), 35 characters, which
+          # lost to the frontend's 38, so 0.45.0 answered /mcp with the
+          # frontend's 404 page; PathPrefix(`/mcp`) makes it 41. As a string
+          # prefix it also sends /mcp/, /mcp/x and /mcpx to the backend, which
+          # answers each its 404 / 1000. It is on the site's hosts alone, this
+          # one and the second below; the receive host's /mcp is its
+          # 404 / 1000.
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "qa-tools.name" . }}
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+  annotations:
+    # HTTPS only (D187). Plain HTTP on the web entry point is left to the
+    # entry point's redirect, which deploy/cluster/traefik-config.yaml keeps
+    # at priority 100, so that cert-manager's challenge route for the receive
+    # host can win there; this pin keeps the application's own routes off
+    # web whatever their priority.
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    {{- if .Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.issuer }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # The backend owns four paths: /ws/ and /s/ here, and the API's
+          # /api/ and /mcp on the Ingress above, which carries the edge rate
+          # limit (D264). /ws/, /s/ and /api/ each end in their slash: Traefik
+          # matches a Prefix path as a string prefix, so "/s" would also take
+          # "/sitemap.xml" or "/sxyz". Every backend route lies under one of
+          # them (/api/sessions..., /ws/<id>, /s/<id>...); bare "/api", "/ws"
+          # and "/s" are the frontend's, like any other address (D047, D183).
+          # Traefik gives a router with no priority of its own the length of
+          # its rule, whichever Ingress it comes from, and of the rules that
+          # match, the longest wins: a backend path is matched before the
+          # frontend's "/" only while its rule is longer than
+          # Host(`qa-tools.ru`) && PathPrefix(`/`), 38 characters, which no
+          # Exact path here can be. apps/frontend/src/lib/search-engines.test.ts
+          # and scripts/chart.test.mjs compute them (D203, D264).
+          - path: /ws/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          # Webhooks are received on the receive host since 0.36.0
+          # (templates/receive.yaml); here /s/ still reaches the backend's
+          # application listener, which answers 410 / 1009 naming the new URL
+          # (D187).
+          - path: /s/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          # Everything else, including /v/<session-id>, /robots.txt and
+          # /sitemap.xml, goes to the frontend container. Its Nginx answers 200
+          # for / and a session-shaped /v/ address, serves a file that exists,
+          # and answers 404 with the application as the body for any other
+          # path, so the page can say it does not exist (D146).
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-frontend
+                port:
+                  name: http
+---
+# The edge rate limit (#205, D264): a token bucket per client address, the
+# TCP peer Traefik sees - the sender's own while its Service keeps
+# externalTrafficPolicy: Local (D111) - an IPv6 address by its /64, as the
+# backend keys one (D201 point 3). Past it Traefik answers 429 itself, with
+# Retry-After and no X-RateLimit-* or errorCode, before the call reaches the
+# backend; values.yaml's ingress.apiRateLimit says why these numbers never
+# refuse a call the backend's own limits would let through.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "qa-tools.name" . }}-api-rate-limit
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: {{ .Values.ingress.apiRateLimit.average }}
+    period: {{ .Values.ingress.apiRateLimit.period }}
+    burst: {{ .Values.ingress.apiRateLimit.burst }}
+    sourceCriterion:
+      ipStrategy:
+        ipv6Subnet: 64
+{{- if .Values.ingress.aliasHost }}
+---
+# The site's second host (#319, D275), webhook.qa-tools.ru in production: the
+# same paths to the same Services as the two Ingresses above, on two
+# Ingresses of their own, so that the middleware below that closes the host
+# to search is applied to its routers alone. Traefik applies a middleware
+# annotation to every path and host of its Ingress, so a rule for this host
+# on the Ingresses above would have carried it, or the edge rate limit, to
+# qa-tools.ru as well; those two stay as they were. Same split: the API's
+# paths here, behind the edge rate limit (D264) as on the first host, with a
+# bucket of their own per address; /ws/, /s/ and the frontend's / on the next.
+# Its certificate is a Secret of its own, ingress.tls.aliasSecretName, which
+# cert-manager issues through the next Ingress's annotation for this host
+# alone, so the first host's is not reissued. Traefik ranks this host's
+# routers among themselves by their rules' lengths, as the first host's:
+# Host(`webhook.qa-tools.ru`) && PathPrefix(`/`) is 46 characters, every
+# backend path's rule 48 to 50 (apps/frontend/src/lib/search-engines.test.ts,
+# scripts/chart.test.mjs).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "qa-tools.name" . }}-alias-api
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # noindex first, so that it marks the edge rate limit's own 429 too.
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ include "qa-tools.name" . }}-noindex@kubernetescrd,{{ .Release.Namespace }}-{{ include "qa-tools.name" . }}-api-rate-limit@kubernetescrd
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.aliasHost }}
+      secretName: {{ .Values.ingress.tls.aliasSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.aliasHost }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "qa-tools.name" . }}-alias
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ include "qa-tools.name" . }}-noindex@kubernetescrd
+    {{- if .Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.issuer }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.aliasHost }}
+      secretName: {{ .Values.ingress.tls.aliasSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.aliasHost }}
+      http:
+        paths:
+          - path: /ws/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          - path: /s/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-backend
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "qa-tools.name" . }}-frontend
+                port:
+                  name: http
+---
+# Closes the second host to search until day X (#319, D275): every answer
+# there carries X-Robots-Tag: noindex, the frontend's and the backend's alike,
+# set over the one nginx gives a session page, which says the same. Not a
+# Disallow in robots.txt, which would keep crawlers from reading this header;
+# the pages' canonical links keep naming the first host. On no router of the
+# first host.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "qa-tools.name" . }}-noindex
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      X-Robots-Tag: noindex
+{{- end }}

@@ -1,0 +1,413 @@
+# The validate stage of Webhook Inspector's pipeline (D241).
+#
+# A merge request pipeline includes this file, so its jobs run there beside the
+# image builds. A pipeline on main does not: its `main-validation-gate` job
+# either proves that the merge request already validated this commit's tree,
+# or copies this file, under a two-line comment, into the configuration of a
+# child pipeline that `main-validation` runs and mirrors
+# (scripts/main-validation.mjs). So this file must stand as a pipeline of its
+# own: the global keys below are for that child pipeline, and in a merge
+# request pipeline `.gitlab-ci.yml`'s own win. The variables its jobs use,
+# NODE_IMAGE and POSTGRES_IMAGE_TAG, are `.gitlab-ci.yml`'s, which the trigger
+# job passes on to the child pipeline.
+#
+# QA_TOOLS_RUNNER_TAG is the exception (D258): the trigger job does not pass it
+# on, because a variable passed on would outrank the project CI/CD variable
+# that moves these jobs to GitLab's shared runners. Its default is held here as
+# well, the same as `.gitlab-ci.yml`'s, so the child pipeline has it below that
+# project variable, as the merge request pipeline and the parent on main do.
+#
+# `test` and `e2e` run one at a time, across every pipeline of the project,
+# the child pipeline on main among them: both hold the resource group
+# `heavy-tests-$QA_TOOLS_RUNNER_TAG`, and no other job of this file holds one
+# (#266, D258's amendment). The other jobs take the runner's second place.
+
+stages:
+  - validate
+
+variables:
+  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci'
+
+default:
+  interruptible: true
+  # Every job of this file runs on the runner this tag names: our own unless
+  # the project variable says otherwise.
+  tags:
+    - $QA_TOOLS_RUNNER_TAG
+
+.node:
+  image: $NODE_IMAGE
+  # Only npm's download directory is cached. node_modules never is, so every
+  # job still installs from the lock file rather than reusing a tree.
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  before_script:
+    - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+
+# The service's port opens while PostgreSQL is still starting, so readiness is a
+# query that succeeds rather than a port that accepts. Referenced by every job
+# that needs the database, so the two do not drift apart.
+#
+# The URL comes from READY_DATABASE_URL, which every job using this probe sets
+# to its own database, and there is no fallback to another variable on purpose:
+# a project- or group-level DATABASE_URL is inherited by every job, so a
+# fallback is exactly how the e2e probe could end up pointed at an application
+# database instead of its own service (D108).
+.postgres-ready:
+  script:
+    - |
+      node -e '
+        const pg = require("pg");
+        const connectionString = process.env.READY_DATABASE_URL;
+        if (!connectionString) {
+          console.error("READY_DATABASE_URL is not set");
+          process.exit(1);
+        }
+        (async () => {
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            const client = new pg.Client({ connectionString });
+            try {
+              await client.connect();
+              await client.query("SELECT 1");
+              await client.end();
+              return;
+            } catch {
+              try { await client.end(); } catch {}
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+          console.error("PostgreSQL did not become ready");
+          process.exit(1);
+        })();
+      '
+
+lint:
+  extends: .node
+  stage: validate
+  script:
+    - npm run lint
+    - npm run format
+
+typecheck:
+  extends: .node
+  stage: validate
+  script:
+    - npm run typecheck
+
+native-ts:
+  image: $NODE_IMAGE
+  stage: validate
+  # Deliberately uncached and installed from scratch: this check exists to prove
+  # that Node resolves @webhook-inspector/shared outside node_modules after a clean
+  # install, and a warmed cache would weaken what it proves (D051).
+  cache: []
+  script:
+    - npm ci --no-audit --no-fund
+    - npm run check:native-ts
+
+test:
+  extends: .node
+  stage: validate
+  # One of `test` and `e2e` at a time, in this pipeline and across every
+  # other of the project (#266): side by side on our runner's 4 shared vCPU
+  # they failed load-sensitive tests. A resource group is GitLab's and
+  # project-wide, so it holds across merge request pipelines and the child
+  # pipeline on main alike. A job waiting for its turn reads
+  # `waiting_for_resource`, which is neither a pass, a failure nor a wait for
+  # the runner. The group is named after the runner tag, so jobs the switch
+  # sends to GitLab's shared runners take turns in a group of their own and
+  # never wait behind a job left on our runner (D258). Neither job holds
+  # another group or declares `needs:`, so neither waits for one thing while
+  # holding another.
+  resource_group: heavy-tests-$QA_TOOLS_RUNNER_TAG
+  services:
+    - name: $CI_REGISTRY_IMAGE/postgres:$POSTGRES_IMAGE_TAG
+      alias: postgres
+      command:
+        - postgres
+        - -c
+        - shared_preload_libraries=pg_cron
+        - -c
+        - cron.database_name=webhook_inspector
+        # Without background workers pg_cron opens a new libpq connection per
+        # run, which then has to pass pg_hba authentication and fails silently
+        # while the job still looks healthy in cron.job.
+        - -c
+        - cron.use_background_workers=on
+  variables:
+    POSTGRES_USER: webhook_inspector
+    POSTGRES_PASSWORD: webhook_inspector
+    POSTGRES_DB: webhook_inspector
+    DATABASE_URL: 'postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector'
+    # The database the readiness probe waits for: this job's own, named here
+    # rather than found by the probe.
+    READY_DATABASE_URL: $DATABASE_URL
+  script:
+    # curl for the frontend's `Copy as cURL` round trip, which runs every
+    # command it builds through sh, bash and real curl (D167), and jq for the
+    # agent guide's waiting step, which llms.test.ts runs with sh and real jq
+    # against a stand-in for curl (D200). node:24-slim has neither today, so
+    # both are installed unless the image already carries both. Each apt-get
+    # is a command of its own inside `if`, so under the runner's `set -e` a
+    # failed `apt-get update` or install stops the job here; an `a && b`
+    # inside `|| { … }` would not. Without either tool its tests fail rather
+    # than skip. Before the readiness probe, so the database starts meanwhile.
+    - |
+      if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
+        apt-get update
+        apt-get install -y --no-install-recommends curl jq
+      fi
+    - !reference [.postgres-ready, script]
+    - npm run db:migrate
+    - npm test
+
+e2e:
+  extends: .node
+  stage: validate
+  # A Node 24 base with apt, rather than the Playwright image. The backend is
+  # started from TypeScript source by native type stripping and requires Node 24
+  # (D051, D052), and pinning the base makes that requirement explicit and
+  # contracted here. The Playwright image does currently ship Node 24, but the
+  # Node it bundles is an incidental property of that image rather than a
+  # contracted one, and a future Playwright release could change it without
+  # notice — silently moving the runtime under the suite that gates production.
+  #
+  # The Debian release is pinned explicitly instead of using $NODE_IMAGE
+  # (node:24-slim), which follows Debian's moving default: `playwright
+  # install-deps` supports a known set of distributions, so a base that drifts
+  # to the next Debian could break the browser dependency install. Both images
+  # are Debian 12 (bookworm) today, so this is the same runtime the other jobs
+  # run on, held still on purpose; a bump of NODE_IMAGE is a deliberate bump
+  # here too.
+  image: node:24-bookworm-slim
+  # This job is the deploy gate (D108, D241). No job of the pipeline declares
+  # `needs:`, so in a merge request pipeline `build` waits for every
+  # non-allow_failure job in `validate`; on main this job runs in the child
+  # pipeline whose status `main-validation` takes, unless the merge request's
+  # own pipeline, which ran it on the same tree, proves that commit. Adding
+  # `rules:` or `allow_failure: true` here would remove that gate silently:
+  # the pipeline would go green with the smoke suite skipped or failing, the
+  # proof with it, and a broken capture path would reach production.
+  #
+  # The same resource group as `test`, above: the two never run at the same
+  # time. Waiting for its turn delays this job and skips nothing.
+  resource_group: heavy-tests-$QA_TOOLS_RUNNER_TAG
+  services:
+    - name: $CI_REGISTRY_IMAGE/postgres:$POSTGRES_IMAGE_TAG
+      alias: postgres
+      command:
+        - postgres
+        - -c
+        - shared_preload_libraries=pg_cron
+        # This job's database, not the application's: pg_cron refuses to
+        # schedule a job from any database but this one, and migration 002 does
+        # exactly that. The suite gets its own service, so naming it here costs
+        # the `test` job nothing.
+        - -c
+        - cron.database_name=webhook_inspector_e2e
+        - -c
+        - cron.use_background_workers=on
+  variables:
+    POSTGRES_USER: webhook_inspector
+    POSTGRES_PASSWORD: webhook_inspector
+    POSTGRES_DB: webhook_inspector_e2e
+    # The only database this job can reach. `DATABASE_URL` is left unset on
+    # purpose, so that nothing started here can reach an application database by
+    # reading an ambient variable.
+    E2E_DATABASE_URL: 'postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector_e2e'
+    # The database the readiness probe waits for: this job's own, named here
+    # rather than found by the probe.
+    READY_DATABASE_URL: $E2E_DATABASE_URL
+    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
+  # A job's own cache replaces the one it inherits, so both paths are named
+  # here: npm's download directory and the browser, which is downloaded once per
+  # lock file rather than on every run.
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+      - .cache/ms-playwright/
+  script:
+    # The browser's shared libraries, installed through apt. Not cacheable, so
+    # this runs every time; the browser itself lands in the cached path.
+    - npx playwright install-deps chromium
+    - npx playwright install chromium
+    - !reference [.postgres-ready, script]
+    - npm run test:e2e:migrate
+    - npm run test:e2e
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - playwright-report/
+      - test-results/
+    reports:
+      junit: e2e-results/junit.xml
+
+delivery-checks:
+  image: $NODE_IMAGE
+  stage: validate
+  cache: []
+  # Above the test run's own 25 minutes below, the image, the installs and the
+  # version checks; GitLab's default is an hour (#122).
+  timeout: 35m
+  variables:
+    GIT_DEPTH: '0'
+    # The oasdiff release the API breaking-change check runs (D219), pinned by
+    # version and by the SHA-256 of its linux_amd64 archive. A new release is a
+    # deliberate bump of both, checked against the release's checksums.txt.
+    OASDIFF_VERSION: '1.33.0'
+    OASDIFF_SHA256: '43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247'
+  before_script:
+    # node:24-slim has no git; the version comparison needs repository history.
+    # curl downloads oasdiff.
+    - apt-get update
+    - apt-get install -y --no-install-recommends git ca-certificates curl
+    # oasdiff, from its GitHub release, installed only when the archive's
+    # SHA-256 is the pinned one: `sha256sum -c` fails the job otherwise (D219).
+    - curl -fsSL --retry 3 -o /tmp/oasdiff.tar.gz "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+    - echo "${OASDIFF_SHA256}  /tmp/oasdiff.tar.gz" | sha256sum -c -
+    - tar -xzf /tmp/oasdiff.tar.gz -C /usr/local/bin oasdiff
+    - oasdiff --version
+  script:
+    # The script tests that run on every pipeline: together they take seconds,
+    # and what they read — the pipeline, the chart, the shared package and
+    # the changelog — changes in nearly every merge request, so a rule would
+    # skip them almost never (D241). The slow ones run in operations-tests,
+    # only when what it reads changes.
+    # The delivery test runs the version check, the deployment check and the
+    # script tests' run limit on made-up input. The check-api-breaking test
+    # runs the API check on throwaway repositories against a stand-in
+    # oasdiff, and against the real one installed above, which it requires
+    # here (D219). The chart test reads the backend's and the frontend's
+    # Deployment templates as text and pins their handover at a deployment:
+    # strategy, preStop pause, grace period, readiness (D221), and the
+    # liveness probe; and renders the Ingress template with the values,
+    # pinning the edge rate limit on the API's paths alone and its numbers
+    # (D264). The monitor test runs the site monitor with this image's Node
+    # against stand-ins for the site and Statuser on the loopback interface,
+    # never the internet, and reads its template (D181); it imports the shared
+    # package, which many merge requests change. The main-validation test
+    # runs the main pipeline's gate on throwaway repositories against a
+    # stand-in for the API, and pins the gate's place in the pipeline; the
+    # script-test-groups test pins which job runs each script test, the
+    # group's rule and the check of what its tests read (D241). The
+    # ci-runners test reads both pipeline files and the child pipeline the
+    # gate writes and pins which runner each job lands on, with the project
+    # variable QA_TOOLS_RUNNER_TAG and without it (D258).
+    # Three bounds, each above the one inside it (#122, D190): every test has
+    # 5 minutes (`--test-timeout`; the two backup files set the same), after
+    # which it fails by name and its file goes on; the whole run has 25
+    # minutes, after which scripts/test-run-limit.mjs prints the tests still
+    # running and stops it with exit 1, however a test is stuck; and the job
+    # has 35, should anything outlast both. The group below keeps the same.
+    - |
+      TEST_RUN_LIMIT_SECONDS=1500 node --test --test-timeout=300000 \
+        --test-reporter=spec --test-reporter-destination=stdout \
+        --test-reporter=./scripts/test-run-limit.mjs --test-reporter-destination=stderr \
+        scripts/delivery.test.mjs \
+        scripts/check-api-breaking.test.mjs \
+        scripts/chart.test.mjs scripts/monitor.test.mjs \
+        scripts/main-validation.test.mjs scripts/script-test-groups.test.mjs \
+        scripts/ci-runners.test.mjs
+    # Both checks compare with the same base: the merge request's diff base, or
+    # the previous commit on main. The API check fails a breaking difference in
+    # packages/shared/openapi.json that the version's changelog entry does not
+    # declare with a Breaking paragraph (D219).
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        DELIVERY_BASE="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        DELIVERY_BASE=$(git rev-parse HEAD^)
+      fi
+      test -n "$DELIVERY_BASE"
+      node scripts/check-version.mjs "$DELIVERY_BASE"
+      node scripts/check-api-breaking.mjs "$DELIVERY_BASE"
+
+chart:
+  stage: validate
+  image:
+    name: alpine/helm:3.21.4
+    entrypoint: ['']
+  cache: []
+  script:
+    - helm lint deploy/helm/qa-tools --set images.tag=validation
+    - |
+      if ! grep -q "tag: '$POSTGRES_IMAGE_TAG'" deploy/helm/qa-tools/values.yaml; then
+        echo "POSTGRES_IMAGE_TAG ($POSTGRES_IMAGE_TAG) does not match postgres.tag in values.yaml."
+        echo "The suite must run against the same database image production does."
+        exit 1
+      fi
+      echo "postgres image tag agrees with the chart: $POSTGRES_IMAGE_TAG"
+
+# The slow script tests, grouped by what they read and run only when that
+# changes: on a merge request pipeline when the merge request changes one of
+# the paths the group's rule lists, and wherever else this file runs — on
+# main, when the gate could not prove the commit — always (D241). The list
+# holds what the group's tests and the scripts they run read in this
+# checkout, this file and the pipeline's, and the scripts the job itself
+# runs. The tests run with scripts/test-inputs-trace.mjs recording what they
+# read, and scripts/test-inputs.mjs then fails the job, naming them, for any
+# file the list leaves out; so a test that starts reading one fails the first
+# time it runs. A group skipped in a merge request is proven by the pipeline
+# that last ran it on these same inputs (D241). A list holds at most 50
+# paths, GitLab's limit, written with literal names, `*` and `**/` only.
+
+# Operations: the local database script and the chart's nightly backup, its
+# off-server copy and its notifier (D159, D176, D181, D190).
+operations-tests:
+  image: $NODE_IMAGE
+  stage: validate
+  cache: []
+  timeout: 35m
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      changes:
+        paths:
+          - deploy/helm/qa-tools/files/db-backup*
+          - deploy/helm/qa-tools/templates/db-backup.yaml
+          - deploy/helm/qa-tools/values.yaml
+          - scripts/db.mjs
+          - docker-compose.yml
+          - scripts/db.test.mjs
+          - scripts/db-backup.test.mjs
+          - scripts/db-backup-notify.test.mjs
+          - scripts/db-backup-offsite.test.mjs
+          - scripts/test-run-limit.mjs
+          - scripts/test-inputs.mjs
+          - scripts/test-inputs-trace.mjs
+          - .gitlab-ci.yml
+          - .gitlab/ci/validate.yml
+    - if: $CI_PIPELINE_SOURCE != 'merge_request_event'
+  before_script:
+    # gpg is for the db-backup tests that encrypt with the real tool to the
+    # public key in the chart (D190).
+    - apt-get update
+    - apt-get install -y --no-install-recommends gpg
+  script:
+    # The db test runs `npm run db:up`'s script, and a task's own test
+    # database, `scripts/db.mjs task-up` and `task-down`, against a stand-in
+    # for docker, which this job does not have (D159, D216). The db-backup
+    # test runs the nightly backup script with bash against stand-ins for the
+    # PostgreSQL tools and df, and reads the chart's CronJob template and
+    # values (D176). The notifier test runs the backup's alert script with
+    # this image's Node against a stand-in for Statuser on the loopback
+    # interface, never the internet (D181). The db-backup-offsite test runs the off-server copy's uploader the same
+    # way, against a stand-in for the object storage that checks each
+    # request's signature (D190).
+    - |
+      export TEST_INPUTS_FILE=/tmp/test-inputs.txt
+      export NODE_OPTIONS="--import=$CI_PROJECT_DIR/scripts/test-inputs-trace.mjs"
+      TEST_RUN_LIMIT_SECONDS=1500 node --test --test-timeout=300000 \
+        --test-reporter=spec --test-reporter-destination=stdout \
+        --test-reporter=./scripts/test-run-limit.mjs --test-reporter-destination=stderr \
+        scripts/db.test.mjs scripts/db-backup.test.mjs \
+        scripts/db-backup-notify.test.mjs scripts/db-backup-offsite.test.mjs
+      unset NODE_OPTIONS
+      node scripts/test-inputs.mjs check operations-tests "$TEST_INPUTS_FILE"

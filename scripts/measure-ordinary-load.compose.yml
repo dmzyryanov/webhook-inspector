@@ -1,0 +1,151 @@
+# The ordinary-load measurement of issue #186 (D232), driven by
+# `node scripts/measure-ordinary-load.mjs local` (Part 1), `rehearse`
+# (Part 2's dry run) and `front`, which start this project afresh for every
+# step - a new database volume, migrated, a new backend - and remove
+# everything they started.
+#
+# The backend image built from this checkout and limited as the chart limits
+# it, 0.5 CPU and 512 MiB with no swap; PostgreSQL of the project's own image
+# with the chart's 1 CPU and 1 GiB, its data on a volume of its own rather
+# than in memory, as production's is on a disk. In Part 1 no Traefik: the
+# client calls the backend straight, and is a peer the backend trusts
+# (`TRUSTED_PROXY_CIDRS`), so the PROXY v2 header of each webhook and the
+# `X-Forwarded-For` of each API and realtime call name the simulated user's
+# own address, and the per-address limits count every user apart. In
+# `rehearse` and `front` the client calls Traefik instead, the `front`
+# profile, configured as production's (`measure-ordinary-load.traefik.yml`):
+# it writes the PROXY v2 header and the `X-Forwarded-For` naming the client,
+# so the whole load comes from the client's one address, as Part 2's does.
+#
+# The backend has no health check here (#261): a check is a process started
+# in its container, whose CPU its cgroup counts against its limit - a `node`
+# once a second took about 7 % of a CPU in #186's and #188's runs (D232) -
+# where production's probes are HTTP requests from the kubelet. The script
+# starts the backend (`up --wait`, running) and asks its `/readyz` from the
+# client container until it answers `200`, before each step's load.
+#
+# Nothing is published on the host, and nothing is pulled: every image but
+# the backend's, which is built, must be present already (`pull_policy`).
+# MEASURE_BACKEND_IMAGE names another backend image already built, which the
+# script's `--image` sets; MEASURE_BACKEND_CPUS another CPU limit for the
+# backend, which its `--backend-cpus` sets (#188). Its own name and subnet,
+# so it never meets the connection measurement's project
+# (`measure-connections.compose.yml`).
+name: dev186-measure
+
+services:
+  postgres:
+    image: webhook-inspector-postgres
+    pull_policy: never
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      POSTGRES_USER: webhook_inspector
+      POSTGRES_PASSWORD: webhook_inspector
+      POSTGRES_DB: webhook_inspector
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=webhook_inspector
+      - -c
+      - cron.use_background_workers=on
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'psql -h 127.0.0.1 -U webhook_inspector -d webhook_inspector -tAc "SELECT 1"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      load:
+        ipv4_address: 10.186.0.4
+
+  migrate:
+    image: ${MEASURE_BACKEND_IMAGE:-dev186-measure-backend}
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+      pull: false
+    pull_policy: missing
+    command: ['node', 'src/db/migrate.ts']
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      load:
+        ipv4_address: 10.186.0.5
+
+  backend:
+    image: ${MEASURE_BACKEND_IMAGE:-dev186-measure-backend}
+    pull_policy: never
+    # Production's 0.5 unless the script's `--backend-cpus` sets another (#188).
+    cpus: ${MEASURE_BACKEND_CPUS:-0.5}
+    mem_limit: 512m
+    memswap_limit: 512m
+    # The chart's receive buffer, backend.tcpRmem (#217, D238), as
+    # measure-connections.compose.yml has it; MEASURE_TCP_RMEM sets another.
+    sysctls:
+      net.ipv4.tcp_rmem: '${MEASURE_TCP_RMEM:-4096 16384 6291456}'
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+      # Traefik, and the client, which names each user itself in Part 1.
+      TRUSTED_PROXY_CIDRS: 10.186.0.2/32,10.186.0.10/32
+      RECEIVE_PROXY_PROTOCOL: v2
+    # No health check: see the header (#261).
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      load:
+        ipv4_address: 10.186.0.3
+
+  # Production's front, as `measure-connections.compose.yml` runs it (D227):
+  # Traefik 3.7.8, websecure with a 60 s readTimeout and its default 180 s
+  # idleTimeout, the receive host a TCP route writing PROXY v2, the
+  # application an HTTP route.
+  traefik:
+    image: traefik:v3.7.8
+    pull_policy: never
+    profiles: [front]
+    command:
+      - --entryPoints.websecure.address=:8443
+      - --entryPoints.websecure.transport.respondingTimeouts.readTimeout=60s
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --log.level=INFO
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+    volumes:
+      - ./measure-ordinary-load.traefik.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      load:
+        ipv4_address: 10.186.0.2
+
+  client:
+    image: node:24-slim
+    pull_policy: never
+    command: ['sleep', 'infinity']
+    init: true
+    # The repository, read-only: the script imports packages/shared's constants.
+    volumes:
+      - ..:/repo:ro
+    # The front's two hosts, both Traefik.
+    extra_hosts:
+      - qa-tools.test:10.186.0.2
+      - hook.qa-tools.test:10.186.0.2
+    networks:
+      load:
+        ipv4_address: 10.186.0.10
+
+volumes:
+  data:
+
+networks:
+  load:
+    ipam:
+      config:
+        - subnet: 10.186.0.0/24

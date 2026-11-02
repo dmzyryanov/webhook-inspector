@@ -1,0 +1,413 @@
+# Pipeline for Webhook Inspector.
+#
+# A merge to main validates, builds images tagged with the commit SHA, pushes
+# them to the project's registry and deploys them (D022). Three runners take
+# its jobs (D258):
+# - the validate stage, the gate on main and the image builds run on the
+#   runner tagged with $QA_TOOLS_RUNNER_TAG: the project's own CI runner,
+#   `qa-tools-ci`, unless the project CI/CD variable of that name sends them
+#   to GitLab's shared runners as the fallback; of its jobs, `test` and `e2e`
+#   run one at a time across every pipeline, through a resource group of their
+#   own, and the rest take the runner's second place (#266);
+# - the deploy runs on a runner inside the production server: the cluster API
+#   port is not published to the internet, so nothing outside the server can
+#   reach it (D082, D092);
+# - the smoke after a deployment runs on GitLab's shared runners.
+#
+# The validate stage's jobs live in .gitlab/ci/validate.yml. A merge request
+# pipeline includes that file. A pipeline on main validates a commit once at
+# most: when its merge request already validated the same tree from the same
+# base, it runs the proof and not the validate stage; otherwise it runs the
+# validate stage in a child pipeline (D241).
+#
+# Nothing here is included from another project, so a copy of this
+# repository runs the same pipeline with its own runners and variables.
+
+stages:
+  - validate
+  - build
+  - deploy
+  - verify-deployment
+
+workflow:
+  # Merge requests and main only. Pushing to a branch that has no merge request
+  # runs nothing, so the same commits are not validated twice.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+
+include:
+  - local: .gitlab/ci/validate.yml
+    rules:
+      - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+variables:
+  NODE_IMAGE: node:24-slim
+  # Must match postgres.tag in deploy/helm/qa-tools/values.yaml. The chart job
+  # fails if the two drift, because the suite would then be proving pg_cron
+  # against a different database image than production runs (D073, D084).
+  POSTGRES_IMAGE_TAG: '16-pgcron-1'
+  # The runner tag of every job but `deploy` and `deployment-smoke`, through
+  # `default:` below and in .gitlab/ci/validate.yml, which holds the same
+  # default for the child pipeline on main (D258). A project CI/CD variable of
+  # this name outranks this line, so setting it to `saas-linux-small-amd64`
+  # moves those jobs to GitLab's shared runners and deleting it brings them
+  # back, with no change here. Never leave it empty: an empty tag is dropped,
+  # and an untagged job goes to the shared runners without saying so.
+  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci'
+
+# The inspector's address (D274): the site's origin and the receive host's,
+# named here once. The frontend image is built for them, the chart is
+# installed with them and the smoke checks them; changing the two values is
+# the whole of a change of address in this repository. They are the names the
+# backend reads for the same values, which the chart sets from the hosts the
+# deploy job gives it. Only the jobs that extend this read them, the image
+# builds through .image: as global variables they would reach the test jobs
+# too, whose backend expects them unset. A copy elsewhere sets its own.
+#
+# APP_ALIAS_ORIGIN (#319, D275) is the site's second origin, where it moves on
+# day X: the same release answers there too, closed to search, the chart
+# giving it Ingresses and a certificate of its own, the backend letting its
+# Origin call /mcp, the renamed relay script reading it by default, and the
+# smoke checking it. Links keep naming APP_ORIGIN. A copy with no second
+# address sets it empty. Emptied here while APP_ORIGIN is production's, the
+# chart would serve no second host while the frontend build, which takes
+# production's second origin for production's site, still named it: the way
+# back is reverting the change that brought it.
+.inspector-address:
+  variables:
+    APP_ORIGIN: 'https://qa-tools.ru'
+    RECEIVE_ORIGIN: 'https://hook.qa-tools.ru'
+    APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru'
+
+default:
+  interruptible: true
+  # Our runner refuses untagged jobs, so a job that loses this tag cannot land
+  # on it by accident; one whose variable is unset waits for a runner tagged
+  # with the literal name, which none is.
+  tags:
+    - $QA_TOOLS_RUNNER_TAG
+
+# On main, decides what `main-validation` runs: the proof job alone when the
+# merge request this commit merges passed its pipeline on the same tree, from
+# the same base, and the previous commit's main pipeline passed; the validate
+# stage of .gitlab/ci/validate.yml in every other case, a failed or refused
+# request of the API included (scripts/main-validation.mjs, D241). It asks the
+# API with the job's own CI_JOB_TOKEN and nothing else. git is installed for
+# the comparison of trees; without it nothing is proven and the full validate
+# stage runs.
+main-validation-gate:
+  stage: .pre
+  image: $NODE_IMAGE
+  cache: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    # The merge commit and both its parents: the second parent's tree is
+    # compared with this commit's.
+    GIT_DEPTH: '2'
+  script:
+    - |
+      if ! command -v git >/dev/null; then
+        { apt-get update && apt-get install -y --no-install-recommends git; } >/dev/null ||
+          echo "git could not be installed; nothing is proven and the full validate stage runs"
+      fi
+    - node scripts/main-validation.mjs .gitlab/ci/validate.yml main-validation.yml
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - main-validation.yml
+
+# The deploy gate on main (D108, D241). It runs what `main-validation-gate`
+# wrote and takes that child pipeline's status: success only when the proof
+# job passed or every job of the validate stage did, `e2e` among them. No job
+# in this file declares `needs:`, so `build`, and `deploy` after it, wait for
+# this job through stage ordering. Adding `rules:` that skip it on main,
+# `allow_failure:`, or a `strategy:` other than mirror would remove that gate
+# silently: the pipeline would go green and deploy whatever the child did.
+#
+# It passes on the two variables the validate stage reads and no other (D258).
+# A variable a trigger job passes on outranks the project's CI/CD variables in
+# the child pipeline, so passing QA_TOOLS_RUNNER_TAG's default from this file
+# would keep the child on our runner when the project variable sends every
+# other job to the shared runners. The child takes that default from its own
+# copy of .gitlab/ci/validate.yml instead, below the project variable.
+main-validation:
+  stage: validate
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  inherit:
+    variables:
+      - NODE_IMAGE
+      - POSTGRES_IMAGE_TAG
+  trigger:
+    include:
+      - artifact: main-validation.yml
+        job: main-validation-gate
+    strategy: mirror
+
+.image:
+  stage: build
+  # The inspector's address (D274), which only the frontend's BUILD_ARGS reads.
+  extends: .inspector-address
+  image: docker:29
+  services:
+    # A build's Docker daemon starts empty and pulls its base images from
+    # Docker Hub, which allows 100 anonymous pulls per 6 hours per address; on
+    # our runner every pull comes from its server's one address. So the daemon
+    # pulls them through mirror.gcr.io, Google's public cache of Docker Hub,
+    # which needs no sign-in and whose pulls Docker Hub does not count; for an
+    # image the mirror lacks, Docker goes to Docker Hub itself. The image's
+    # entrypoint puts these flags after its own TLS ones, on our runner and on
+    # the shared runners alike (D258).
+    - name: docker:29-dind
+      command: ['--registry-mirror', 'https://mirror.gcr.io']
+  variables:
+    DOCKER_TLS_CERTDIR: '/certs'
+  cache: []
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - |
+      # Asking the registry whether a tag exists has three possible answers:
+      # yes, no, and something went wrong. The third must never be read as no —
+      # that is precisely how a tag would get overwritten by accident.
+      registry_has() {
+        if answer=$(docker manifest inspect "$1" 2>&1); then
+          return 0
+        fi
+        if echo "$answer" | grep -qiE 'manifest unknown|not found|no such manifest'; then
+          return 1
+        fi
+        echo "could not determine whether $1 exists:" >&2
+        echo "$answer" >&2
+        exit 1
+      }
+
+      # What a tag points at. A tag's digest is computed over its manifest, so
+      # two tags holding the same manifest hold the same digest — and comparing
+      # the manifests themselves avoids depending on the shape of the verbose
+      # output, which differs between an image index and a single manifest.
+      manifest_of() {
+        docker manifest inspect "$1"
+      }
+
+      # The digest behind a tag, for the log. Best effort: it explains a
+      # decision, it never makes one.
+      digest_of() {
+        docker manifest inspect -v "$1" 2>/dev/null |
+          awk '/"Descriptor"/ { descriptor = 1 }
+               descriptor && /"digest"/ { gsub(/[",]/, "", $2); print $2; exit }'
+      }
+
+      # BUILD_ARGS, unquoted on purpose, is the image's build arguments, word
+      # by word: the frontend's names the inspector's address (D274); the
+      # other images take none.
+
+      # A merge request builds to prove the image still builds, and pushes
+      # nothing: only main produces artifacts (D094).
+      if [ "$CI_COMMIT_BRANCH" != "$CI_DEFAULT_BRANCH" ]; then
+        docker build --pull $BUILD_ARGS -f "$DOCKERFILE" -t "$IMAGE:$CI_COMMIT_SHA" "$CONTEXT"
+        echo "merge request pipeline: image built, not pushed"
+        exit 0
+      fi
+
+      # On main the SHA tag is this commit's artifact and it is written once
+      # (D022), so a rerun for the same commit reuses what was published rather
+      # than building again. Two builds of one Dockerfile do not produce one
+      # image — apt resolves versions afresh and the config carries a build
+      # timestamp — so rebuilding would quietly replace an image the cluster may
+      # already be running, under a tag that is supposed to be fixed.
+      if registry_has "$IMAGE:$CI_COMMIT_SHA"; then
+        echo "$IMAGE:$CI_COMMIT_SHA is already published; reusing it"
+        docker pull -q "$IMAGE:$CI_COMMIT_SHA"
+      else
+        docker build --pull $BUILD_ARGS -f "$DOCKERFILE" -t "$IMAGE:$CI_COMMIT_SHA" "$CONTEXT"
+        docker push "$IMAGE:$CI_COMMIT_SHA"
+      fi
+
+      # An image the chart pins by a human-set tag is published under that tag
+      # too, so the pipeline delivers what production actually runs instead of
+      # leaving the used tag to a manual push (D084).
+      if [ -z "$NAMED_TAG" ]; then
+        exit 0
+      fi
+
+      if ! registry_has "$IMAGE:$NAMED_TAG"; then
+        docker tag "$IMAGE:$CI_COMMIT_SHA" "$IMAGE:$NAMED_TAG"
+        docker push "$IMAGE:$NAMED_TAG"
+        exit 0
+      fi
+
+      # The tag exists. Publishing the same image again is work already done, so
+      # it succeeds and changes nothing; pointing the tag at a different image
+      # is what must never happen silently, because the chart would then deploy
+      # different bytes with nothing in the release having changed (D022).
+      published=$(manifest_of "$IMAGE:$NAMED_TAG")
+      building=$(manifest_of "$IMAGE:$CI_COMMIT_SHA")
+      if [ -z "$published" ] || [ -z "$building" ]; then
+        # With a manifest missing there is nothing to compare, and guessing here
+        # would mean either overwriting the tag or refusing every rerun.
+        echo "could not read the manifests of $IMAGE:$NAMED_TAG and $IMAGE:$CI_COMMIT_SHA"
+        exit 1
+      fi
+
+      if [ "$published" = "$building" ]; then
+        echo "$IMAGE:$NAMED_TAG already points at this image ($(digest_of "$IMAGE:$NAMED_TAG")); nothing to publish"
+        exit 0
+      fi
+
+      echo "$IMAGE:$NAMED_TAG points at a different image and is never overwritten:"
+      echo "  the tag holds  $(digest_of "$IMAGE:$NAMED_TAG")"
+      echo "  this commit is $(digest_of "$IMAGE:$CI_COMMIT_SHA")"
+      echo "Bump POSTGRES_IMAGE_TAG in .gitlab-ci.yml and postgres.tag in"
+      echo "deploy/helm/qa-tools/values.yaml together, to a tag that is free."
+      exit 1
+
+image:backend:
+  extends: .image
+  variables:
+    DOCKERFILE: apps/backend/Dockerfile
+    CONTEXT: .
+    IMAGE: $CI_REGISTRY_IMAGE/backend
+
+image:frontend:
+  extends: .image
+  variables:
+    DOCKERFILE: apps/frontend/Dockerfile
+    CONTEXT: .
+    IMAGE: $CI_REGISTRY_IMAGE/frontend
+    # The image names the inspector's address (D274, D275): each argument
+    # takes the value of the variable of its name.
+    BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'
+
+image:postgres:
+  extends: .image
+  variables:
+    DOCKERFILE: deploy/postgres/Dockerfile
+    CONTEXT: deploy/postgres
+    IMAGE: $CI_REGISTRY_IMAGE/postgres
+    # The chart pins the database by this tag rather than by a commit SHA, so
+    # the tag the cluster pulls is published here as well (D084).
+    NAMED_TAG: $POSTGRES_IMAGE_TAG
+  # Built only when its Dockerfile changes. The chart pins this image by a tag a
+  # human sets, so a routine deployment never restarts the database (D084).
+  #
+  # Except once: the first pipeline on main, the one whose previous commit is
+  # this repository's empty start, 8ac8b0b, finds deploy/postgres/ new and
+  # would build the image afresh, which never matches the tag copied by digest
+  # from qa-tools' registry before the import (#326), and fail. It reuses that
+  # copy instead. Any later change under deploy/postgres/ builds and compares
+  # as before (D084).
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_BEFORE_SHA == '8ac8b0bb17578fd8d1e672e51cea8bb22647cf8f'
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      changes:
+        - deploy/postgres/**/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - deploy/postgres/**/*
+
+deploy:
+  stage: deploy
+  # The inspector's address (D274): the chart's hosts and the environment's URL.
+  extends: .inspector-address
+  # The runner inside the production server. It accepts only jobs carrying this
+  # tag, so nothing else in the pipeline can land on the production host. The
+  # only job with an environment, so the only one given KUBECONFIG_DEPLOYER,
+  # which is scoped to `production` since 2026-10-22 (D258).
+  tags:
+    - qa-tools-vps
+  cache: []
+  # One deployment at a time: two overlapping helm upgrades would race for the
+  # same release.
+  resource_group: production
+  # The only job that opts out of the interruptible default. resource_group
+  # serialises deployments but does not stop a running one being cancelled, and
+  # a helm client killed mid-upgrade leaves the release in pending-upgrade,
+  # where the next deployment refuses to start until someone clears it by hand.
+  interruptible: false
+  environment:
+    name: production
+    url: $APP_ORIGIN
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    # A protected, namespace-scoped kubeconfig; the pipeline never holds
+    # administrative credentials (D093).
+    KUBECONFIG: $KUBECONFIG_DEPLOYER
+  # The chart takes the hosts and builds https:// origins of them (D274), so
+  # the script first checks that each origin is https:// and a host name
+  # alone; the second site origin may be empty, for none, and must otherwise
+  # name a host of its own (D275). A host name is dot-separated labels of
+  # lowercase letters, digits and hyphens, each 1 to 63 characters, neither
+  # starting nor ending with a hyphen, with no empty label and no trailing dot
+  # (#340), the rule apps/frontend/scripts/site-origin.mjs applies to the same
+  # values: a host that starts or ends with a dot or a hyphen, holds two dots
+  # in a row or a dot beside a hyphen, or 64 characters with no dot among them
+  # is refused here rather than by Kubernetes after the image build. A refusal
+  # names the variable and never its value, which an unmasked CI variable set
+  # over it could hold credentials in.
+  script:
+    - |
+      # 64 characters with no dot among them: [!.] eight times, eight times.
+      label64='[!.][!.][!.][!.][!.][!.][!.][!.]'
+      label64="$label64$label64$label64$label64$label64$label64$label64$label64"
+      for name in APP_ORIGIN RECEIVE_ORIGIN APP_ALIAS_ORIGIN; do
+        case "$name" in
+          APP_ORIGIN) origin=$APP_ORIGIN ;;
+          RECEIVE_ORIGIN) origin=$RECEIVE_ORIGIN ;;
+          *)
+            origin=$APP_ALIAS_ORIGIN
+            if [ -z "$origin" ]; then continue; fi
+            if [ "$origin" = "$APP_ORIGIN" ] || [ "$origin" = "$RECEIVE_ORIGIN" ]; then
+              echo "$name must name a host of its own; its value is not printed"
+              exit 1
+            fi
+            ;;
+        esac
+        case "${origin#https://}" in
+          "$origin" | "" | *[!a-z0-9.-]* | [.-]* | *[.-] | *..* | *.-* | *-.* | *$label64*)
+            echo "$name must be https:// and a host name alone; its value is not printed"
+            exit 1
+            ;;
+        esac
+      done
+    - helm upgrade --install qa-tools deploy/helm/qa-tools
+      --namespace qa-tools
+      --set-string images.registry="${CI_REGISTRY_IMAGE:?CI_REGISTRY_IMAGE must be set}"
+      --set-string images.tag="$CI_COMMIT_SHA"
+      --set-string ingress.host="${APP_ORIGIN#https://}"
+      --set-string ingress.aliasHost="${APP_ALIAS_ORIGIN#https://}"
+      --set-string receive.host="${RECEIVE_ORIGIN#https://}"
+      --set-string alerts.siteUrl="$APP_ORIGIN"
+      --wait --timeout 10m
+    - kubectl -n qa-tools get pods
+
+# Availability after the actual main deployment, from outside the cluster.
+# This does not replace the three pre-merge browser journeys or feature checks.
+# On GitLab's shared runners, whatever QA_TOOLS_RUNNER_TAG says: the check is
+# from outside, and it still runs when our runner is down (D258).
+deployment-smoke:
+  # The inspector's address (D274): the origins the smoke checks.
+  extends: .inspector-address
+  image: $NODE_IMAGE
+  stage: verify-deployment
+  tags:
+    - saas-linux-small-amd64
+  cache: []
+  # About 5 minutes of it for the second host's certificate, which
+  # cert-manager issues only once this deployment has created its Ingress:
+  # the check waits for it while the proxy still presents its own
+  # (scripts/check-deployment.mjs, CERTIFICATE_WAIT, D275); the checks
+  # themselves take seconds.
+  timeout: 10m
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # The site, and the receive host where webhooks are received since 0.36.0
+    # (D187), through its own TCP route; then the site's second host, when
+    # there is one, closed to search (D275).
+    - node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN"

@@ -1,0 +1,79 @@
+# Traefik's dynamic configuration for the connection measurement of issue #145
+# (D227, scripts/measure-connections.compose.yml): what the chart's receive
+# route (deploy/helm/qa-tools/templates/receive.yaml) and the application's
+# Ingress make in production, with the file provider instead of the CRDs.
+#
+# - The receive host, hook.qa-tools.test here: a TCP router on HostSNI, TLS
+#   ending at Traefik with HTTP/1.1 alone in ALPN, and a servers transport
+#   that writes a PROXY protocol v2 header in front of every connection to the
+#   backend's receive listener, which counts the connections of each sender
+#   the header names. No middleware, as in the chart.
+# - qa-tools.test: an HTTP router to the application listener, `/ws/`
+#   included, which writes X-Forwarded-For as the Ingress does; and since
+#   #205 (D264) the API's two paths, `/api/` and `/mcp`, each a router of its
+#   own with the edge rate limit, as the chart's API Ingress makes them - one
+#   router per path, each rule longer than the application's, so each wins
+#   over it for its path as the Ingress's win over the frontend's `/`. The
+#   middleware's numbers are the chart's `ingress.apiRateLimit`, which
+#   scripts/chart.test.mjs holds equal.
+#
+# No certificate is configured: Traefik serves its own default one, and the
+# client does not verify it.
+tcp:
+  routers:
+    receive:
+      entryPoints: [websecure]
+      rule: HostSNI(`hook.qa-tools.test`)
+      service: receive
+      tls:
+        options: receive
+  services:
+    receive:
+      loadBalancer:
+        serversTransport: receive
+        servers:
+          - address: 10.145.1.3:3001
+  serversTransports:
+    receive:
+      proxyProtocol:
+        version: 2
+
+http:
+  routers:
+    application:
+      entryPoints: [websecure]
+      rule: Host(`qa-tools.test`)
+      service: application
+      tls: {}
+    api:
+      entryPoints: [websecure]
+      rule: Host(`qa-tools.test`) && PathPrefix(`/api/`)
+      middlewares: [api-rate-limit]
+      service: application
+      tls: {}
+    mcp:
+      entryPoints: [websecure]
+      rule: Host(`qa-tools.test`) && PathPrefix(`/mcp`)
+      middlewares: [api-rate-limit]
+      service: application
+      tls: {}
+  middlewares:
+    api-rate-limit:
+      rateLimit:
+        average: 100
+        period: 1s
+        burst: 6000
+        sourceCriterion:
+          ipStrategy:
+            ipv6Subnet: 64
+  services:
+    application:
+      loadBalancer:
+        servers:
+          - url: http://10.145.1.3:3000
+
+tls:
+  options:
+    receive:
+      alpnProtocols:
+        - http/1.1

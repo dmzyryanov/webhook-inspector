@@ -1,0 +1,204 @@
+# The HTTP/2 hostile-input measurement of issue #208 (D266), driven by
+# `node scripts/measure-http2-hostile.mjs`, which starts this project, runs
+# each shape against a fresh backend and removes everything it started. It is
+# the connection measurement's compose (scripts/measure-connections.compose.yml,
+# D227, D228) narrowed to the HTTP/2 path, on its own subnets (10.148.x) so a
+# run can sit beside one of that measurement.
+#
+# What production runs, in miniature, with the HTTP/2 path switched on: the
+# backend image built from this checkout and limited as the chart limits it,
+# 0.5 CPU and 512 MiB with no swap, `RECEIVE_HTTP2=on`; PostgreSQL of the
+# project's own image, 1 CPU and 1 GiB; Traefik 3.7.8 in front, the receive
+# host a TCP route on HostSNI with TLS ending at Traefik and a PROXY protocol
+# v2 servers transport (scripts/measure-http2-hostile.traefik.yml). The client
+# runs in a container of its own on nine networks, so Traefik sees it from up
+# to eight attacking addresses, each named in its PROXY header, and a ninth for
+# the small captures.
+#
+# Nothing is published on the host, and nothing is pulled: every image but the
+# backend's, which is built, must be present already (`pull_policy`).
+# MEASURE_BACKEND_IMAGE names another backend image already built, a base
+# commit's for comparison, which the script's `--image` sets.
+name: dev208-http2-measure
+
+x-limits: &backend-limits
+  cpus: 0.5
+  mem_limit: 512m
+  memswap_limit: 512m
+
+services:
+  postgres:
+    image: webhook-inspector-postgres
+    pull_policy: never
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      POSTGRES_USER: webhook_inspector
+      POSTGRES_PASSWORD: webhook_inspector
+      POSTGRES_DB: webhook_inspector
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=webhook_inspector
+      - -c
+      - cron.use_background_workers=on
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'psql -h 127.0.0.1 -U webhook_inspector -d webhook_inspector -tAc "SELECT 1"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      edge:
+        ipv4_address: 10.148.1.4
+
+  migrate:
+    image: ${MEASURE_BACKEND_IMAGE:-dev208-http2-backend}
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+      pull: false
+    pull_policy: missing
+    command: ['node', 'src/db/migrate.ts']
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: 10.148.1.5
+
+  backend:
+    image: ${MEASURE_BACKEND_IMAGE:-dev208-http2-backend}
+    pull_policy: never
+    <<: *backend-limits
+    # The chart's receive buffer, backend.tcpRmem (#217, D238); MEASURE_TCP_RMEM
+    # sets another (Linux's default, `4096 131072 6291456`).
+    sysctls:
+      net.ipv4.tcp_rmem: '${MEASURE_TCP_RMEM:-4096 16384 6291456}'
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+      # Traefik names the attacking addresses in the PROXY header; the client
+      # writes its own PROXY header on the small captures it sends straight.
+      TRUSTED_PROXY_CIDRS: 10.148.1.2/32,10.148.1.10/32
+      RECEIVE_PROXY_PROTOCOL: ${MEASURE_RECEIVE_PROXY_PROTOCOL:-v2}
+      RECEIVE_CONNECTIONS_PER_ADDRESS: ${MEASURE_RECEIVE_CONNECTIONS:-512}
+      # The switch this issue measures (D263); off on production until #115.
+      RECEIVE_HTTP2: 'on'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      edge:
+        ipv4_address: 10.148.1.3
+
+  traefik:
+    image: traefik:v3.7.8
+    pull_policy: never
+    command:
+      - --entryPoints.websecure.address=:8443
+      - --entryPoints.websecure.transport.respondingTimeouts.readTimeout=60s
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --log.level=INFO
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+    volumes:
+      - ./measure-http2-hostile.traefik.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      edge:
+        ipv4_address: 10.148.1.2
+      other:
+        ipv4_address: 10.148.2.2
+      attack3:
+        ipv4_address: 10.148.3.2
+      attack4:
+        ipv4_address: 10.148.4.2
+      attack5:
+        ipv4_address: 10.148.5.2
+      attack6:
+        ipv4_address: 10.148.6.2
+      attack7:
+        ipv4_address: 10.148.7.2
+      attack8:
+        ipv4_address: 10.148.8.2
+      small:
+        ipv4_address: 10.148.9.2
+
+  client:
+    image: node:24-slim
+    pull_policy: never
+    command: ['sleep', 'infinity']
+    init: true
+    volumes:
+      - ./:/scripts:ro
+    networks:
+      edge:
+        ipv4_address: 10.148.1.10
+      other:
+        ipv4_address: 10.148.2.10
+      attack3:
+        ipv4_address: 10.148.3.10
+      attack4:
+        ipv4_address: 10.148.4.10
+      attack5:
+        ipv4_address: 10.148.5.10
+      attack6:
+        ipv4_address: 10.148.6.10
+      attack7:
+        ipv4_address: 10.148.7.10
+      attack8:
+        ipv4_address: 10.148.8.10
+      small:
+        ipv4_address: 10.148.9.10
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 10.148.1.0/24
+  other:
+    ipam:
+      config:
+        - subnet: 10.148.2.0/24
+  attack3:
+    ipam:
+      config:
+        - subnet: 10.148.3.0/24
+  attack4:
+    ipam:
+      config:
+        - subnet: 10.148.4.0/24
+  attack5:
+    ipam:
+      config:
+        - subnet: 10.148.5.0/24
+  attack6:
+    ipam:
+      config:
+        - subnet: 10.148.6.0/24
+  attack7:
+    ipam:
+      config:
+        - subnet: 10.148.7.0/24
+  attack8:
+    ipam:
+      config:
+        - subnet: 10.148.8.0/24
+  small:
+    ipam:
+      config:
+        - subnet: 10.148.9.0/24

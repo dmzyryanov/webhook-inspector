@@ -1,0 +1,41 @@
+# Let's Encrypt issuers for the QA Tools cluster.
+#
+# Applied once as a cluster prerequisite:
+#
+#   kubectl apply -f deploy/cluster/letsencrypt-issuers.yaml
+#
+# Two issuers exist so that a certificate can be proved end to end against the
+# staging endpoint before the production one is asked for anything. Production
+# refuses roughly five failed authorisations an hour and five certificates per
+# domain a week, and a misconfigured challenge burns that allowance quickly;
+# staging has no comparable limit, and its certificate is untrusted by browsers
+# but identical in every step needed to obtain it.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: contact@qa-tools.ru
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: contact@qa-tools.ru
+    privateKeySecretRef:
+      name: letsencrypt-production-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

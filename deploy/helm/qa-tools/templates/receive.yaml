@@ -1,0 +1,90 @@
+{{- /*
+The receive host (D187, issue #90): webhooks are received on receive.host,
+hook.qa-tools.ru, through a Traefik TCP route, not the Ingress.
+
+Traefik terminates TLS on websecure for that name (SNI) and hands the
+decrypted bytes to the backend's receive listener unchanged, behind a PROXY
+protocol v2 header with the sender's address. Its HTTP layer, which rewrote
+header names, their order and paths (D091, D144, D173), never sees them. The
+TLS option offers HTTP/1.1 alone, so an HTTP/2 client falls back to it: the
+receive listener speaks HTTP/1.1, and the stored version is the one used.
+
+The Ingress annotation that has cert-manager issue the application's
+certificate does not cover a TCP route, so the receive host's certificate is
+a Certificate of its own, from the same ClusterIssuer. Its HTTP-01 challenge
+is answered on web, where the entry point's redirect is kept at priority 100
+so that the challenge route can win (deploy/cluster/traefik-config.yaml).
+
+The deploy identity may manage these kinds since #90
+(deploy/cluster/gitlab-deployer.yaml).
+*/}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "qa-tools.name" . }}-receive
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receive
+spec:
+  secretName: {{ .Values.receive.tlsSecretName }}
+  dnsNames:
+    - {{ .Values.receive.host }}
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.ingress.tls.issuer }}
+---
+# HTTP/1.1 alone in ALPN: a client offering h2 falls back, so the request the
+# backend stores is the one the client sent (D187).
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: {{ include "qa-tools.name" . }}-receive
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receive
+spec:
+  alpnProtocols:
+    - http/1.1
+---
+# How Traefik talks to the receive listener. PROXY protocol v2 carries the
+# sender's address, which the backend accepts only from the trust boundary
+# (D111, D187); it is set here because the route-level option is deprecated
+# in Traefik 3.7.8.
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransportTCP
+metadata:
+  name: {{ include "qa-tools.name" . }}-receive
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receive
+# No terminationDelay: Traefik's default applies. A sender that ends its side
+# of the connection before its answer is written gets no answer whatever the
+# proxy keeps open, because the backend aborts the request on the FIN (D187).
+spec:
+  {{- if eq .Values.receive.proxyProtocol "v2" }}
+  proxyProtocol:
+    version: 2
+  {{- else }}
+  {}
+  {{- end }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: {{ include "qa-tools.name" . }}-receive
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receive
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: HostSNI(`{{ .Values.receive.host }}`)
+      services:
+        - name: {{ include "qa-tools.name" . }}-backend
+          port: receive
+          serversTransport: {{ include "qa-tools.name" . }}-receive
+  tls:
+    secretName: {{ .Values.receive.tlsSecretName }}
+    options:
+      name: {{ include "qa-tools.name" . }}-receive

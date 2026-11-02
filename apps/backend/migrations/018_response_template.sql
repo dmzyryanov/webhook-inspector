@@ -1,0 +1,38 @@
+-- Response templates (D251, issue #135): whether a response's body is a
+-- template, whose placeholders a capture fills in from the request it answers.
+--
+-- sessions.response_template says it of the session's custom response, beside
+-- the response columns it belongs to (003, 005): true for a template, and
+-- false or NULL for a body sent exactly as configured. NULL is what every
+-- existing row reads and what the previous image leaves in a session it
+-- creates, and every reader takes it as false, as response_custom_disabled's
+-- NULL is read. A step of the response queue (010) and a rule's response (017)
+-- carry the same as a "template" key of their JSONB object; a step or a rule
+-- without the key is no template, which needs no change here.
+--
+-- The column is nullable with no default and no backfill, so the ALTER is
+-- metadata-only on PostgreSQL 16 and writes no row.
+--
+-- The previous image on this schema - beside this one during a rolling update
+-- (D221), alone after a `helm rollback` (D055): it names its columns in every
+-- statement, so it never reads this one or the JSONB key. It answers a
+-- template's text as it was configured, placeholders and all - nothing is
+-- lost, and the values are filled in again once this image serves. A session
+-- it creates reads as no template; a queue or rules it saves drop the key and
+-- are none; a session response it changes keeps the column as it was, so a
+-- body it saved on a session whose response was a template is one again once
+-- this image serves, and is sent as configured if it does not read as one.
+-- template.test.ts replays its statements on this schema.
+--
+-- Locks: the ALTER takes ACCESS EXCLUSIVE on sessions until this migration
+-- commits, waiting for the transactions using the table at that moment - a
+-- capture holds its session row FOR UPDATE for milliseconds (D105) - and
+-- holding new ones behind it meanwhile. It waits at most lock_timeout, 5 s
+-- (D221): past that the migration rolls back unrecorded and the backend's
+-- init container runs it again.
+--
+-- The stats schema's views name their columns (007), so the read-only role
+-- never sees this one. There is no down-migration (D055).
+
+ALTER TABLE sessions
+    ADD COLUMN response_template BOOLEAN;
