@@ -563,8 +563,9 @@ test. Neither has frames left to count by then.
 
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:460` at `7018965`,
   `:459` after the fix; the same `timed` bound holds every check of made-up
-  input in that file (100 ms) and in `captured.test.ts` (200 ms). Branch
-  `feat/mcp-server` (issue #116, D203); never on `main`.
+  input in that file (100 ms, 1000 ms since #363: F-24) and in
+  `captured.test.ts` (200 ms). Branch `feat/mcp-server` (issue #116, D203);
+  never on `main`.
 - **Status**: fixed in the tests, before review.
 
 ### The failure
@@ -3789,3 +3790,126 @@ series' load; none is in this file:
   1048576 bytes`, `took 153.9 ms at best in 5 runs, over the 100 ms bound`.
 
 Not this issue's; not filed by this entry.
+
+## F-24 — `survives made-up bodies of 1048576 bytes`
+
+- **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:260` at `bc8f7a8`,
+  the base of the fix, and `:267` at the fix, `c3ffb2b`. Each of its ten
+  made-up bodies is read by `parseMessage` through `timed`, `withinBound`
+  with the file's one bound, `BOUND_MS`, which every check of made-up input
+  in the file shares (F-04). Issue #363.
+- **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
+  `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
+  `testing/timing.ts` were not changed; VERSION kept.
+
+### The failure
+
+Twice, in full runs of the backend suite on the agents' server under load,
+3,407 tests each:
+
+- the tester of #345's delivery, finding 2 on MR !340, on 2026-11-02 at
+  09:30 MSK: `node scripts/db.mjs task-test 345` while the same tester's
+  81-test e2e suite ran beside it; 3,406 passed, 1 failed. The file passed
+  alone, 38 of 38, and the suite in a rerun with no other load, 3,407 of
+  3,407. As the issue quotes it:
+
+  ```text
+  test at src/modules/mcp/protocol.test.ts:260:5
+  ✖ survives made-up bodies of 1048576 bytes (796.643323ms)
+    AssertionError [ERR_ASSERTION]: took 109.0 ms at best in 5 runs, over the 100 ms bound
+        at withinBound (apps/backend/src/testing/timing.ts:38:14)
+  ```
+
+- F-23's run beside its reproduction's script, `took 153.9 ms at best in 5
+  runs, over the 100 ms bound`, left there under Watched, and left.
+
+### The mechanism
+
+A bound with little room over the check's own time. `withinBound` holds the
+fastest of up to five runs to the bound, so a stall that stops one run does
+not fail it (F-04); a machine whose CPUs are all busy slows every run, and
+the fastest with them. Of the ten bodies, the slowest, in every one of the
+180 rounds measured below, is `fill('[', size)`: each byte opens an array
+for V8's JSON.parse, which holds a level for each until the input ends and
+it throws. At 1 MiB `parseMessage` takes 67 to 80 ms on it alone, at best of
+five, against 10 to 12 ms for `{"a":` repeated and for the batch; the
+bound's comment said 30 ms, the figure of F-04's developer's machine. So the
+bound of 100 ms left this body about a quarter of its time, and a load that
+slowed it by a third failed it.
+
+Its time grows faster than its size: `parseMessage` on n bytes of `[`, the
+fastest of seven runs, took 1.0 ms at 64 KiB, 8.0 ms at 256 KiB, 74.7 ms at
+1 MiB and 433.4 ms at 4 MiB — 16, 32, 75 and 108 ms a MiB. From 1 to 4 MiB
+that is ×5.8, where n² would be ×16. That the parser's levels cost more
+once they outgrow the CPU's caches is an inference, not measured. `{"a":`
+repeated and the batch took 9 to 13 ms a MiB from 64 KiB to 1 MiB.
+
+### The measurement
+
+On 2026-11-02 on the agents' Linux host, an AMD EPYC 7763 with 8 CPUs, Node
+v24.22.2, with a script outside the tree that builds the test's ten bodies
+of 1 MiB and, each round, runs `parseMessage` on each body five times and
+keeps the slowest body's fastest run — the number `withinBound` holds to its
+bound when every run is over it. The load is the 1-minute load average at
+the start and the end of the series:
+
+| beside | load | rounds | min / median / max, ms | over 100 ms | over 500 ms | over 1000 ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.7 | 20 | 66.8 / 74.5 / 79.7 | 0 | 0 | 0 |
+| a full run of the backend suite, `node scripts/db.mjs task-test 363` | 3.3 to 7.0 | 60 | 31.9 / 79.3 / 110.8 | 1 | 0 | 0 |
+| the same run and eight busy loops, `node -e 'for(;;){}'` | 9.5 to 17.2 | 60 | 72.6 / 96.2 / 268.0 | 26 | 0 | 0 |
+| sixteen busy loops | 11.4 to 15.0 | 40 | 67.7 / 153.3 / 229.5 | 29 | 0 | 0 |
+
+The slowest body was `[` in every round. The suite run under that load, at
+the fix's file with the bound at 500 ms, an intermediate value, gave
+`ℹ tests 3407`, `ℹ pass 3406`, `ℹ fail 1`: this file passed, the bodies case
+in 251 ms for all ten bodies, and
+`src/modules/webhook/capture-budget.test.ts:1490`, `gives a flooder of 81 KiB
+webhooks on any number of connections no more of the reserve than a light
+sender may hold, and leaves the rest to another sender`, failed with
+`weighing the flood took too long`.
+
+For the other side, the same script read `fill('[', n)` with a reader
+quadratic in n: for each `[`, the rest of the body searched for a `]`, which
+it does not hold, so each search runs to the end; one run each, at a load of
+1 to 7:
+
+| the search | 16 KiB | 32 KiB | 64 KiB | 128 KiB | 256 KiB | 512 KiB | 1 MiB |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| V8's `String.prototype.indexOf` | 2.0 ms | | 22.7 ms | 94.0 ms | 385.1 ms | 1,648.5 ms | 7,730.1 and 7,614.5 ms |
+| Node's `Buffer.prototype.indexOf` | | | | | 397.3 ms | | 7,800.1 ms |
+| a `charCodeAt` loop | 266.1 ms | 1,065.9 ms | 4,235.1 ms | 16,727.7 ms | | | not run; about 18 min by n² |
+
+Each doubling multiplies the time by about four, as n² does. The fastest
+quadratic reading of 1 MiB built here, 7.6 s, is over 1000 ms on every run,
+and a busier machine only slows it further.
+
+### The fix
+
+`BOUND_MS` is 1000 ms, for every check of the file: 3.7 times this check's
+worst loaded reading and 12 times its time alone, and 7.6 times below the
+fastest quadratic reading. 500 ms, the bound of most of the suite's
+hostile-input files, would be 1.9 times the worst loaded reading; this check
+takes 75 ms alone, where the slowest cut of `captured.test.ts`, by its
+comment, takes about 3 ms against its 200 ms. The checks that tell a
+quadratic reading from a linear one are the 1 MiB ones, where a quadratic
+reading takes seconds; at 64 KiB the `indexOf` reading took 23 ms, under
+100 ms and 1000 ms alike. The names of the `Origin`, URL and `Accept` cases
+carry the bound and read `within 1000 ms`.
+
+No test holds that a quadratic reading fails the bound: one reading of 1 MiB
+takes 7.6 s, and five to fail; `testing/timing.test.ts` holds, on a made-up
+clock, that a check over the bound on every run fails.
+
+At the fix, the file alone,
+`node scripts/db.mjs task-test 363 -- src/modules/mcp/protocol.test.ts`,
+gave `ℹ tests 38`, `ℹ pass 38`, `ℹ fail 0`, the bodies case in 213 ms, and
+the full suite, `node scripts/db.mjs task-test 363`, with nothing of this
+entry's beside it, `ℹ tests 3407`, `ℹ pass 3407`, `ℹ fail 0`, exit 0, in
+112 s at a load of 2.2 to 10.0, the bodies case in 257 ms.
+
+### Watched, and left
+
+- `parseMessage` on `[` growing faster than its size up to 4 MiB, above: in
+  V8's own JSON.parse, and `/mcp` takes a body of 1 MiB at most.
+- `capture-budget.test.ts:1490` in the loaded run above; not this issue's.
