@@ -1,6 +1,6 @@
 {{- /*
 The receive host (D187, issue #90): webhooks are received on receive.host,
-hook.qa-tools.ru, through a Traefik TCP route, not the Ingress.
+through a Traefik TCP route, not the Ingress.
 
 Traefik terminates TLS on websecure for that name (SNI) and hands the
 decrypted bytes to the backend's receive listener unchanged, behind a PROXY
@@ -26,9 +26,9 @@ metadata:
     {{- include "qa-tools.labels" . | nindent 4 }}
     app.kubernetes.io/component: receive
 spec:
-  secretName: {{ .Values.receive.tlsSecretName }}
+  secretName: {{ include "qa-tools.receiveTlsSecret" . }}
   dnsNames:
-    - {{ .Values.receive.host }}
+    - {{ include "qa-tools.receiveHost" . }}
   issuerRef:
     kind: ClusterIssuer
     name: {{ .Values.ingress.tls.issuer }}
@@ -79,12 +79,12 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: HostSNI(`{{ .Values.receive.host }}`)
+    - match: HostSNI(`{{ include "qa-tools.receiveHost" . }}`)
       services:
         - name: {{ include "qa-tools.name" . }}-backend
           port: receive
           serversTransport: {{ include "qa-tools.name" . }}-receive
   tls:
-    secretName: {{ .Values.receive.tlsSecretName }}
+    secretName: {{ include "qa-tools.receiveTlsSecret" . }}
     options:
       name: {{ include "qa-tools.name" . }}-receive

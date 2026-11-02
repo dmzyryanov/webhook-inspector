@@ -86,7 +86,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.postgres.existingSecret }}
+                  name: {{ include "qa-tools.postgresSecret" . }}
                   key: {{ .Values.postgres.secretKey }}
             - name: DATABASE_URL
               value: {{ include "qa-tools.databaseUrl" . | quote }}
@@ -99,7 +99,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.postgres.existingSecret }}
+                  name: {{ include "qa-tools.postgresSecret" . }}
                   key: {{ .Values.postgres.secretKey }}
             - name: DATABASE_URL
               value: {{ include "qa-tools.databaseUrl" . | quote }}
@@ -127,11 +127,11 @@ spec:
             - name: RECEIVE_CONNECTIONS_PER_ADDRESS
               value: {{ .Values.receive.connectionsPerAddress | quote }}
             - name: RECEIVE_ORIGIN
-              value: {{ printf "https://%s" .Values.receive.host | quote }}
+              value: {{ printf "https://%s" (include "qa-tools.receiveHost" .) | quote }}
             # The site's own origin (D203): the inspector links /mcp gives,
             # and an Origin a browser may send it.
             - name: APP_ORIGIN
-              value: {{ printf "https://%s" .Values.ingress.host | quote }}
+              value: {{ printf "https://%s" (include "qa-tools.host" .) | quote }}
             {{- if .Values.ingress.aliasHost }}
             # The site's second origin (D275): the other Origin a browser may
             # send /mcp. It builds no link.

@@ -404,9 +404,12 @@ describe('the numbers of the Terms of Use and the Privacy Policy, against their 
       [...backupTemplate.matchAll(/hostPath:\n\s+path: (.+)$/gm)].map((match) => match[1]),
       ['{{ .Values.backup.hostPath | quote }}'],
     );
+    // The chart's own directory; production's, /var/backups/qa-tools/nightly,
+    // is its CI/CD variable since #367, which scripts/chart.test.mjs holds the
+    // deploy job to. Neither is under the node's /var/log.
     assert.match(
       read('../../../../deploy/helm/qa-tools/values.yaml'),
-      /^backup:\n[\s\S]*?^ {2}hostPath: \/var\/backups\/qa-tools\/nightly$/m,
+      /^backup:\n[\s\S]*?^ {2}hostPath: \/var\/backups\/webhook-inspector$/m,
     );
 
     // Not sent anywhere: nothing the repository deploys reaches the node's

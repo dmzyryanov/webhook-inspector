@@ -57,14 +57,14 @@ export const MAX_ANSWER_BYTES = 1024 * 1024;
 export const PROOF_JOB = 'validated-in-merge-request';
 /**
  * The variable naming the runner tag of the validate stage, and its default:
- * the project's own CI runner (D258). The proof job is tagged with it like
- * every job of `.gitlab/ci/validate.yml`, whose default it repeats, so a
- * project CI/CD variable of this name moves the proof to the shared runners
- * with the rest; the trigger job does not pass it on, so nothing outranks
+ * GitLab's shared runners, the project's own CI runner being named by a
+ * project CI/CD variable of this name (D258, #367). The proof job is tagged
+ * with it like every job of `.gitlab/ci/validate.yml`, whose default it
+ * repeats, so that project variable moves the proof with the rest; the trigger job does not pass it on, so nothing outranks
  * that project variable in the child pipeline.
  */
 export const RUNNER_TAG_VARIABLE = 'QA_TOOLS_RUNNER_TAG';
-export const RUNNER_TAG_DEFAULT = 'qa-tools-ci';
+export const RUNNER_TAG_DEFAULT = 'saas-linux-small-amd64';
 
 const SHA = /^[0-9a-f]{40}$/;
 const PROJECT_ID = /^[1-9][0-9]{0,15}$/;

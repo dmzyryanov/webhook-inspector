@@ -106,6 +106,17 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.6
+
+2026-11-02
+
+**Nothing changes on this site; the inspector's installation files no longer
+assume they are this site's.** Someone installing the inspector on a server of
+their own now gives it their own addresses, and its off-server backup copy and
+its alerts are options they switch on with storage and an alerting service of
+their own; this site sets the same values it had, kept outside the code.
+Every address answers exactly as before. (#367)
+
 ## 1.19.5
 
 2026-11-02

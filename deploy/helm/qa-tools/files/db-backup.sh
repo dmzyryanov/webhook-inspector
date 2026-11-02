@@ -60,8 +60,8 @@
 #
 # Every exit the script can observe — success, a failed step, a stop signal —
 # also writes BACKUP_STATUS_FILE when it is set, for the notifier beside it in
-# the pod, which sends the outcome to Statuser.cloud (files/db-backup-notify.mjs,
-# D181): `ok`, or `fail` and the run's own message on the next line — the last
+# the pod, which sends the outcome to the heartbeat service
+# (files/db-backup-notify.mjs, D181): `ok`, or `fail` and the run's own message on the next line — the last
 # `fail` message or the stop signal, never a PostgreSQL client's output. It is
 # written under a temporary name and renamed, so it is never read half written,
 # and made readable by the notifier's uid despite the umask.

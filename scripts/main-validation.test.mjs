@@ -265,7 +265,7 @@ test('a merge whose tree its merge request passed, from the same base, after a p
   assert.match(config, /^stages:\n {2}- validate$/m);
   assert.match(config, /^ {4}GIT_STRATEGY: 'none'$/m);
   // On the runner the validate stage runs on, with its default (D258).
-  assert.match(config, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'qa-tools-ci'$/m);
+  assert.match(config, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'$/m);
   assert.match(config, /^ {2}tags:\n {4}- \$QA_TOOLS_RUNNER_TAG$/m);
   // It holds no resource group, so a proven main never waits behind the
   // merge requests' `test` and `e2e` taking their turns (#266).

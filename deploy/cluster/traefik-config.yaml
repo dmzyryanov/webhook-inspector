@@ -23,16 +23,16 @@ spec:
             # unencrypted to anyone who typed the bare host.
             #
             # Priority 100 rather than Traefik's default MaxInt-1 (D187). The
-            # HTTP-01 challenge of hook.qa-tools.ru cannot follow the redirect:
+            # HTTP-01 challenge of the receive host cannot follow the redirect:
             # on websecure that host is a TCP route to the backend's receive
             # listener, which would answer the challenge itself. So
             # cert-manager's temporary solver route has to win on web, and
             # Traefik refuses a user-defined priority above MaxInt-1000.
             # Traefik ranks an Ingress route by the length of its rule: a
             # solver's rule (Host + the 70-odd character challenge path) is
-            # over 100, every application route is under 50
-            # (Host(`qa-tools.ru`) && PathPrefix(`/api/`) is 42). The
-            # application's Ingress is also pinned to websecure; this value
+            # some 60 characters longer than any application route's for the
+            # same host (Host(`<host>`) && PathPrefix(`/api/`) is the host's
+            # length and 31). The application's Ingress is also pinned to websecure; this value
             # keeps plain HTTP redirected even if a rollback removes that pin.
             entryPoint:
               to: websecure

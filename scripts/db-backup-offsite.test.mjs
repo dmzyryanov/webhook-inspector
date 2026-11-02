@@ -117,7 +117,7 @@ const VALUES = readFileSync(
   'utf8',
 );
 const RECIPIENT = readFileSync(
-  new URL('../deploy/helm/qa-tools/files/db-backup-recipient.asc', import.meta.url),
+  new URL('fixtures/db-backup-recipient.asc', import.meta.url),
   'utf8',
 );
 const BACKUP_SCRIPT = readFileSync(
@@ -3302,9 +3302,10 @@ function fingerprints(armored) {
   return found;
 }
 
-// The owner's key of 2026-10-01, from the comment on issue #89. Replacing the
-// key means replacing these two lines with it (the runbook's section 10).
-test('the recipient file is the owner’s public key, and holds no private key', () => {
+// The tests' recipient key: the owner's of 2026-10-01, from the comment on
+// issue #89, a public key. Production's is its CI/CD variable since #367,
+// not this file, and the chart holds none.
+test('the tests’ recipient file is a public key, and holds no private key', () => {
   assert.deepEqual(fingerprints(RECIPIENT), [
     { kind: 'primary', fingerprint: '4C5BCE04B61A2DE37D4D567BD332EF5D79E659B1' },
     { kind: 'subkey', fingerprint: 'BD9E5C803178216D18745DF775374469D290765A' },
@@ -3322,18 +3323,31 @@ test('the chart runs the uploader only with a bucket set, and holds no credentia
       /\{\{- if \.Values\.backup\.offsite\.bucket \}\}\n([\s\S]*?)\{\{- end \}\}/g,
     ),
   ].map((match) => match[1]);
-  assert.equal(guarded.length, 4);
+  assert.equal(guarded.length, 5);
   const unguarded = TEMPLATE.replace(
     /\{\{- if \.Values\.backup\.offsite\.bucket \}\}\n[\s\S]*?\{\{- end \}\}\n/g,
     '',
   )
-    // The comments and the ConfigMap, which holds the files whatever the bucket.
+    // The comments, and the initContainers key, which the notifier needs too.
     .replace(/\{\{- \/\*[\s\S]*?\*\/\}\}/, '')
     .replace(/^\s*#.*$/gm, '')
-    .replace(/^ {2}db-backup-(offsite\.mjs|recipient\.asc): \|-\n.*\n/gm, '');
+    .replace(
+      /^ *\{\{- if or \.Values\.alerts\.heartbeatUrl \.Values\.backup\.offsite\.bucket \}\}\n/m,
+      '',
+    );
   assert.doesNotMatch(unguarded, /offsite|OFFSITE|recipient/i);
 
-  const [sidecar, env, mount, volume] = guarded;
+  const [config, sidecar, env, mount, volume] = guarded;
+  // The ConfigMap holds the uploader and the key only with a bucket, the key
+  // the one the installer gives, refused when there is none (#367).
+  assert.match(
+    config,
+    /^ {2}db-backup-offsite\.mjs: \|-\n {4}\{\{- \.Files\.Get "files\/db-backup-offsite\.mjs" \| nindent 4 \}\}$/m,
+  );
+  assert.match(
+    config,
+    /^ {2}db-backup-recipient\.asc: \|-\n {4}\{\{- required "backup\.offsite\.recipientKey must be set when backup\.offsite\.bucket is[^"]*" \.Values\.backup\.offsite\.recipientKey \| nindent 4 \}\}$/m,
+  );
   assert.match(sidecar, /^ {12}- name: db-backup-offsite$/m);
   assert.match(sidecar, /^ {14}restartPolicy: Always$/m);
   assert.match(
@@ -3343,8 +3357,14 @@ test('the chart runs the uploader only with a bucket set, and holds no credentia
   assert.match(sidecar, /command: \['node', '\/opt\/db-backup\/db-backup-offsite\.mjs'\]/);
   for (const [name, value] of [
     ['OFFSITE_DIR', '/offsite'],
-    ['OFFSITE_ENDPOINT', '{{ .Values.backup.offsite.endpoint | quote }}'],
-    ['OFFSITE_REGION', '{{ .Values.backup.offsite.region | quote }}'],
+    [
+      'OFFSITE_ENDPOINT',
+      '{{ required "backup.offsite.endpoint must be set when backup.offsite.bucket is: the storage\'s https:// endpoint" .Values.backup.offsite.endpoint | quote }}',
+    ],
+    [
+      'OFFSITE_REGION',
+      '{{ required "backup.offsite.region must be set when backup.offsite.bucket is: the storage\'s region" .Values.backup.offsite.region | quote }}',
+    ],
     ['OFFSITE_BUCKET', '{{ .Values.backup.offsite.bucket | quote }}'],
     ['OFFSITE_DATABASE', '{{ .Values.postgres.database | quote }}'],
     ['OFFSITE_KEEP', '{{ .Values.backup.keep | quote }}'],
@@ -3362,7 +3382,7 @@ test('the chart runs the uploader only with a bucket set, and holds no credentia
     assert.match(
       sidecar,
       new RegExp(
-        `name: ${name}\\n\\s+valueFrom:\\n\\s+secretKeyRef:\\n\\s+name: \\{\\{ \\.Values\\.backup\\.offsite\\.existingSecret \\}\\}\\n\\s+key: ${key}\\n\\s+optional: true`,
+        `name: ${name}\\n\\s+valueFrom:\\n\\s+secretKeyRef:\\n\\s+name: \\{\\{ include "qa-tools\\.offsiteSecret" \\. \\}\\}\\n\\s+key: ${key}\\n\\s+optional: true`,
       ),
     );
   }
@@ -3393,10 +3413,7 @@ test('the chart runs the uploader only with a bucket set, and holds no credentia
   assert.match(mount, /- name: offsite\n\s+mountPath: \/offsite\n/);
   assert.match(volume, /- name: offsite\n\s+emptyDir:\n/);
   const containers = /\n {10}containers:\n([\s\S]*?)\n {10}volumes:\n/.exec(TEMPLATE)?.[1] ?? '';
-  assert.doesNotMatch(
-    containers,
-    /OFFSITE_ACCESS_KEY_ID|OFFSITE_SECRET_ACCESS_KEY|backup\.offsite\.existingSecret/,
-  );
+  assert.doesNotMatch(containers, /OFFSITE_ACCESS_KEY_ID|OFFSITE_SECRET_ACCESS_KEY|offsiteSecret/);
   // The notifier comes first, so the kubelet stops the uploader before it.
   const initContainers =
     /\n {10}initContainers:\n([\s\S]*?)\n {10}containers:\n/.exec(TEMPLATE)?.[1] ?? '';
@@ -3405,15 +3422,17 @@ test('the chart runs the uploader only with a bucket set, and holds no credentia
     ['db-backup-notify', 'db-backup-offsite'],
   );
 
-  // The ConfigMap carries the uploader and the public key.
-  assert.match(TEMPLATE, /\.Files\.Get "files\/db-backup-offsite\.mjs"/);
-  assert.match(TEMPLATE, /\.Files\.Get "files\/db-backup-recipient\.asc"/);
+  // The chart holds no key of its own.
+  assert.doesNotMatch(TEMPLATE, /\.Files\.Get "files\/db-backup-recipient\.asc"/);
 
+  // Off by default, naming no storage of anyone's (#367); production's are
+  // its CI/CD variables.
   const offsite = /^ {2}offsite:\n((?: {4}.*\n)*)/m.exec(VALUES)?.[1] ?? '';
-  assert.match(offsite, /^ {4}bucket: qa-tools-backups$/m);
-  assert.match(offsite, /^ {4}endpoint: https:\/\/storage\.yandexcloud\.net$/m);
-  assert.match(offsite, /^ {4}region: ru-central1$/m);
-  assert.match(offsite, /^ {4}existingSecret: qa-tools-offsite-backup$/m);
+  assert.match(offsite, /^ {4}bucket: ''$/m);
+  assert.match(offsite, /^ {4}endpoint: ''$/m);
+  assert.match(offsite, /^ {4}region: ''$/m);
+  assert.match(offsite, /^ {4}recipientKey: ''$/m);
+  assert.match(offsite, /^ {4}existingSecret: ''$/m);
   assert.match(offsite, /^ {4}checkVersioning: true$/m);
   // Nothing that looks like a key in the chart's values.
   assert.doesNotMatch(VALUES, /access-key-id: \S|secret-access-key: \S|YCAJ|YC[A-Za-z0-9_-]{38}/);

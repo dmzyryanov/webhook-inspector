@@ -587,10 +587,12 @@ The inspector's address is two settings, the site's origin `APP_ORIGIN` and
 the receive host's `RECEIVE_ORIGIN` (D274), the names the backend reads for
 the same values (D187, D203), and since 1.16.0 a third, `APP_ALIAS_ORIGIN`,
 the site's second origin, the host the same site also answers on and moves
-to on day X (D275). `.gitlab-ci.yml` sets them once, in the hidden job
-`.inspector-address`, to `https://qa-tools.ru`, `https://hook.qa-tools.ru`
-and `https://webhook.qa-tools.ru`, which the image builds' template `.image`,
-the deploy job and the smoke extend:
+to on day X (D275). Since 1.19.6 (#367) they are the project's CI/CD
+variables `DEPLOY_APP_ORIGIN`, `DEPLOY_RECEIVE_ORIGIN` and
+`DEPLOY_APP_ALIAS_ORIGIN`, which no file of the repository names; the hidden
+job `.inspector-address` of `.gitlab-ci.yml` gives them the three names above
+for the image builds' template `.image` and the smoke, which extend it, and
+the deploy job reads the variables themselves:
 
 - `image:frontend` passes the three to the frontend image build as build
   arguments of `apps/frontend/Dockerfile`, through its `BUILD_ARGS`, so an
@@ -607,7 +609,7 @@ the deploy job and the smoke extend:
   origin, which may be empty for none and must otherwise be a host of its
   own, goes to `ingress.aliasHost`, from which the chart renders the second
   host's Ingresses and sets the backend's `APP_ALIAS_ORIGIN`, the other
-  `Origin` `/mcp` lets in. `environment.url` is `$APP_ORIGIN`;
+  `Origin` `/mcp` lets in. `environment.url` is `$DEPLOY_APP_ORIGIN`;
 - `deployment-smoke` runs `scripts/check-deployment.mjs` against both, and the
   check takes the canonical link and the sitemap line it expects from the
   origin it is given; then, given the second origin, it waits up to about 5
@@ -615,14 +617,27 @@ the deploy job and the smoke extend:
   the deployment has created its Ingress, and checks the host as one closed
   to search whose pages name the first.
 
-They are not global variables of the pipeline: the `test` job's backend
-suite expects both unset, and the e2e suite gives its backend its own
-`RECEIVE_ORIGIN` but no `APP_ORIGIN`, so a global `APP_ORIGIN` would reach that
-backend too. Changing the two values is the whole of a change of address in the
-repository: `scripts/chart.test.mjs` reads them from `.inspector-address`
-rather than pinning them, holding each to the deploy job's check and the rest
-of the pipeline to naming neither host; `values.yaml` keeps production's hosts
-for a render of the chart on its own, which the deploy job overrides.
+The backend's names are not those of the project variables, which reach every
+job: the `test` job's backend suite expects both unset, and the e2e suite
+gives its backend its own `RECEIVE_ORIGIN` but no `APP_ORIGIN`, so a project
+variable `APP_ORIGIN` would reach that backend too. A change of address is a
+change of the variables, made in a delivery and recorded with the operator
+(#367); `scripts/chart.test.mjs` holds the deploy job's check to production's
+three origins and the pipeline files and `deploy/` to naming none of them.
+`values.yaml` names no host: the chart refuses to render without the two.
+
+What else makes an installation is in the project's CI/CD variables too,
+since 1.19.6 (#367): the runners (`QA_TOOLS_RUNNER_TAG`, `DEPLOY_RUNNER_TAG`),
+the certificates' and the database's names, the backup directory, the
+off-server copy's bucket, storage, Secret and recipient key, and the heartbeat
+URL and Secret, each listed in README.md, "Deploying from GitLab CI". The
+deploy job stops before `helm upgrade`, naming every one it reads that is not
+set, so an unset variable cannot switch the off-server copy or the monitor
+off, and gives the chart each that is not empty. The chart's own defaults name
+nothing of production's: no host, registry, bucket, storage, heartbeat
+service or key, TLS and database Secrets named after the release, the backup
+directory `/var/backups/webhook-inspector`, and the off-server copy and the
+monitor off.
 
 The frontend build reads both from its environment, production's when unset
 or empty, and refuses anything but an http or https origin alone whose host
@@ -743,7 +758,7 @@ value appears neither in the chart nor in the deployment pipeline (D087).
 The database is backed up by a CronJob every night at 03:00 Moscow time (D176).
 It runs the database's own image and a script the chart mounts from a
 ConfigMap, dumps the database into a directory on the node outside the
-namespace, `/var/backups/qa-tools/nightly/`, and restores each dump into a
+namespace, `backup.hostPath`, and restores each dump into a
 scratch PostgreSQL inside its own pod, without pg_cron, failing unless the
 restored session and request counts equal those read in the dump's own
 snapshot. The rows of the realtime outbox, `realtime_events`, are left out
@@ -755,11 +770,12 @@ not against losing the server. The deploy identity may manage CronJobs but not
 Jobs, so the chart creates the CronJob and never a Job. The backup and
 restore procedures are the operator's runbook, kept outside this repository.
 
-Against losing the server, each run also leaves an encrypted copy of its dump
-in a bucket in Yandex Object Storage (D190). The backup container encrypts the
-dump it has saved and checked with `gpg`, to a public key the chart ships; the
-private key is with the owner only, so the server cannot decrypt its own
-copies. It hands the ciphertext, through an `emptyDir`, to an uploader beside
+Against losing the server, an installation that sets `backup.offsite.bucket`
+has each run also leave an encrypted copy of its dump in that bucket, of any
+S3-compatible storage (D190; production's storage is its operator's). The
+backup container encrypts the dump it has saved and checked with `gpg`, to the
+public key the installation gives, `backup.offsite.recipientKey`; the private
+key is with its holder only, so the server cannot decrypt its own copies. It hands the ciphertext, through an `emptyDir`, to an uploader beside
 it in the pod — a second native sidecar on the backend image, which alone
 holds the storage key and never sees the dump — and waits for its answer. The
 uploader signs its requests itself (AWS Signature Version 4, no SDK), uploads
@@ -769,21 +785,25 @@ after its dump is kept, and reaches the owner through the same `backup`
 heartbeat. With `backup.offsite.bucket` empty the pod has no uploader and
 nothing is encrypted.
 
-Alerts come from Statuser.cloud, which messages the owner in Telegram (D181).
-Jobs in the cluster send it heartbeats, and it alerts when one reports a
-failure or when they stop arriving, so a dead cluster or VPS alerts by its
-silence. A CronJob on the backend image, every 5 minutes, probes the site by
+Alerts come from a heartbeat service, for an installation that sets
+`alerts.heartbeatUrl`: any that takes a POST to `<url>/<token>` and
+`<url>/<token>/fail` (D181; production's is its operator's, which messages the
+owner). Jobs in the cluster send it heartbeats, and it alerts when one reports
+a failure or when they stop arriving, so a dead cluster or VPS alerts by its
+silence. Without a heartbeat URL neither the monitor nor the backup's notifier
+is rendered. A CronJob on the backend image, every 5 minutes, probes the site by
 its public name — `GET /`, then a lookup of a random id shaped as a session
 id, which no session has, so that it reaches the backend and the database and
 creates nothing, then the same kind of id as a webhook on the receive host,
-`hook.qa-tools.ru`, through its own TCP route (D187), up to three attempts —
+through its own TCP route (D187), up to three attempts —
 and reads the usage of the disk holding the database volume, and sends `site`
 and `disk`. The backup's pod carries a notifier on the
 backend image as a native sidecar: the backup script writes its outcome to a
 file the two containers share, and the notifier sends `backup`, which a run
 reports only when its dump and its off-server copy both succeeded; the
-PostgreSQL image has no HTTPS client and is left unchanged. Three more
-monitors check from Statuser's own locations every minute: the home page, and
+PostgreSQL image has no HTTPS client and is left unchanged. In production
+three more monitors check from the heartbeat service's own locations every
+minute: the home page, and
 the same two lookups of a session that does not exist, on the API and on the
 receive host. They alone feed the public status page,
 `https://status.qa-tools.ru/`, which `/status` redirects to and every page's
@@ -1066,10 +1086,12 @@ pipeline files fails when
 `deploy` loses `interruptible: false` or another job declares it (#370). The validate
 stage, the gate on `main`, the proof job and the image builds run on the
 project's own CI runner, on a server of its own that holds nothing else: every
-one takes its runner tag from `QA_TOOLS_RUNNER_TAG`, `qa-tools-ci` by default,
-which a project CI/CD variable of that name can point at GitLab's shared runners
+one takes its runner tag from `QA_TOOLS_RUNNER_TAG`, GitLab's shared runners
+by default since 1.19.6 (#367), which production's project CI/CD variable of
+that name points at its own runner and can point back at the shared runners
 as the fallback, the child pipeline on `main` included, since the trigger job
-does not pass that variable on (D258). The
+does not pass that variable on (D258). The deploy job's runner is the project
+variable `DEPLOY_RUNNER_TAG`. The
 validate stage's two heavy jobs, `test` and `e2e`, take turns through a
 resource group of their own, `heavy-tests-$QA_TOOLS_RUNNER_TAG`, across every
 pipeline of the project, so the two never share that server's CPU and the

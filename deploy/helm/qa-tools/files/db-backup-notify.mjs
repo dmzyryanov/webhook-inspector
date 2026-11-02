@@ -1,4 +1,4 @@
-// Sends the nightly backup's outcome to Statuser.cloud (D181, issue #68).
+// Sends the nightly backup's outcome to the heartbeat service (D181, issue #68).
 //
 // Runs beside the backup in its pod (templates/db-backup.yaml), on the backend
 // image as uid 1000, because the PostgreSQL image has no HTTPS client and
@@ -19,13 +19,13 @@
 //
 // After sending it waits to be stopped rather than exit: a sidecar that exits
 // while the backup container is still finishing is started again. It always
-// exits 0. A missing token (the Secret is optional), a Statuser that cannot be
-// reached or a status file that cannot be read is logged and never changes
+// exits 0. A missing token (the Secret is optional), a heartbeat service that
+// cannot be reached or a status file that cannot be read is logged and never changes
 // the backup's outcome. The token, and any URL holding it, is never printed.
 //
 // Environment:
 //   NOTIFY_STATUS_FILE         the file db-backup.sh writes
-//   NOTIFY_HEARTBEAT_URL       Statuser's heartbeat endpoint, https://hb.statuser.cloud
+//   NOTIFY_HEARTBEAT_URL       the heartbeat endpoint: POST <url>/<token>, <url>/<token>/fail
 //   NOTIFY_TOKEN               the `backup` monitor's token
 //   NOTIFY_POLL_SECONDS        how often to look for the file, default 2
 //   NOTIFY_STOP_WAIT_SECONDS   how long to look once stopped, default 10

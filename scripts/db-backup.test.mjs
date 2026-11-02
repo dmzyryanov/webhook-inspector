@@ -108,9 +108,7 @@ const UPLOADER = fileURLToPath(
   new URL('../deploy/helm/qa-tools/files/db-backup-offsite.mjs', import.meta.url),
 );
 // The owner's public key, to which the off-server copy is encrypted.
-const RECIPIENT = fileURLToPath(
-  new URL('../deploy/helm/qa-tools/files/db-backup-recipient.asc', import.meta.url),
-);
+const RECIPIENT = fileURLToPath(new URL('fixtures/db-backup-recipient.asc', import.meta.url));
 const TEMPLATE = readFileSync(
   new URL('../deploy/helm/qa-tools/templates/db-backup.yaml', import.meta.url),
   'utf8',
@@ -1889,7 +1887,7 @@ test('the chart runs the script nightly from a CronJob, and never creates a Job'
   assert.match(sidecar, /name: NOTIFY_STATUS_FILE\n\s+value: \/status\/db-backup\.status/);
   assert.match(
     sidecar,
-    /name: NOTIFY_TOKEN\n\s+valueFrom:\n\s+secretKeyRef:\n\s+name: \{\{ \.Values\.alerts\.existingSecret \}\}\n\s+key: backup\n\s+optional: true/,
+    /name: NOTIFY_TOKEN\n\s+valueFrom:\n\s+secretKeyRef:\n\s+name: \{\{ include "qa-tools\.heartbeatSecret" \. \}\}\n\s+key: backup\n\s+optional: true/,
   );
   assert.match(sidecar, /runAsUser: 1000\n\s+runAsGroup: 1000/);
   assert.match(sidecar, /readOnlyRootFilesystem: true/);
@@ -1909,7 +1907,8 @@ test('the chart runs the script nightly from a CronJob, and never creates a Job'
   const backup = /^backup:\n((?: {2}.*\n|\n)*)/m.exec(VALUES)?.[1] ?? '';
   assert.match(backup, /^ {2}schedule: '0 3 \* \* \*'$/m);
   assert.match(backup, /^ {2}timeZone: Europe\/Moscow$/m);
-  assert.match(backup, /^ {2}hostPath: \/var\/backups\/qa-tools\/nightly$/m);
+  // A directory of no installation's; production's is its CI/CD variable (#367).
+  assert.match(backup, /^ {2}hostPath: \/var\/backups\/webhook-inspector$/m);
   assert.match(backup, /^ {2}keep: 3$/m);
   assert.match(backup, /^ {2}minFreeGiB: 10$/m);
 });

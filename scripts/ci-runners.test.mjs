@@ -43,9 +43,14 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const CI = read('.gitlab-ci.yml');
 const VALIDATE = read('.gitlab/ci/validate.yml');
 
-const OURS = 'qa-tools-ci';
 const SHARED = 'saas-linux-small-amd64';
+// The runners are the project's CI/CD variables' since #367, not the
+// pipeline files': production's two, as recorded in qa-tools'
+// docs/RESOURCES.md, with which the jobs land as before.
+const OURS = 'qa-tools-ci';
 const DEPLOY = 'qa-tools-vps';
+const DEPLOY_TAG_VARIABLE = 'DEPLOY_RUNNER_TAG';
+const PRODUCTION = Object.freeze({ [RUNNER_TAG_VARIABLE]: OURS, [DEPLOY_TAG_VARIABLE]: DEPLOY });
 const KEYWORDS = ['stages', 'workflow', 'include', 'variables', 'default'];
 
 /** A top-level block of a YAML file, comments left out, or null. */
@@ -216,8 +221,8 @@ function pipelines(project, files = {}) {
   );
 }
 
-/** What every job should get when the moved jobs go to `tag`. */
-function expected(tag) {
+/** What every job should get when the moved jobs go to `tag`, and deploy to `deploy`. */
+function expected(tag, deploy = DEPLOY) {
   const moved = [
     ...jobsOf(VALIDATE).map((job) => `merge-request ${job}`),
     'merge-request image:backend',
@@ -232,7 +237,7 @@ function expected(tag) {
   ];
   return {
     ...Object.fromEntries(moved.map((job) => [job, [tag]])),
-    'main deploy': [DEPLOY],
+    'main deploy': [deploy],
     'main deployment-smoke': [SHARED],
   };
 }
@@ -380,17 +385,19 @@ test('the jobs of the pipeline are the ones this file places', () => {
   ]);
 });
 
-test('with no project variable every validate and build job runs on our runner, in every pipeline and the child on main', () => {
-  assert.deepEqual(pipelines({}), expected(OURS));
+test("with no project variable every validate and build job runs on the shared runners, and deploy waits for a runner tagged with its variable's literal name, which none is (#367)", () => {
+  assert.deepEqual(pipelines({}), expected(SHARED, `$${DEPLOY_TAG_VARIABLE}`));
 });
 
-test('the project variable alone moves those jobs to the shared runners, the child on main among them, and deleting it moves them back', () => {
-  assert.deepEqual(pipelines({ [RUNNER_TAG_VARIABLE]: SHARED }), expected(SHARED));
+test("production's project variables put those jobs on our runner, the child on main among them, and deploy on the production runner; the runner tag alone moves them to the shared runners and back, and deleting it leaves them there (D258, #367)", () => {
+  assert.deepEqual(pipelines(PRODUCTION), expected(OURS));
+  assert.deepEqual(pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED }), expected(SHARED));
   assert.deepEqual(
-    pipelines({ [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }),
+    pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }),
     expected('saas-linux-medium-amd64'),
   );
-  assert.deepEqual(pipelines({}), expected(OURS));
+  assert.deepEqual(pipelines(PRODUCTION), expected(OURS));
+  assert.deepEqual(pipelines({ [DEPLOY_TAG_VARIABLE]: DEPLOY }), expected(SHARED));
 });
 
 test("the trigger job passes on the validate stage's variables and not the runner tag", () => {
@@ -406,21 +413,22 @@ test("the trigger job passes on the validate stage's variables and not the runne
 });
 
 test('the model sees the faults it guards against', () => {
-  // A trigger job passing every variable on: the child stays on our runner
-  // while the project variable sends everything else to the shared runners.
+  // A trigger job passing every variable on: the child stays on the file's
+  // default, the shared runners, while the project variable sends everything
+  // else to our runner.
   const passingAll = CI.replace(
     '  inherit:\n    variables:\n      - NODE_IMAGE\n      - POSTGRES_IMAGE_TAG\n',
     '',
   );
   assert.notEqual(passingAll, CI, 'the inherit list is where the test looks for it');
-  const leaked = pipelines({ [RUNNER_TAG_VARIABLE]: SHARED }, { ci: passingAll });
-  assert.deepEqual(leaked['child lint'], [OURS]);
-  assert.deepEqual(leaked[`child ${PROOF_JOB}`], [OURS]);
-  assert.deepEqual(leaked['main image:backend'], [SHARED]);
+  const leaked = pipelines(PRODUCTION, { ci: passingAll });
+  assert.deepEqual(leaked['child lint'], [SHARED]);
+  assert.deepEqual(leaked[`child ${PROOF_JOB}`], [SHARED]);
+  assert.deepEqual(leaked['main image:backend'], [OURS]);
 
   // The child without its own default: its jobs wait for a runner tagged
   // with the variable's literal name, which none is — never untagged.
-  const noDefault = VALIDATE.replace(`variables:\n  ${RUNNER_TAG_VARIABLE}: '${OURS}'\n`, '');
+  const noDefault = VALIDATE.replace(`variables:\n  ${RUNNER_TAG_VARIABLE}: '${SHARED}'\n`, '');
   assert.notEqual(noDefault, VALIDATE);
   assert.deepEqual(pipelines({}, { validate: noDefault })['child lint'], [
     `$${RUNNER_TAG_VARIABLE}`,
@@ -429,16 +437,16 @@ test('the model sees the faults it guards against', () => {
   // An empty project variable drops the tag: the jobs go untagged to the
   // shared runners, which is why the runbook says to delete it, never empty
   // it, and the check reports it.
-  const empty = pipelines({ [RUNNER_TAG_VARIABLE]: '' });
+  const empty = pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: '' });
   assert.deepEqual(empty['merge-request lint'], []);
   assert.deepEqual(empty['child e2e'], []);
   assert.deepEqual(empty['main deploy'], [DEPLOY]);
 });
 
 test('both files hold the same default, the one the gate writes into the proof', () => {
-  assert.equal(RUNNER_TAG_DEFAULT, OURS);
-  assert.equal(variablesOf(CI)[RUNNER_TAG_VARIABLE], OURS);
-  assert.equal(variablesOf(VALIDATE)[RUNNER_TAG_VARIABLE], OURS);
+  assert.equal(RUNNER_TAG_DEFAULT, SHARED);
+  assert.equal(variablesOf(CI)[RUNNER_TAG_VARIABLE], SHARED);
+  assert.equal(variablesOf(VALIDATE)[RUNNER_TAG_VARIABLE], SHARED);
   assert.deepEqual(defaultTags(CI), [`$${RUNNER_TAG_VARIABLE}`]);
   assert.deepEqual(defaultTags(VALIDATE), [`$${RUNNER_TAG_VARIABLE}`]);
   // Tags are set in `default:` only, but for the two jobs that leave our
@@ -452,7 +460,7 @@ test('both files hold the same default, the one the gate writes into the proof',
   for (const job of jobsOf(CI).filter((name) => !['deploy', 'deployment-smoke'].includes(name))) {
     assert.equal(tagsOfJob(CI, job), null, job);
   }
-  assert.deepEqual(tagsOfJob(CI, 'deploy'), [DEPLOY]);
+  assert.deepEqual(tagsOfJob(CI, 'deploy'), [`$${DEPLOY_TAG_VARIABLE}`]);
   assert.deepEqual(tagsOfJob(CI, 'deployment-smoke'), [SHARED]);
 });
 
@@ -903,11 +911,11 @@ function groups(project, files = {}) {
   );
 }
 
-/** The switch's values the pins run under: none, the fallback, a larger shared machine. */
+/** The switch's values the pins run under: production's, the fallback, a larger shared machine. */
 const SWITCH = [
-  [OURS, {}],
-  [SHARED, { [RUNNER_TAG_VARIABLE]: SHARED }],
-  ['saas-linux-medium-amd64', { [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }],
+  [OURS, PRODUCTION],
+  [SHARED, { ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED }],
+  ['saas-linux-medium-amd64', { ...PRODUCTION, [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }],
 ];
 
 /** What every job should hold when the moved jobs go to `tag`. */
@@ -985,10 +993,14 @@ test('test and e2e hold one resource group, named after the runner tag, in the m
   }
   // Under the switch the pipeline is the same one, its heavy jobs on the
   // shared runners taking turns in their own group.
-  const shared = groups({ [RUNNER_TAG_VARIABLE]: SHARED });
+  const shared = groups({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED });
   assert.equal(shared['merge-request e2e'], 'heavy-tests-saas-linux-small-amd64');
-  assert.deepEqual(pipelines({ [RUNNER_TAG_VARIABLE]: SHARED })['child e2e'], [SHARED]);
-  assert.equal(groups({})['child test'], 'heavy-tests-qa-tools-ci');
+  assert.deepEqual(pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED })['child e2e'], [
+    SHARED,
+  ]);
+  assert.equal(groups(PRODUCTION)['child test'], 'heavy-tests-qa-tools-ci');
+  // With no project variable at all, as on the shared runners.
+  assert.deepEqual(groups({}), expectedGroups(SHARED));
   // The script-test groups and the light jobs take the second place.
   for (const job of jobsOf(VALIDATE).filter((name) => !HEAVY_JOBS.includes(name))) {
     assert.equal(groupOfJob(VALIDATE, job), null, job);
@@ -1226,8 +1238,8 @@ test('the interruptible check sees each way of letting deploy be cancelled or ke
   const line = '  interruptible: false\n';
   const ownDefault = 'default:\n  interruptible: true\n';
   assert.ok(CI.includes(ownDefault) && VALIDATE.includes(ownDefault), 'both files hold it');
-  const address = '  extends: .inspector-address\n  # The runner inside';
-  assert.ok(CI.includes(address), "deploy's extends: is where the test looks for it");
+  const start = '\ndeploy:\n  stage: deploy\n';
+  assert.ok(CI.includes(start), "deploy's first lines are where the test looks for it");
   // [the fault, the file edited, [what is replaced wherever it stands, its replacement]...]
   const faults = [
     ['deploy without interruptible: false', 'ci', [line, '']],
@@ -1237,8 +1249,7 @@ test('the interruptible check sees each way of letting deploy be cancelled or ke
       'deploy taking it from a template',
       'ci',
       [line, ''],
-      [address, address.replace('.inspector-address', '[.inspector-address, .keep]')],
-      ['\ndeploy:\n', `\n.keep:\n${line}\ndeploy:\n`],
+      [start, `\n.keep:\n${line}${start}  extends: .keep\n`],
     ],
     [
       'another job of .gitlab-ci.yml with it',

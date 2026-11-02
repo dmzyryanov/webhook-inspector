@@ -1,4 +1,4 @@
-// Site and disk heartbeats for Statuser.cloud (D181, issue #68).
+// Site and disk heartbeats for a heartbeat service (D181, issue #68).
 //
 // Run every 5 minutes by the CronJob in templates/monitor.yaml, on the backend
 // image as uid 1000, with Node's built-in fetch and fs.statfs and nothing else.
@@ -35,15 +35,15 @@
 //
 // Exit status 0 when both heartbeats were delivered, whatever they reported,
 // and 1 when one was not or a setting is wrong. A heartbeat that was not
-// delivered is silence to Statuser, which alerts too. A wrong site or receive
+// delivered is silence to the heartbeat service, which alerts too. A wrong site or receive
 // URL, disk path or threshold still sends that monitor's `/fail`, saying the
 // check is not configured; a missing token or heartbeat URL sends nothing for
 // it.
 //
 // Environment:
-//   MONITOR_SITE_URL         the site, https://qa-tools.ru
-//   MONITOR_RECEIVE_URL      the receive host, https://hook.qa-tools.ru
-//   MONITOR_HEARTBEAT_URL    Statuser's heartbeat endpoint, https://hb.statuser.cloud
+//   MONITOR_SITE_URL         the site, https://<host>
+//   MONITOR_RECEIVE_URL      the receive host, https://<receive host>
+//   MONITOR_HEARTBEAT_URL    the heartbeat endpoint: POST <url>/<token>, <url>/<token>/fail
 //   MONITOR_SITE_TOKEN       the `site` monitor's token
 //   MONITOR_DISK_TOKEN       the `disk` monitor's token
 //   MONITOR_DISK_PATH        a directory on the filesystem watched

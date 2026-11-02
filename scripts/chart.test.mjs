@@ -44,13 +44,36 @@
 // rate limit too, a certificate of its own, a backend path outranking the
 // frontend's / there as on the first host, and the first host's Ingresses
 // rendered as they are without it; and the deploy job's check of its origin.
+//
+// And the chart as an install with none of production's values renders it
+// (#367), by scripts/chart-render.mjs, which renders the whole chart as helm
+// does for the actions its templates use and refuses any other: with the two
+// hosts alone it names no host, Secret, account or service of production's,
+// and has no monitor and no off-server uploader; without them it refuses,
+// naming them; each option renders when configured. The deploy job's script
+// runs here under sh and bash against a stand-in for helm: it stops before
+// `helm upgrade`, naming the variable, when one it needs is not set, refuses
+// a value helm would split, and with production's CI/CD variables gives the
+// chart production's values, which render production's names. The Ingress
+// tests render production that way.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { URL, fileURLToPath } from 'node:url';
+import {
+  parseHelmArguments,
+  parseYaml,
+  parseYamlDocuments,
+  renderChart,
+  renderTemplates,
+  setValue,
+  toYaml,
+} from './chart-render.mjs';
 
 const TEMPLATES = new URL('../deploy/helm/qa-tools/templates/', import.meta.url);
 const VALUES = new URL('../deploy/helm/qa-tools/values.yaml', import.meta.url);
@@ -293,226 +316,1312 @@ test("the backend pod: a smaller kernel receive buffer, the sysctl net.ipv4.tcp_
 });
 
 /* ------------------------------------------------------------------------ */
-/* The edge rate limit (#205, D264).                                        */
+/* The renderer (#367).                                                     */
 /* ------------------------------------------------------------------------ */
 
-/** The release and namespace the deploy job installs (`.gitlab-ci.yml`'s `helm upgrade`). */
-const RELEASE = { Name: 'qa-tools', Namespace: 'qa-tools', Service: 'Helm' };
-const CHART = new URL('../deploy/helm/qa-tools/Chart.yaml', import.meta.url);
+const CHART_DIR = fileURLToPath(new URL('../deploy/helm/qa-tools', import.meta.url));
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const PIPELINE = new URL('../.gitlab-ci.yml', import.meta.url);
+/** A public key for the off-server copy's tests; production's is its own variable. */
+const RECIPIENT_PATH = fileURLToPath(new URL('fixtures/db-backup-recipient.asc', import.meta.url));
 
-/**
- * values.yaml's `ingress:` section as nested objects of strings: keys and
- * scalars alone, which is all it holds. A line that is neither - a list item,
- * a block scalar - is refused, so that the section cannot change shape
- * unread.
- */
-function ingressValues(valuesText) {
-  const lines = valuesText.split('\n');
-  const start = lines.indexOf('ingress:');
+test('render: the actions and functions the chart uses, trimming as Go does, and any other refused', () => {
+  const files = (text) => [
+    ['templates/_helpers.tpl', '{{- define "x.name" -}}{{ .Release.Name }}{{- end -}}'],
+    ['templates/t.yaml', text],
+  ];
+  const run = (text, values = {}) =>
+    renderTemplates(files(text), {
+      values: {
+        host: 'h.test',
+        none: '',
+        on: true,
+        off: false,
+        n: 3000,
+        map: { b: '2', a: 'x y' },
+        ...values,
+      },
+      release: { name: 'rel', namespace: 'ns' },
+      chart: { name: 'chart', version: '1.0.0' },
+      readFile: (path) => (path === 'files/f' ? 'one\ntwo\n' : ''),
+    })[0][1];
 
-  assert.ok(start !== -1, 'values.yaml has no ingress section');
+  assert.equal(run('a: {{ .Values.host }}\n'), 'a: h.test\n');
+  assert.equal(run('{{ .Release.Namespace }}-{{ include "x.name" . }}@k'), 'ns-rel@k');
+  assert.equal(run('a{{ if .Values.host }}b{{ end }}c'), 'abc');
+  assert.equal(run('a{{ if .Values.none }}b{{ else if .Values.on }}c{{ else }}d{{ end }}e'), 'ace');
+  assert.equal(run('a{{ if .Values.off }}b{{ else }}d{{ end }}e'), 'ade');
+  assert.equal(run('x\n  {{- if .Values.on }}\n  y\n  {{- end }}\nz'), 'x\n  y\nz');
+  assert.equal(run('x\n  {{- if .Values.off }}\n  y\n  {{- end }}\nz'), 'x\nz');
+  assert.equal(run('{{- /* a\ncomment */ -}}\n  x'), 'x');
+  assert.equal(
+    run('{{ with .Values.host }}[{{ . | quote }}]{{ end }}{{ with .Values.none }}no{{ end }}'),
+    '["h.test"]',
+  );
+  assert.equal(
+    run('{{ .Values.n | quote }} {{ .Values.on | quote }} {{ "a\\"b" | quote }}'),
+    '"3000" "true" "a\\"b"',
+  );
+  assert.equal(run('{{ printf "https://%s:%d" .Values.host .Values.n }}'), 'https://h.test:3000');
+  assert.equal(run('{{ printf "%s-tls" (include "x.name" .) }}'), 'rel-tls');
+  assert.equal(
+    run('{{ .Values.none | default "d" }} {{ .Values.host | default "d" }}'),
+    'd h.test',
+  );
+  assert.equal(
+    run('{{ if not (and .Values.host .Values.none) }}one missing{{ end }}'),
+    'one missing',
+  );
+  assert.equal(
+    run('{{ if or .Values.none .Values.on }}y{{ end }}{{ if eq .Values.host "h.test" }}z{{ end }}'),
+    'yz',
+  );
+  assert.equal(run('m:{{ toYaml .Values.map | nindent 2 }}'), 'm:\n  a: "x y"\n  b: "2"');
+  assert.equal(run('f: |-\n  {{- .Files.Get "files/f" | nindent 2 }}'), 'f: |-\n  one\n  two\n  ');
+  assert.equal(run('{{ required "need it" .Values.host }}'), 'h.test');
+  assert.equal(run('{{ .Values.missing }}|{{ trimPrefix "https://" "https://a" }}'), '|a');
+  assert.throws(() => run('{{ required "host must be set" .Values.none }}'), /host must be set/);
+  assert.throws(() => run('{{ fail "refused, naming it" }}'), /refused, naming it/);
+  assert.throws(() => run('{{ .Values.missing.deeper }}'), /nil pointer/);
 
-  const root = {};
-  const stack = [{ indent: 0, node: root }];
-
-  for (const line of lines.slice(start + 1)) {
-    if (/^\S/.test(line)) {
-      break;
-    }
-
-    if (line.trim() === '' || /^\s*#/.test(line)) {
-      continue;
-    }
-
-    // Greedy, and the comment cut by an index rather than a pattern, so a
-    // hostile line costs its length, not its square.
-    const match = /^( +)([\w.-]+):(?: (.*))?$/.exec(line);
-
-    assert.ok(
-      match,
-      `values.yaml's ingress section has a line this test cannot read: ${line.slice(0, 80)}`,
-    );
-
-    const [, spaces, key, raw = ''] = match;
-    const indent = spaces.length;
-
-    while (stack.length > 1 && stack.at(-1).indent >= indent) {
-      stack.pop();
-    }
-
-    const comment = raw.search(/\s#/);
-    const value = (comment === -1 ? raw : raw.slice(0, comment)).trim();
-
-    assert.doesNotMatch(value, /^[|>&*!-]/, `ingress.${key}: a value this test cannot read`);
-
-    if (value === '') {
-      const node = {};
-
-      stack.at(-1).node[key] = node;
-      stack.push({ indent, node });
-    } else {
-      stack.at(-1).node[key] = value.replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1');
-    }
+  for (const unknown of [
+    '{{ range .Values.map }}{{ end }}',
+    '{{ $x := 1 }}',
+    '{{ template "x.name" . }}',
+    '{{ lower .Values.host }}',
+    '{{ if .Values.on }}x',
+    '{{ end }}',
+    '{{ else }}',
+    '{{ .Values.host }',
+    'a }} b',
+    '{{ .Values.host {{ }}',
+    '{{ printf "%q" .Values.host }}',
+    '{{ ( .Values.host }}',
+    '{{ .Values.host ) }}',
+    '{{ .Values.host | }}',
+    '{{ .Values.map }}',
+    '{{ "unterminated }}',
+    '{{/* unterminated }}',
+  ]) {
+    assert.throws(() => run(unknown), undefined, unknown);
   }
 
-  return { ingress: root };
-}
+  // Hostile shapes at growing sizes, each answered as the rules above say,
+  // in time linear in their length: a run of openings, a long action, deep
+  // nesting refused, long white space trimmed, many actions.
+  for (const size of [10, 1000, 100_000]) {
+    assert.throws(() => run('{{ '.repeat(size)));
+    assert.throws(() => run(`{{ ${'a'.repeat(size)}`));
+    assert.throws(() => run(`{{ "${'\\'.repeat(size)}`));
+    assert.throws(
+      () => run(`${'{{ if .Values.on }}'.repeat(size + 100)}x${'{{ end }}'.repeat(size + 100)}`),
+      /deeper/,
+    );
+    assert.throws(
+      () => run(`{{ ${'('.repeat(size + 100)}.Values.host${')'.repeat(size + 100)} }}`),
+      /deeper/,
+    );
+    assert.equal(run('{{ .Values.host }}'.repeat(size)), 'h.test'.repeat(size));
+    assert.equal(
+      run(`${' '.repeat(size)}x ${'\t\n'.repeat(size)}{{- .Values.host }}`),
+      `${' '.repeat(size)}xh.test`,
+    );
+    assert.equal(run(`{{ .Values.host -}}${' \n'.repeat(size)}x`), 'h.testx');
+    assert.equal(run(`{{ "${'a'.repeat(size)}" | quote }}`), `"${'a'.repeat(size)}"`);
+  }
+});
 
-/** `path`, a dotted path from `.Values`, `.Release` or `.Chart`, in `scope`; refused when absent. */
-function lookup(scope, path) {
-  const value = path
-    .slice(1)
-    .split('.')
-    .reduce((node, key) => (node === undefined ? undefined : node[key]), scope);
+test('parseYaml: the shapes values.yaml and the rendered documents have, and any other refused', () => {
+  assert.deepEqual(
+    parseYaml(
+      [
+        '# a comment',
+        'a: 1 # a comment',
+        "b: 'it''s # not a comment'",
+        'c: "q\\"x\\n"',
+        'd:',
+        '  e: true',
+        '  f: ""',
+        '  g:',
+        '    - x',
+        '    - name: n',
+        '      value: v',
+        '    - "-c"',
+        "h: ['a', b]",
+        'i: {}',
+        'j: |-',
+        '    line one',
+        '',
+        '      two # kept',
+        'k: |',
+        '  x',
+        'l:',
+        '- 1',
+        'm: Host(`a.b`) && PathPrefix(`/`)',
+        'n: 10.5',
+        'o: a@b:c',
+      ].join('\n'),
+    ),
+    {
+      a: 1,
+      b: "it's # not a comment",
+      c: 'q"x\n',
+      d: { e: true, f: '', g: ['x', { name: 'n', value: 'v' }, '-c'] },
+      h: ['a', 'b'],
+      i: {},
+      j: 'line one\n\n  two # kept',
+      k: 'x\n',
+      l: [1],
+      m: 'Host(`a.b`) && PathPrefix(`/`)',
+      n: 10.5,
+      o: 'a@b:c',
+    },
+  );
+  assert.equal(parseYaml('# only a comment\n'), null);
+  assert.deepEqual(parseYamlDocuments('---\na: 1\n---\n# none\n---\n- b\n'), [{ a: 1 }, ['b']]);
 
-  assert.ok(
-    value !== undefined && typeof value !== 'object',
-    `the template reads ${path}, which is not a value`,
+  for (const unknown of [
+    'a: &anchor x',
+    'a: *alias',
+    'a: !tag x',
+    'a: >\n  folded',
+    'a: |2\n  x',
+    'a: x\n  b: y',
+    'a: 1\na: 2',
+    '\ta: 1',
+    'a:\n\t- b',
+    'a: "x',
+    'a: "x"y"',
+    "a: 'x",
+    'a: [x, [y]]',
+    'a: {b: c}',
+    'a: "\\q"',
+    'a: b\n- c',
+  ]) {
+    assert.throws(() => parseYaml(unknown), undefined, unknown);
+  }
+
+  // Nesting deeper than the reader reads is refused rather than recursed into.
+  for (const depth of [101, 1001]) {
+    assert.throws(
+      () =>
+        parseYaml(Array.from({ length: depth + 1 }, (_, at) => `${' '.repeat(at)}k:`).join('\n')),
+      /deeper/,
+    );
+  }
+
+  // Hostile shapes at growing sizes, linear in their length: long keys and
+  // scalars, runs of quotes and backslashes, many entries, deep nesting
+  // refused, a long block scalar.
+  for (const size of [10, 1000, 100_000]) {
+    assert.deepEqual(parseYaml(`${'k'.repeat(size)}: ${'v'.repeat(size)}`), {
+      ['k'.repeat(size)]: 'v'.repeat(size),
+    });
+    assert.deepEqual(parseYaml(`a: "${'\\\\'.repeat(size)}"`), { a: '\\'.repeat(size) });
+    assert.throws(() => parseYaml(`a: "${'\\'.repeat(2 * size + 1)}"`));
+    assert.throws(() => parseYaml(`a: '${"'".repeat(2 * size)}`));
+    assert.deepEqual(parseYaml(`a: '${"''".repeat(size)}'`), { a: "'".repeat(size) });
+    assert.equal(
+      Object.keys(parseYaml(Array.from({ length: size }, (_, at) => `k${at}: ${at}`).join('\n')))
+        .length,
+      size,
+    );
+    assert.equal(parseYaml(`a: |-\n${'  x #\n'.repeat(size)}`).a.length, size * 4 - 1);
+    assert.equal(parseYaml(`a: [${'x, '.repeat(size)}y]`).a.length, size + 1);
+    assert.throws(() => parseYaml(`a: [${'x,'.repeat(size)}]`));
+  }
+});
+
+test('toYaml and parseHelmArguments: what the chart and the deploy job hand them', () => {
+  for (const value of [
+    { limits: { cpu: '500m', memory: '512Mi' }, requests: { cpu: '50m' } },
+    {
+      a: ['x', { b: 'y' }],
+      c: {},
+      d: [],
+      e: null,
+      f: true,
+      g: 3,
+      h: '0x1',
+      i: 'yes',
+      j: '- x',
+      k: 'a: b',
+    },
+  ]) {
+    assert.deepEqual(parseYaml(toYaml(value)), value);
+  }
+
+  const key = 'key.asc';
+  const parsed = parseHelmArguments(
+    [
+      'upgrade',
+      '--install',
+      'rel',
+      'chart',
+      '--namespace',
+      'ns',
+      '--set-string',
+      'a.b=c=d',
+      '--set',
+      'n=3',
+      '--set-file',
+      `k=${key}`,
+      '--wait',
+      '--timeout',
+      '10m',
+    ],
+    (path) => `read ${path}`,
   );
 
-  return value;
-}
+  assert.deepEqual(parsed, {
+    release: 'rel',
+    chart: 'chart',
+    namespace: 'ns',
+    set: { 'a.b': 'c=d', n: 3, k: `read ${key}` },
+    json: false,
+  });
+  for (const refused of [
+    ['rel', 'chart', '--set-string', 'a=b,c'],
+    ['rel', 'chart', '--set-string', 'a=b\\c'],
+    ['rel', 'chart', '--set-string', '=b'],
+    ['rel', 'chart', '--post-renderer', 'x'],
+    ['rel'],
+  ]) {
+    assert.throws(() => parseHelmArguments(refused, () => ''), undefined, refused.join(' '));
+  }
+  assert.throws(() => setValue({}, 'a..b', 'x'));
+});
 
-/**
- * Whether Go's `if` renders its body for a value as `ingressValues` reads it:
- * an unquoted `true` or `false` is YAML's boolean, and any other scalar a
- * string, true unless empty, as a host is (`ingress.aliasHost`, D275).
- */
-function truthy(value) {
-  return value !== '' && value !== 'false';
-}
+/* ------------------------------------------------------------------------ */
+/* Neutral defaults and the options (#367, criteria 1 and 2).               */
+/* ------------------------------------------------------------------------ */
 
-/**
- * Renders a template of the chart as Helm does, for the actions the Ingress
- * template uses and nothing else: `{{ include "qa-tools.name" . }}`,
- * `{{ include "qa-tools.labels" . | nindent N }}` with N of one or two
- * digits, a value of `.Values`, `.Release` or `.Chart`, and
- * `{{ if <value> }}` … `{{ end }}`, with `{{-` and `-}}` trimming whitespace
- * as Go's templates do. Any other action is refused, naming it, inside an
- * `if` that hides it too. Each part costs time linear in its length.
- */
-function render(text, scope) {
-  const name = scope.Release.Name;
-  const labels = [
-    `app.kubernetes.io/name: ${name}`,
-    `app.kubernetes.io/instance: ${scope.Release.Name}`,
-    `app.kubernetes.io/managed-by: ${scope.Release.Service}`,
-    `helm.sh/chart: ${scope.Chart.Name}-${scope.Chart.Version}`,
-  ];
-  // An action holds no brace, so each is looked for only up to the next one.
-  const parts = text.split(/(\{\{-? [^{}]*? -?\}\})/);
-  const output = [];
-  // Whether each enclosing `if` renders its body, and how many of them do
-  // not: a part is shown while none hides it, a count rather than a look at
-  // every enclosing `if`, so a part costs the same however deep the nesting.
-  const shown = [];
-  let hidden = 0;
+/** The values an installer with none of production's gives: the two hosts, and the images every install names (D022). */
+const NEUTRAL = {
+  'images.registry': 'registry.example/inspector',
+  'images.tag': '0123456789abcdef0123456789abcdef01234567',
+  'ingress.host': 'inspector.example',
+  'receive.host': 'hook.inspector.example',
+};
+const BUCKET = {
+  'backup.offsite.bucket': 'inspector-backups',
+  'backup.offsite.endpoint': 'https://storage.example',
+  'backup.offsite.region': 'region-1',
+  'backup.offsite.recipientKey': readFileSync(RECIPIENT_PATH, 'utf8'),
+};
+const HEARTBEAT = { 'alerts.heartbeatUrl': 'https://heartbeat.example' };
 
-  for (let index = 0; index < parts.length; index += 1) {
-    let part = parts[index];
+/** The chart rendered as `release` with `set` over values.yaml: the documents. */
+const rendered = (set, release = 'inspector', namespace = release) =>
+  renderChart(CHART_DIR, { release, namespace, set }).documents;
 
-    if (index % 2 === 0) {
-      // Braces left in the text are an action of a shape not read here.
-      assert.ok(
-        !part.includes('{{') && !part.includes('}}'),
-        `the template has an action this test does not read: ${part.slice(0, 80)}`,
-      );
+const find = (documents, kind, name) =>
+  documents.find((each) => each.kind === kind && each.metadata.name === name);
+const podOf = (cronJob) => cronJob.spec.jobTemplate.spec.template.spec;
+const envOf = (container) =>
+  Object.fromEntries(
+    (container.env ?? []).map((each) => [each.name, each.value ?? each.valueFrom]),
+  );
 
-      // Text: trimmed after an action ending `-}}` and before one opening
-      // `{{-`; trimStart and trimEnd take what `\s` matches, in time linear
-      // in the text, where `/\s+$/` takes its square on a run of spaces that
-      // does not end it.
-      if (index > 0 && parts[index - 1].endsWith('-}}')) {
-        part = part.trimStart();
-      }
-
-      if (index + 1 < parts.length && parts[index + 1].startsWith('{{-')) {
-        part = part.trimEnd();
-      }
-
-      if (hidden === 0) {
-        output.push(part);
-      }
-
-      continue;
+/** Every key and value of `value`, at any depth, with the path to it. */
+function* leaves(value, path = '') {
+  if (value !== null && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      yield [`${path}/${key}`, key];
+      yield* leaves(item, `${path}/${key}`);
     }
+  } else {
+    yield [path, String(value)];
+  }
+}
 
-    const action = /^\{\{-? (.*?) -?\}\}$/.exec(part)[1].trim();
-    let match;
+test("with the hosts alone the chart names nothing of production's: no host, Secret, account, bucket or service of ours, and the chart's own name in helm.sh/chart alone (#367, criterion 1)", () => {
+  const documents = rendered(NEUTRAL);
+  const named = [];
 
-    if ((match = /^if (\.[\w.]+)$/.exec(action))) {
-      const visible = hidden === 0 && truthy(lookup(scope, match[1]));
-
-      shown.push(visible);
-      hidden += visible ? 0 : 1;
-    } else if (action === 'end') {
-      assert.ok(shown.length > 0, 'an end with no if');
-      hidden -= shown.pop() ? 0 : 1;
-    } else if (action === 'include "qa-tools.name" .') {
-      // Inside an `if` that hides it, an action is read for its shape alone.
-      output.push(hidden === 0 ? name : '');
-    } else if ((match = /^include "qa-tools\.labels" \. \| nindent (\d{1,2})$/.exec(action))) {
-      const pad = ' '.repeat(Number(match[1]));
-
-      output.push(hidden === 0 ? labels.map((line) => `\n${pad}${line}`).join('') : '');
-    } else if ((match = /^(\.(?:Values|Release|Chart)\.[\w.]+)$/.exec(action))) {
-      output.push(hidden === 0 ? lookup(scope, match[1]) : '');
-    } else {
-      assert.fail(`the template uses an action this test does not render: {{ ${action} }}`);
+  for (const document of documents) {
+    for (const [path, text] of leaves(document)) {
+      // The chart's own name, qa-tools, in the label Helm's convention gives
+      // it, is the one exception: renaming the chart is #335's.
+      if (path.endsWith('/helm.sh/chart') && /^qa-tools-[\d.]+$/.test(text)) continue;
+      if (/qa[-_]tools|statuser|yandex|firstvds/i.test(text)) {
+        named.push(`${document.kind}/${document.metadata.name}${path}: ${text.slice(0, 80)}`);
+      }
     }
   }
 
-  assert.equal(shown.length, 0, 'an if with no end');
+  assert.deepEqual(named, []);
 
-  return output.join('');
+  // The release's own names, Secrets included.
+  assert.deepEqual(documents.map((each) => `${each.kind}/${each.metadata.name}`).sort(), [
+    'Certificate/inspector-receive',
+    'ConfigMap/inspector-db-backup',
+    'CronJob/inspector-db-backup',
+    'Deployment/inspector-backend',
+    'Deployment/inspector-frontend',
+    'Ingress/inspector',
+    'Ingress/inspector-api',
+    'IngressRouteTCP/inspector-receive',
+    'Middleware/inspector-api-rate-limit',
+    'ServersTransportTCP/inspector-receive',
+    'Service/inspector-backend',
+    'Service/inspector-frontend',
+    'Service/inspector-postgres',
+    'StatefulSet/inspector-postgres',
+    'TLSOption/inspector-receive',
+  ]);
+  assert.equal(find(documents, 'Ingress', 'inspector').spec.tls[0].secretName, 'inspector-tls');
+  assert.equal(
+    find(documents, 'Certificate', 'inspector-receive').spec.secretName,
+    'inspector-receive-tls',
+  );
+  assert.equal(
+    envOf(find(documents, 'Deployment', 'inspector-backend').spec.template.spec.containers[0])
+      .POSTGRES_PASSWORD.secretKeyRef.name,
+    'inspector-postgres',
+  );
+
+  // No monitor, and a backup with neither notifier nor uploader: the local
+  // dump alone, into the chart's own directory.
+  const backup = podOf(find(documents, 'CronJob', 'inspector-db-backup'));
+
+  assert.equal(backup.initContainers, undefined);
+  assert.deepEqual(
+    backup.containers.map((each) => each.name),
+    ['db-backup'],
+  );
+  assert.deepEqual(
+    Object.keys(envOf(backup.containers[0])).filter((name) => /OFFSITE|STATUS|NOTIFY/.test(name)),
+    [],
+  );
+  assert.deepEqual(
+    backup.volumes.map((each) => each.name),
+    ['backup', 'scratch', 'script'],
+  );
+  assert.equal(backup.volumes[0].hostPath.path, '/var/backups/webhook-inspector');
+  assert.deepEqual(Object.keys(find(documents, 'ConfigMap', 'inspector-db-backup').data), [
+    'db-backup.sh',
+  ]);
+});
+
+test('without either host, or the images, the chart refuses to render, naming what to set (#367, criterion 1)', () => {
+  const hosts = /ingress\.host and receive\.host must both be set/;
+
+  assert.throws(() => rendered({ ...NEUTRAL, 'ingress.host': '' }), hosts);
+  assert.throws(() => rendered({ ...NEUTRAL, 'receive.host': '' }), hosts);
+  assert.throws(() => rendered({ ...NEUTRAL, 'ingress.host': '', 'receive.host': '' }), hosts);
+  assert.throws(
+    () => rendered({ ...NEUTRAL, 'images.registry': '' }),
+    /images\.registry must be set/,
+  );
+  assert.throws(() => rendered({ ...NEUTRAL, 'images.tag': '' }), /images\.tag must be set/);
+});
+
+test('the off-server copy renders with a bucket alone, and the monitor and the backup notifier with a heartbeat URL alone, each as before (#367, criterion 2)', () => {
+  for (const [bucket, heartbeat] of [
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ]) {
+    const label = `bucket ${bucket}, heartbeat ${heartbeat}`;
+    const documents = rendered({
+      ...NEUTRAL,
+      ...(bucket ? BUCKET : {}),
+      ...(heartbeat ? HEARTBEAT : {}),
+    });
+    const backup = podOf(find(documents, 'CronJob', 'inspector-db-backup'));
+    const sidecars = (backup.initContainers ?? []).map((each) => each.name);
+    const env = envOf(backup.containers[0]);
+    const data = Object.keys(find(documents, 'ConfigMap', 'inspector-db-backup').data);
+
+    assert.deepEqual(
+      sidecars,
+      [...(heartbeat ? ['db-backup-notify'] : []), ...(bucket ? ['db-backup-offsite'] : [])],
+      label,
+    );
+    assert.deepEqual(
+      data,
+      [
+        'db-backup.sh',
+        ...(heartbeat ? ['db-backup-notify.mjs'] : []),
+        ...(bucket ? ['db-backup-offsite.mjs', 'db-backup-recipient.asc'] : []),
+      ],
+      label,
+    );
+    assert.equal(Boolean(find(documents, 'CronJob', 'inspector-monitor')), heartbeat, label);
+    assert.equal(Boolean(find(documents, 'ConfigMap', 'inspector-monitor')), heartbeat, label);
+    assert.equal('BACKUP_STATUS_FILE' in env, heartbeat, label);
+    assert.equal(
+      'BACKUP_OFFSITE_DIR' in env && 'BACKUP_OFFSITE_RECIPIENT_FILE' in env,
+      bucket,
+      label,
+    );
+    assert.deepEqual(
+      backup.volumes.map((each) => each.name),
+      [
+        'backup',
+        'scratch',
+        ...(heartbeat ? ['status'] : []),
+        ...(bucket ? ['offsite'] : []),
+        'script',
+      ],
+      label,
+    );
+
+    if (bucket) {
+      const uploader = envOf(backup.initContainers.at(-1));
+
+      assert.deepEqual(
+        [
+          uploader.OFFSITE_BUCKET,
+          uploader.OFFSITE_ENDPOINT,
+          uploader.OFFSITE_REGION,
+          uploader.OFFSITE_DATABASE,
+        ],
+        ['inspector-backups', 'https://storage.example', 'region-1', 'inspector'],
+      );
+      assert.equal(uploader.OFFSITE_ACCESS_KEY_ID.secretKeyRef.name, 'inspector-offsite-backup');
+      // The key the installer gave, as the file it was, but for the final
+      // newline a `|-` block drops.
+      assert.equal(
+        find(documents, 'ConfigMap', 'inspector-db-backup').data['db-backup-recipient.asc'],
+        BUCKET['backup.offsite.recipientKey'].trimEnd(),
+      );
+    }
+
+    if (heartbeat) {
+      const monitor = envOf(podOf(find(documents, 'CronJob', 'inspector-monitor')).containers[0]);
+
+      assert.equal(monitor.MONITOR_HEARTBEAT_URL, 'https://heartbeat.example');
+      assert.equal(monitor.MONITOR_SITE_URL, 'https://inspector.example');
+      assert.equal(monitor.MONITOR_RECEIVE_URL, 'https://hook.inspector.example');
+      assert.equal(monitor.MONITOR_SITE_TOKEN.secretKeyRef.name, 'inspector-heartbeat');
+      assert.equal(
+        envOf(backup.initContainers[0]).NOTIFY_TOKEN.secretKeyRef.name,
+        'inspector-heartbeat',
+      );
+    }
+  }
+
+  // A bucket without what the copy needs is refused, naming the value.
+  for (const missing of ['endpoint', 'region', 'recipientKey']) {
+    assert.throws(
+      () => rendered({ ...NEUTRAL, ...BUCKET, [`backup.offsite.${missing}`]: '' }),
+      new RegExp(`backup\\.offsite\\.${missing} must be set when backup\\.offsite\\.bucket is`),
+    );
+  }
+
+  // Secret names and the site probed, given, win over the derived ones.
+  const given = rendered({
+    ...NEUTRAL,
+    ...BUCKET,
+    ...HEARTBEAT,
+    'backup.offsite.existingSecret': 'storage-key',
+    'alerts.existingSecret': 'beats',
+    'alerts.siteUrl': 'https://inspector.example/',
+  });
+  const monitor = envOf(podOf(find(given, 'CronJob', 'inspector-monitor')).containers[0]);
+
+  assert.equal(monitor.MONITOR_SITE_TOKEN.secretKeyRef.name, 'beats');
+  assert.equal(monitor.MONITOR_SITE_URL, 'https://inspector.example/');
+  assert.equal(
+    envOf(podOf(find(given, 'CronJob', 'inspector-db-backup')).initContainers[1])
+      .OFFSITE_SECRET_ACCESS_KEY.secretKeyRef.name,
+    'storage-key',
+  );
+});
+
+/* ------------------------------------------------------------------------ */
+/* The deploy job (#367, criteria 3 and 4; D274, D275, #340).               */
+/* ------------------------------------------------------------------------ */
+
+/** The top-level key `name` of a GitLab CI file, from its line to the next one's. */
+function pipelineKey(text, name) {
+  const start = text.indexOf(`\n${name}:\n`);
+
+  assert.ok(start >= 0, `${name} is not in the pipeline`);
+
+  const rest = text.slice(start + 1);
+  const end = rest.search(/\n(?![\s#])/);
+
+  return end < 0 ? rest : rest.slice(0, end + 1);
 }
 
+/** The deploy job's first script item, the checks and `helm upgrade`, as the runner's shell runs it. */
+const DEPLOY_SCRIPT = (() => {
+  const deploy = pipelineKey(readFileSync(PIPELINE, 'utf8'), 'deploy');
+  const block = /\n( +)script:\n\1 {2}- \|\n((?:(?:\1 {4}[^\n]*)?\n)+)/.exec(deploy);
+
+  assert.ok(
+    block?.[2].includes('helm upgrade --install'),
+    "the deploy job's first item runs no helm upgrade",
+  );
+
+  return block[2]
+    .split('\n')
+    .map((line) => line.slice(block[1].length + 4))
+    .join('\n');
+})();
+
 /**
- * The chart's Ingress template rendered as production's release, or as
- * `release`, with values.yaml's `ingress` section and `ingress` over it: the
- * deploy job gives the chart `ingress.host` and, in production,
- * `ingress.aliasHost` (D274, D275).
+ * Production's CI/CD variables as recorded on 2026-11-02 (#367; qa-tools'
+ * docs/RESOURCES.md is their record), the runner's own and the recipient key
+ * given as a stand-in's file: with these the deploy job gives the chart
+ * production's values.
  */
-function renderedIngress(release = RELEASE, ingress = {}) {
-  const chart = readFileSync(fileURLToPath(CHART), 'utf8');
-  const values = ingressValues(readFileSync(fileURLToPath(VALUES), 'utf8'));
-  const scope = {
-    Values: { ingress: { ...values.ingress, ...ingress } },
-    Release: release,
-    Chart: {
-      Name: /^name: (\S+)$/m.exec(chart)[1],
-      Version: /^version: (\S+)$/m.exec(chart)[1],
-    },
+const PRODUCTION = Object.freeze({
+  CI_REGISTRY_IMAGE: 'registry.gitlab.com/qa-tools-team/webhook-inspector',
+  CI_COMMIT_SHA: 'a'.repeat(40),
+  DEPLOY_APP_ORIGIN: 'https://qa-tools.ru',
+  DEPLOY_RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  DEPLOY_APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+  DEPLOY_ALIAS_TLS_SECRET: 'webhook-qa-tools-tls',
+  DEPLOY_RECEIVE_TLS_SECRET: 'hook-qa-tools-tls',
+  DEPLOY_POSTGRES_USER: 'qa_tools',
+  DEPLOY_POSTGRES_DATABASE: 'qa_tools',
+  DEPLOY_BACKUP_HOST_PATH: '/var/backups/qa-tools/nightly',
+  DEPLOY_BACKUP_BUCKET: 'qa-tools-backups',
+  DEPLOY_BACKUP_ENDPOINT: 'https://storage.yandexcloud.net',
+  DEPLOY_BACKUP_REGION: 'ru-central1',
+  DEPLOY_BACKUP_SECRET: 'qa-tools-offsite-backup',
+  DEPLOY_BACKUP_RECIPIENT_KEY: RECIPIENT_PATH,
+  DEPLOY_HEARTBEAT_URL: 'https://hb.statuser.cloud',
+  DEPLOY_HEARTBEAT_SECRET: 'qa-tools-statuser',
+});
+
+/** The variables an unset one stops the deploy job for, whatever the others hold. */
+const ALWAYS_NEEDED = [
+  'DEPLOY_APP_ORIGIN',
+  'DEPLOY_RECEIVE_ORIGIN',
+  'DEPLOY_APP_ALIAS_ORIGIN',
+  'DEPLOY_RECEIVE_TLS_SECRET',
+  'DEPLOY_POSTGRES_USER',
+  'DEPLOY_POSTGRES_DATABASE',
+  'DEPLOY_BACKUP_HOST_PATH',
+  'DEPLOY_BACKUP_BUCKET',
+  'DEPLOY_HEARTBEAT_URL',
+];
+
+// A stand-in helm that records its arguments, NUL-separated, and does nothing else.
+const STAND_INS = mkdtempSync(join(tmpdir(), 'chart-test-helm-'));
+let runs = 0;
+
+writeFileSync(
+  join(STAND_INS, 'helm'),
+  '#!/bin/sh\nfor arg in "$@"; do printf \'%s\\0\' "$arg"; done > "$HELM_ARGS"\n',
+  {
+    mode: 0o755,
+  },
+);
+after(() => rmSync(STAND_INS, { recursive: true, force: true }));
+
+/** The deploy job's script under `shell` with exactly `variables`: its status, its output and helm's arguments, or null when helm was not run. */
+function deployJob(variables, shell = 'sh') {
+  const record = join(STAND_INS, `args-${(runs += 1)}`);
+  const run = spawnSync(shell, ['-c', DEPLOY_SCRIPT], {
+    env: { PATH: `${STAND_INS}:${process.env.PATH}`, HELM_ARGS: record, ...variables },
+    encoding: 'utf8',
+  });
+  let helm = null;
+
+  try {
+    helm = readFileSync(record, 'utf8').split('\0').slice(0, -1);
+    rmSync(record);
+  } catch {
+    // helm was not run.
+  }
+
+  return { status: run.status, output: `${run.stdout}${run.stderr}`, helm };
+}
+
+/** The chart rendered from the arguments the deploy job gave helm, its chart path the repository's. */
+function renderedFrom(helm, namespace) {
+  const parsed = parseHelmArguments(helm);
+
+  return renderChart(join(ROOT, parsed.chart), {
+    release: parsed.release,
+    namespace: namespace ?? parsed.namespace,
+    set: parsed.set,
+  });
+}
+
+/** The documents of one template file, in its order. */
+const fileDocuments = (result, file) =>
+  parseYamlDocuments(result.texts.find(([name]) => name === file)[1]);
+
+const PRODUCTION_RUN = deployJob(PRODUCTION);
+
+test("the deploy job gives helm production's values from the CI/CD variables, and the chart renders production's names with them (#367, criterion 3)", () => {
+  assert.deepEqual(PRODUCTION_RUN, {
+    status: 0,
+    output: '',
+    helm: [
+      'upgrade',
+      '--install',
+      'qa-tools',
+      'deploy/helm/qa-tools',
+      '--namespace',
+      'qa-tools',
+      '--set-string',
+      'images.registry=registry.gitlab.com/qa-tools-team/webhook-inspector',
+      '--set-string',
+      `images.tag=${'a'.repeat(40)}`,
+      '--set-string',
+      'ingress.host=qa-tools.ru',
+      '--set-string',
+      'receive.host=hook.qa-tools.ru',
+      '--set-string',
+      'alerts.siteUrl=https://qa-tools.ru',
+      '--set-string',
+      'ingress.aliasHost=webhook.qa-tools.ru',
+      '--set-string',
+      'ingress.tls.aliasSecretName=webhook-qa-tools-tls',
+      '--set-string',
+      'receive.tlsSecretName=hook-qa-tools-tls',
+      '--set-string',
+      'postgres.user=qa_tools',
+      '--set-string',
+      'postgres.database=qa_tools',
+      '--set-string',
+      'backup.hostPath=/var/backups/qa-tools/nightly',
+      '--set-string',
+      'backup.offsite.bucket=qa-tools-backups',
+      '--set-string',
+      'backup.offsite.endpoint=https://storage.yandexcloud.net',
+      '--set-string',
+      'backup.offsite.region=ru-central1',
+      '--set-string',
+      'backup.offsite.existingSecret=qa-tools-offsite-backup',
+      '--set-string',
+      'alerts.heartbeatUrl=https://hb.statuser.cloud',
+      '--set-string',
+      'alerts.existingSecret=qa-tools-statuser',
+      '--set-file',
+      `backup.offsite.recipientKey=${RECIPIENT_PATH}`,
+      '--wait',
+      '--timeout',
+      '10m',
+    ],
+  });
+
+  const { documents } = renderedFrom(PRODUCTION_RUN.helm);
+  const backend = find(documents, 'Deployment', 'qa-tools-backend').spec.template.spec
+    .containers[0];
+  const postgres = find(documents, 'StatefulSet', 'qa-tools-postgres').spec.template.spec
+    .containers[0];
+  const backup = podOf(find(documents, 'CronJob', 'qa-tools-db-backup'));
+  const monitor = envOf(podOf(find(documents, 'CronJob', 'qa-tools-monitor')).containers[0]);
+
+  assert.deepEqual(
+    [
+      find(documents, 'Ingress', 'qa-tools').spec.tls[0],
+      find(documents, 'Ingress', 'qa-tools-alias').spec.tls[0],
+    ],
+    [
+      { hosts: ['qa-tools.ru'], secretName: 'qa-tools-tls' },
+      { hosts: ['webhook.qa-tools.ru'], secretName: 'webhook-qa-tools-tls' },
+    ],
+  );
+  assert.deepEqual(
+    find(documents, 'Certificate', 'qa-tools-receive').spec.secretName,
+    'hook-qa-tools-tls',
+  );
+  assert.deepEqual(find(documents, 'Certificate', 'qa-tools-receive').spec.dnsNames, [
+    'hook.qa-tools.ru',
+  ]);
+  assert.deepEqual(
+    [envOf(backend).DATABASE_URL, envOf(backend).POSTGRES_PASSWORD.secretKeyRef.name],
+    [
+      'postgres://qa_tools:$(POSTGRES_PASSWORD)@qa-tools-postgres:5432/qa_tools',
+      'qa-tools-postgres',
+    ],
+  );
+  assert.deepEqual(
+    [envOf(backend).APP_ORIGIN, envOf(backend).RECEIVE_ORIGIN, envOf(backend).APP_ALIAS_ORIGIN],
+    ['https://qa-tools.ru', 'https://hook.qa-tools.ru', 'https://webhook.qa-tools.ru'],
+  );
+  assert.deepEqual(
+    [envOf(postgres).POSTGRES_USER, envOf(postgres).POSTGRES_DB],
+    ['qa_tools', 'qa_tools'],
+  );
+  assert.ok(postgres.args.includes('cron.database_name=qa_tools'));
+  assert.equal(backup.volumes[0].hostPath.path, '/var/backups/qa-tools/nightly');
+  assert.deepEqual(
+    backup.initContainers.map((each) => each.name),
+    ['db-backup-notify', 'db-backup-offsite'],
+  );
+  assert.deepEqual(
+    [
+      envOf(backup.initContainers[0]).NOTIFY_HEARTBEAT_URL,
+      envOf(backup.initContainers[0]).NOTIFY_TOKEN.secretKeyRef.name,
+    ],
+    ['https://hb.statuser.cloud', 'qa-tools-statuser'],
+  );
+
+  const uploader = envOf(backup.initContainers[1]);
+
+  assert.deepEqual(
+    [
+      uploader.OFFSITE_BUCKET,
+      uploader.OFFSITE_ENDPOINT,
+      uploader.OFFSITE_REGION,
+      uploader.OFFSITE_DATABASE,
+    ],
+    ['qa-tools-backups', 'https://storage.yandexcloud.net', 'ru-central1', 'qa_tools'],
+  );
+  assert.equal(uploader.OFFSITE_ACCESS_KEY_ID.secretKeyRef.name, 'qa-tools-offsite-backup');
+  assert.equal(
+    find(documents, 'ConfigMap', 'qa-tools-db-backup').data['db-backup-recipient.asc'],
+    readFileSync(RECIPIENT_PATH, 'utf8').trimEnd(),
+  );
+  assert.deepEqual(
+    [
+      monitor.MONITOR_SITE_URL,
+      monitor.MONITOR_RECEIVE_URL,
+      monitor.MONITOR_HEARTBEAT_URL,
+      monitor.MONITOR_DISK_TOKEN.secretKeyRef.name,
+    ],
+    [
+      'https://qa-tools.ru',
+      'https://hook.qa-tools.ru',
+      'https://hb.statuser.cloud',
+      'qa-tools-statuser',
+    ],
+  );
+});
+
+test('the deploy job stops before helm upgrade, naming the variable, when one it needs is not set, under sh and bash (#367, criterion 4)', () => {
+  const without = (...names) =>
+    Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
+  const stopped = (names) => ({
+    status: 1,
+    output: `Not deployed: the project CI/CD variables ${names.join(' ')} are not set (README.md, Deploying from GitLab CI)\n`,
+    helm: null,
+  });
+
+  for (const shell of ['sh', 'bash']) {
+    for (const name of [
+      ...ALWAYS_NEEDED,
+      'DEPLOY_ALIAS_TLS_SECRET',
+      'DEPLOY_BACKUP_ENDPOINT',
+      'DEPLOY_BACKUP_REGION',
+      'DEPLOY_BACKUP_SECRET',
+      'DEPLOY_BACKUP_RECIPIENT_KEY',
+      'DEPLOY_HEARTBEAT_SECRET',
+    ]) {
+      assert.deepEqual(deployJob(without(name), shell), stopped([name]), `${shell} ${name}`);
+    }
+    // Every one missing is named at once.
+    assert.deepEqual(deployJob(without(...ALWAYS_NEEDED), shell), stopped(ALWAYS_NEEDED), shell);
+    // Set empty, the backup's copy's companions too are needed.
+    assert.deepEqual(
+      deployJob({ ...PRODUCTION, DEPLOY_BACKUP_ENDPOINT: '', DEPLOY_HEARTBEAT_SECRET: '' }, shell),
+      stopped(['DEPLOY_BACKUP_ENDPOINT', 'DEPLOY_HEARTBEAT_SECRET']),
+      shell,
+    );
+  }
+
+  // Set empty, the second host, the off-server copy and the monitor are off,
+  // their companions not needed, and helm is given none of them.
+  const off = deployJob({
+    ...without(
+      'DEPLOY_ALIAS_TLS_SECRET',
+      'DEPLOY_BACKUP_ENDPOINT',
+      'DEPLOY_BACKUP_REGION',
+      'DEPLOY_BACKUP_SECRET',
+      'DEPLOY_BACKUP_RECIPIENT_KEY',
+      'DEPLOY_HEARTBEAT_SECRET',
+    ),
+    DEPLOY_APP_ALIAS_ORIGIN: '',
+    DEPLOY_BACKUP_BUCKET: '',
+    DEPLOY_HEARTBEAT_URL: '',
+  });
+
+  assert.equal(off.status, 0, off.output);
+  assert.deepEqual(
+    off.helm.filter((arg) =>
+      /^(ingress\.aliasHost|ingress\.tls\.alias|backup\.offsite|alerts\.(heartbeat|existing))/.test(
+        arg,
+      ),
+    ),
+    [],
+  );
+
+  const { documents } = renderedFrom(off.helm);
+
+  assert.equal(find(documents, 'CronJob', 'qa-tools-monitor'), undefined);
+  assert.equal(podOf(find(documents, 'CronJob', 'qa-tools-db-backup')).initContainers, undefined);
+  assert.equal(find(documents, 'Ingress', 'qa-tools-alias'), undefined);
+});
+
+test('the deploy job refuses a value helm would split or a shell would read, and a recipient key that is not a public key alone, naming the variable and printing no value (#367)', () => {
+  const secret = 'Zq7xK2mW9pL4vN8';
+  const plain = [
+    'DEPLOY_ALIAS_TLS_SECRET',
+    'DEPLOY_RECEIVE_TLS_SECRET',
+    'DEPLOY_POSTGRES_USER',
+    'DEPLOY_POSTGRES_DATABASE',
+    'DEPLOY_BACKUP_HOST_PATH',
+    'DEPLOY_BACKUP_BUCKET',
+    'DEPLOY_BACKUP_ENDPOINT',
+    'DEPLOY_BACKUP_REGION',
+    'DEPLOY_BACKUP_SECRET',
+    'DEPLOY_HEARTBEAT_URL',
+    'DEPLOY_HEARTBEAT_SECRET',
+  ];
+  const refusal = (name) =>
+    `${name} holds a character other than letters, digits, '.', '_', ':', '/' and '-'; its value is not printed\n`;
+
+  for (const shell of ['sh', 'bash']) {
+    for (const name of plain) {
+      for (const value of [
+        `a,${secret}`,
+        `a ${secret}`,
+        `a\n${secret}`,
+        `"${secret}`,
+        `$(touch ${secret})`,
+        `a\\${secret}`,
+        `a=${secret}`,
+        `ä${secret}`,
+        `*${secret}`,
+      ]) {
+        const result = deployJob({ ...PRODUCTION, [name]: value }, shell);
+
+        assert.deepEqual(
+          result,
+          { status: 1, output: refusal(name), helm: null },
+          `${shell} ${name} ${JSON.stringify(value)}`,
+        );
+      }
+    }
+
+    // At growing sizes, a long value of the allowed characters passes, and
+    // one forbidden character at its end is refused.
+    for (const size of [10, 1000, 100_000]) {
+      const long = `a/${'b.-_:'.repeat(size / 5)}`;
+
+      assert.equal(
+        deployJob({ ...PRODUCTION, DEPLOY_BACKUP_SECRET: long }, shell).status,
+        0,
+        shell,
+      );
+      assert.deepEqual(
+        deployJob({ ...PRODUCTION, DEPLOY_BACKUP_SECRET: `${long},` }, shell),
+        { status: 1, output: refusal('DEPLOY_BACKUP_SECRET'), helm: null },
+        shell,
+      );
+    }
+  }
+
+  const keyRefusal =
+    'DEPLOY_BACKUP_RECIPIENT_KEY must be a variable of type File holding an armored OpenPGP public key and no private key; its value is not printed\n';
+  const write = (name, text) => {
+    const path = join(STAND_INS, name);
+    writeFileSync(path, text);
+    return path;
   };
 
+  for (const key of [
+    join(STAND_INS, 'absent.asc'),
+    STAND_INS,
+    write('empty.asc', ''),
+    write('text.asc', `${secret}\n`),
+    write(
+      'private.asc',
+      `${readFileSync(RECIPIENT_PATH, 'utf8')}-----BEGIN PGP PRIVATE KEY BLOCK-----\n${secret}\n`,
+    ),
+  ]) {
+    assert.deepEqual(
+      deployJob({ ...PRODUCTION, DEPLOY_BACKUP_RECIPIENT_KEY: key }),
+      { status: 1, output: keyRefusal, helm: null },
+      key,
+    );
+  }
+});
+
+/** The hosts the deploy job gives the chart for these origins, the others production's: the site's, the receive host's and, with one, the second's. */
+function deployHosts(appOrigin, receiveOrigin, aliasOrigin = '', shell = 'sh') {
+  const result = deployJob(
+    {
+      ...PRODUCTION,
+      DEPLOY_APP_ORIGIN: appOrigin,
+      DEPLOY_RECEIVE_ORIGIN: receiveOrigin,
+      DEPLOY_APP_ALIAS_ORIGIN: aliasOrigin,
+    },
+    shell,
+  );
+
+  if (result.status !== 0) return { status: result.status, output: result.output };
+
+  const value = (key) =>
+    result.helm.find((arg) => arg.startsWith(`${key}=`))?.slice(key.length + 1);
+
   return {
-    scope,
-    documents: render(
-      readFileSync(fileURLToPath(new URL('ingress.yaml', TEMPLATES)), 'utf8'),
-      scope,
-    )
-      .split(/^---$/m)
-      .map(uncommented),
+    status: 0,
+    hosts: [value('ingress.host'), value('receive.host'), value('ingress.aliasHost')]
+      .filter(Boolean)
+      .join(' '),
+  };
+}
+
+/** The deploy job's refusal of `name`, which names it and never its value. */
+const refusalOf = (name) =>
+  `${name} must be https:// and a host name alone; its value is not printed\n`;
+
+test("the deploy job's check of the two origins passes production's and refuses anything but https:// and a host name (D274)", () => {
+  assert.deepEqual(deployHosts('https://qa-tools.ru', 'https://hook.qa-tools.ru'), {
+    status: 0,
+    hosts: 'qa-tools.ru hook.qa-tools.ru',
+  });
+  assert.deepEqual(deployHosts('https://inspector.example', 'https://hook.inspector.example'), {
+    status: 0,
+    hosts: 'inspector.example hook.inspector.example',
+  });
+
+  for (const origin of [
+    '',
+    'qa-tools.ru',
+    'http://qa-tools.ru',
+    'https://',
+    'https://qa-tools.ru/',
+    'https://qa-tools.ru/path',
+    'https://qa-tools.ru:443',
+    'https://Qa-Tools.ru',
+    'https://qa-tools.ru?x=1',
+    'https://user@qa-tools.ru',
+    'https://a b',
+    'https://a\nb',
+    'https://$(touch x)',
+    'https://*',
+    'https://https://qa-tools.ru',
+  ]) {
+    assert.deepEqual(
+      deployHosts(origin, 'https://hook.qa-tools.ru'),
+      { status: 1, output: refusalOf('DEPLOY_APP_ORIGIN') },
+      JSON.stringify(origin),
+    );
+    assert.deepEqual(
+      deployHosts('https://qa-tools.ru', origin),
+      { status: 1, output: refusalOf('DEPLOY_RECEIVE_ORIGIN') },
+      JSON.stringify(origin),
+    );
+  }
+
+  // A credential pasted into either value is not in the job's output, under
+  // either shell, and neither is anything else of the value.
+  const secret = 'Zq7xK2mW9pL4vN8';
+
+  for (const shell of ['sh', 'bash']) {
+    for (const origin of [
+      `https://user:${secret}@inspector.example`,
+      `https://${secret}@inspector.example`,
+      `https://inspector.example/?token=${secret}`,
+      `https://inspector.example\n${secret}`,
+      `${secret}`,
+    ]) {
+      const app = deployHosts(origin, 'https://hook.inspector.example', '', shell);
+      const receive = deployHosts('https://inspector.example', origin, '', shell);
+      const alias = deployHosts(
+        'https://inspector.example',
+        'https://hook.inspector.example',
+        origin,
+        shell,
+      );
+
+      assert.deepEqual(
+        app,
+        { status: 1, output: refusalOf('DEPLOY_APP_ORIGIN') },
+        `${shell} ${origin}`,
+      );
+      assert.deepEqual(receive, { status: 1, output: refusalOf('DEPLOY_RECEIVE_ORIGIN') }, shell);
+      assert.deepEqual(alias, { status: 1, output: refusalOf('DEPLOY_APP_ALIAS_ORIGIN') }, shell);
+      assert.ok(
+        !app.output.includes(secret) &&
+          !receive.output.includes(secret) &&
+          !alias.output.includes(secret),
+        shell,
+      );
+    }
+  }
+
+  // At growing sizes, a long host of many labels passes and the same with
+  // one character more than a host has is refused.
+  for (const size of [10, 1000, 100_000]) {
+    const host = `${'a.'.repeat(size / 2)}example`;
+
+    assert.deepEqual(deployHosts(`https://${host}`, 'https://hook.example'), {
+      status: 0,
+      hosts: `${host} hook.example`,
+    });
+    assert.deepEqual(deployHosts(`https://${host}/`, 'https://hook.example'), {
+      status: 1,
+      output: refusalOf('DEPLOY_APP_ORIGIN'),
+    });
+    assert.deepEqual(deployHosts('https://example', `https://${'/'.repeat(size)}`), {
+      status: 1,
+      output: refusalOf('DEPLOY_RECEIVE_ORIGIN'),
+    });
+    assert.deepEqual(
+      deployHosts(`https://user:${'s'.repeat(size)}@example`, 'https://hook.example'),
+      {
+        status: 1,
+        output: refusalOf('DEPLOY_APP_ORIGIN'),
+      },
+    );
+  }
+});
+
+test("the deploy job's check of the second site origin: empty is none, production's passes, and anything but https:// and a host name of its own is refused (#319, D275)", () => {
+  const app = 'https://qa-tools.ru';
+  const receive = 'https://hook.qa-tools.ru';
+
+  assert.deepEqual(deployHosts(app, receive, ''), {
+    status: 0,
+    hosts: 'qa-tools.ru hook.qa-tools.ru',
+  });
+  assert.deepEqual(deployHosts(app, receive, 'https://webhook.qa-tools.ru'), {
+    status: 0,
+    hosts: 'qa-tools.ru hook.qa-tools.ru webhook.qa-tools.ru',
+  });
+  assert.deepEqual(
+    deployHosts(
+      'https://inspector.example',
+      'https://hook.inspector.example',
+      'https://next.example',
+    ),
+    {
+      status: 0,
+      hosts: 'inspector.example hook.inspector.example next.example',
+    },
+  );
+
+  // The site's own origin or the receive host's is no second host.
+  for (const same of [app, receive]) {
+    assert.deepEqual(deployHosts(app, receive, same), {
+      status: 1,
+      output: 'DEPLOY_APP_ALIAS_ORIGIN must name a host of its own; its value is not printed\n',
+    });
+  }
+
+  for (const origin of [
+    ' ',
+    'webhook.qa-tools.ru',
+    'http://webhook.qa-tools.ru',
+    'https://',
+    'https://webhook.qa-tools.ru/',
+    'https://webhook.qa-tools.ru:443',
+    'https://Webhook.qa-tools.ru',
+    'https://webhook.qa-tools.ru?x=1',
+    'https://user@webhook.qa-tools.ru',
+    'https://a b',
+    'https://a\nb',
+    'https://$(touch x)',
+    'https://*',
+    'https://https://webhook.qa-tools.ru',
+  ]) {
+    assert.deepEqual(
+      deployHosts(app, receive, origin),
+      { status: 1, output: refusalOf('DEPLOY_APP_ALIAS_ORIGIN') },
+      JSON.stringify(origin),
+    );
+  }
+
+  for (const size of [10, 1000, 100_000]) {
+    const host = `${'w.'.repeat(size / 2)}example`;
+
+    assert.deepEqual(deployHosts(app, receive, `https://${host}`), {
+      status: 0,
+      hosts: `qa-tools.ru hook.qa-tools.ru ${host}`,
+    });
+    assert.deepEqual(deployHosts(app, receive, `https://${host}/`), {
+      status: 1,
+      output: refusalOf('DEPLOY_APP_ALIAS_ORIGIN'),
+    });
+    assert.deepEqual(deployHosts(app, receive, `https://${'/'.repeat(size)}`), {
+      status: 1,
+      output: refusalOf('DEPLOY_APP_ALIAS_ORIGIN'),
+    });
+  }
+});
+
+test("the deploy job's check refuses a host that is no host name under sh and bash, with its line, and passes production's three origins (#340)", () => {
+  const production = [
+    PRODUCTION.DEPLOY_APP_ORIGIN,
+    PRODUCTION.DEPLOY_RECEIVE_ORIGIN,
+    PRODUCTION.DEPLOY_APP_ALIAS_ORIGIN,
+  ];
+  const hostsOf = (origins) => origins.map((origin) => new URL(origin).host).join(' ');
+  const app = 'https://inspector.example';
+  const receive = 'https://hook.inspector.example';
+  const refusedEverywhere = (origin, shell) => {
+    const label = `${shell} ${JSON.stringify(origin.slice(0, 80))}`;
+
+    assert.deepEqual(
+      deployHosts(origin, receive, '', shell),
+      { status: 1, output: refusalOf('DEPLOY_APP_ORIGIN') },
+      label,
+    );
+    assert.deepEqual(
+      deployHosts(app, origin, '', shell),
+      { status: 1, output: refusalOf('DEPLOY_RECEIVE_ORIGIN') },
+      label,
+    );
+    assert.deepEqual(
+      deployHosts(app, receive, origin, shell),
+      { status: 1, output: refusalOf('DEPLOY_APP_ALIAS_ORIGIN') },
+      label,
+    );
+  };
+  const passed = (origin, shell) =>
+    assert.deepEqual(
+      deployHosts(app, receive, origin, shell),
+      { status: 0, hosts: hostsOf([app, receive, origin]) },
+      `${shell} ${JSON.stringify(origin.slice(0, 80))}`,
+    );
+
+  for (const shell of ['sh', 'bash']) {
+    assert.deepEqual(deployHosts(...production, shell), { status: 0, hosts: hostsOf(production) });
+
+    for (const origin of [
+      'https://-',
+      'https://.',
+      'https://a..b',
+      'https://a.b.',
+      'https://-a.example',
+      'https://a-.example',
+      'https://..',
+      'https://.a',
+      'https://a.-b',
+      'https://a.b-',
+      'https://--',
+      `https://${'a'.repeat(64)}`,
+      `https://${'a'.repeat(64)}.example`,
+      `https://a.${'b'.repeat(64)}`,
+      `https://a.${'b'.repeat(64)}.example`,
+    ]) {
+      refusedEverywhere(origin, shell);
+    }
+
+    for (const origin of [
+      `https://${'a'.repeat(63)}.${'b'.repeat(63)}.example`,
+      'https://a--b.0.example',
+      'https://xn--e1afmkfd.xn--p1ai',
+      'https://a1.b2',
+      'https://x',
+    ]) {
+      passed(origin, shell);
+    }
+
+    for (const size of [10, 1000, 100_000]) {
+      const many = 'a.'.repeat(size / 2);
+
+      refusedEverywhere(`https://${'a'.repeat(64 + size)}.example`, shell);
+      refusedEverywhere(`https://${'.'.repeat(size)}`, shell);
+      refusedEverywhere(`https://${'-'.repeat(size)}`, shell);
+      refusedEverywhere(`https://${many}`, shell);
+      refusedEverywhere(`https://${many}.a`, shell);
+      refusedEverywhere(`https://${'a-.'.repeat(Math.ceil(size / 3))}example`, shell);
+      refusedEverywhere(`https://${'-a.'.repeat(Math.ceil(size / 3))}example`, shell);
+      refusedEverywhere(`https://${many}${'b'.repeat(64)}`, shell);
+      passed(`https://${many}example`, shell);
+      passed(`https://${`${'a'.repeat(63)}.`.repeat(Math.ceil(size / 64))}example`, shell);
+    }
+  }
+});
+
+/** Every file under `path` of the repository, recursively. */
+function filesUnder(path) {
+  return readdirSync(join(ROOT, path), { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? filesUnder(join(path, entry.name)) : [join(path, entry.name)],
+  );
+}
+
+test("the pipeline and deploy/ name no host, account or runner of production's: the CI/CD variables do (#367, criterion 6)", () => {
+  const pipeline = readFileSync(PIPELINE, 'utf8');
+  const validate = readFileSync(fileURLToPath(CI), 'utf8');
+
+  for (const file of ['.gitlab-ci.yml', ...filesUnder('deploy')]) {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+
+    assert.doesNotMatch(text, /qa-tools\.ru|statuser|yandexcloud|qa-tools-backups/i, file);
+    assert.doesNotMatch(text, /qa-tools-ci|qa-tools-vps/, file);
+  }
+  // The validate stage's `chart` job looks for those names in a render, so
+  // it holds them as its pattern; not as runner tags.
+  assert.doesNotMatch(validate, /qa-tools-ci|qa-tools-vps/);
+
+  // The address, from the variables, for the image builds and the smoke under
+  // the names the backend reads; the test jobs' backend expects those unset,
+  // so they are no global variables.
+  assert.match(
+    pipelineKey(pipeline, '.inspector-address'),
+    /^ {2}variables:\n {4}APP_ORIGIN: \$DEPLOY_APP_ORIGIN\n {4}RECEIVE_ORIGIN: \$DEPLOY_RECEIVE_ORIGIN\n {4}APP_ALIAS_ORIGIN: \$DEPLOY_APP_ALIAS_ORIGIN\n/m,
+  );
+  assert.doesNotMatch(uncommented(pipelineKey(pipeline, 'variables')), /ORIGIN/);
+  assert.match(pipelineKey(pipeline, '.image'), /^ {2}extends: \.inspector-address$/m);
+  assert.match(
+    pipelineKey(pipeline, 'image:frontend'),
+    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'$/m,
+  );
+
+  const smoke = pipelineKey(pipeline, 'deployment-smoke');
+
+  assert.match(smoke, /^ {2}extends: \.inspector-address$/m);
+  assert.ok(
+    smoke.includes(
+      '- node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN"\n',
+    ),
+  );
+  assert.match(smoke, /^ {2}timeout: 10m$/m);
+
+  // The deploy job reads the variables themselves, on the runner one names.
+  const deploy = pipelineKey(pipeline, 'deploy');
+
+  assert.doesNotMatch(deploy, /extends:/);
+  assert.match(deploy, /^ {2}tags:\n {4}- \$DEPLOY_RUNNER_TAG$/m);
+  assert.match(deploy, /^ {2}environment:\n {4}name: production\n {4}url: \$DEPLOY_APP_ORIGIN$/m);
+  assert.ok(
+    DEPLOY_SCRIPT.indexOf('Not deployed:') < DEPLOY_SCRIPT.indexOf('helm upgrade --install'),
+  );
+  assert.match(validate, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'$/m);
+});
+
+/* ------------------------------------------------------------------------ */
+/* The edge rate limit (#205, D264) and the second host (#319, D275), as    */
+/* production renders them.                                                  */
+/* ------------------------------------------------------------------------ */
+
+/** production's Ingresses and Middlewares, in templates/ingress.yaml's order, rendered from the deploy job's arguments with `variables` over production's. */
+function renderedIngress(variables = {}, namespace) {
+  const run = deployJob({ ...PRODUCTION, ...variables });
+
+  assert.equal(run.status, 0, run.output);
+
+  const result = renderedFrom(run.helm, namespace);
+
+  return {
+    set: parseHelmArguments(run.helm).set,
+    documents: fileDocuments(result, 'templates/ingress.yaml'),
   };
 }
 
 /** A rendered Ingress's name, annotations, TLS hosts and Secret, host and paths. */
 function ingressOf(document) {
-  const annotations = /^ {2}annotations:\n((?: {4}\S.*\n)*)/m.exec(document)?.[1] ?? '';
-
   return {
-    name: /^metadata:\n {2}name: (\S+)$/m.exec(document)[1],
-    tlsHosts: [...document.matchAll(/^ {8}- (\S+)$/gm)].map((match) => match[1]),
-    annotations: Object.fromEntries(
-      [...annotations.matchAll(/^ {4}([^:\s]+): (.+)$/gm)].map(([, key, value]) => [key, value]),
+    name: document.metadata.name,
+    annotations: document.metadata.annotations ?? {},
+    tlsHosts: (document.spec.tls ?? []).flatMap((each) => each.hosts),
+    secretName: document.spec.tls?.[0]?.secretName ?? null,
+    hosts: document.spec.rules.map((rule) => rule.host),
+    paths: document.spec.rules.flatMap((rule) =>
+      rule.http.paths.map((each) => ({
+        path: each.path,
+        type: each.pathType,
+        service: each.backend.service.name,
+        port: each.backend.service.port.name,
+      })),
     ),
-    secretName: /^ {6}secretName: (\S+)$/m.exec(document)?.[1] ?? null,
-    hosts: [...document.matchAll(/^ {4}- host: (\S+)$/gm)].map((match) => match[1]),
-    paths: [
-      ...document.matchAll(
-        /^ {10}- path: (\S+)\n {12}pathType: (\S+)\n {12}backend:\n {14}service:\n {16}name: (\S+)\n {16}port:\n {18}name: (\S+)$/gm,
-      ),
-    ].map(([, path, type, service, port]) => ({ path, type, service, port })),
   };
 }
 
@@ -547,30 +1656,36 @@ function shared(name) {
   return Number(value);
 }
 
-test('the edge rate limit: the Middleware on an Ingress of its own for /api/ and /mcp, and on no other path (#205, criterion 3)', () => {
-  const { scope, documents } = renderedIngress();
-  const kinds = documents.map((document) => /^kind: (\S+)$/m.exec(document)?.[1]);
+/** values.yaml's own edge rate limit. */
+const apiRateLimit = () =>
+  parseYaml(readFileSync(fileURLToPath(VALUES), 'utf8')).ingress.apiRateLimit;
 
-  assert.deepEqual(kinds, ['Ingress', 'Ingress', 'Middleware']);
+test('the edge rate limit: the Middleware on an Ingress of its own for /api/ and /mcp, and on no other path (#205, criterion 3)', () => {
+  const { documents } = renderedIngress({ DEPLOY_APP_ALIAS_ORIGIN: '' });
+
+  assert.deepEqual(
+    documents.map((each) => each.kind),
+    ['Ingress', 'Ingress', 'Middleware'],
+  );
 
   // The API's first, so that Helm creates it before it takes the paths off
   // the site's, as it applies documents of one kind in their order.
   const [api, site] = documents.slice(0, 2).map(ingressOf);
   const middleware = documents[2];
-  const middlewareName = /^metadata:\n {2}name: (\S+)$/m.exec(middleware)[1];
-  const host = scope.Values.ingress.host;
+  const host = 'qa-tools.ru';
 
-  assert.equal(host, 'qa-tools.ru');
-  assert.equal(site.name, 'qa-tools');
-  assert.equal(api.name, 'qa-tools-api');
-  assert.equal(middlewareName, 'qa-tools-api-rate-limit');
-  assert.match(middleware, /^apiVersion: traefik\.io\/v1alpha1$/m);
+  assert.deepEqual(
+    [site.name, api.name, middleware.metadata.name],
+    ['qa-tools', 'qa-tools-api', 'qa-tools-api-rate-limit'],
+  );
+  assert.equal(middleware.apiVersion, 'traefik.io/v1alpha1');
 
   // The API's Ingress names the Middleware, in the release's namespace, by
   // the reference Traefik's Ingress provider reads; the site's names none.
   assert.deepEqual(api.annotations, {
     'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
-    'traefik.ingress.kubernetes.io/router.middlewares': `qa-tools-${middlewareName}@kubernetescrd`,
+    'traefik.ingress.kubernetes.io/router.middlewares':
+      'qa-tools-qa-tools-api-rate-limit@kubernetescrd',
   });
   assert.deepEqual(site.annotations, {
     'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
@@ -578,13 +1693,14 @@ test('the edge rate limit: the Middleware on an Ingress of its own for /api/ and
   });
 
   // Production's release and namespace share a name, so the reference is
-  // read once more from a namespace of another name: it is the namespace's,
-  // not the release's.
-  const elsewhere = ingressOf(renderedIngress({ ...RELEASE, Namespace: 'elsewhere' }).documents[0]);
+  // read once more from a namespace of another name: it is the namespace's.
+  const elsewhere = ingressOf(
+    renderedIngress({ DEPLOY_APP_ALIAS_ORIGIN: '' }, 'elsewhere').documents[0],
+  );
 
   assert.equal(
     elsewhere.annotations['traefik.ingress.kubernetes.io/router.middlewares'],
-    `elsewhere-${middlewareName}@kubernetescrd`,
+    'elsewhere-qa-tools-api-rate-limit@kubernetescrd',
   );
 
   // Same host and certificate; one Ingress asks cert-manager for it.
@@ -630,26 +1746,20 @@ test('the edge rate limit: the Middleware on an Ingress of its own for /api/ and
 });
 
 test('the edge rate limit: its numbers never refuse what D201 lets one address through, or are off; an IPv6 address by its /64 (#205, criteria 1 and 2)', () => {
-  const { scope, documents } = renderedIngress();
-  const limit = scope.Values.ingress.apiRateLimit;
-  const middleware = documents[2];
-  const rateLimit = /^spec:\n {2}rateLimit:\n((?: {4}.*\n?)*)/m.exec(middleware)?.[1];
+  const limit = apiRateLimit();
+  const { rateLimit } = renderedIngress().documents[2].spec;
 
-  assert.ok(rateLimit, 'the Middleware has no rateLimit');
-  assert.equal(only(rateLimit, 'average'), limit.average);
-  assert.equal(only(rateLimit, 'period'), limit.period);
-  assert.equal(only(rateLimit, 'burst'), limit.burst);
-  assert.match(rateLimit, /^ {4}sourceCriterion:\n {6}ipStrategy:\n {8}ipv6Subnet: 64\n?$/m);
-  // No depth and no excluded addresses: the TCP peer, never a header a
-  // client writes.
-  assert.doesNotMatch(rateLimit, /depth|excludedIPs|requestHeaderName|requestHost/);
+  assert.deepEqual(rateLimit, {
+    average: limit.average,
+    period: limit.period,
+    burst: limit.burst,
+    // No depth and no excluded addresses: the TCP peer, never a header a
+    // client writes.
+    sourceCriterion: { ipStrategy: { ipv6Subnet: 64 } },
+  });
+  assert.ok(Number.isInteger(limit.average) && limit.average >= 0, `average ${limit.average}`);
 
-  const average = Number(limit.average);
-  const burst = Number(limit.burst);
-
-  assert.ok(Number.isInteger(average) && average >= 0, `average ${limit.average}`);
-
-  if (average === 0) {
+  if (limit.average === 0) {
     // Traefik's own meaning: no limit. The one-line recovery, which every
     // check passes on (runbook, section 7).
     return;
@@ -666,18 +1776,17 @@ test('the edge rate limit: its numbers never refuse what D201 lets one address t
   const mostAtOnce = 2 * 2 * perWindow;
   const mostPerSecond = (2 * perWindow) / windowSeconds;
 
-  assert.ok(burst >= mostAtOnce, `burst ${burst} is under ${mostAtOnce}`);
+  assert.ok(limit.burst >= mostAtOnce, `burst ${limit.burst} is under ${mostAtOnce}`);
   assert.ok(
-    average / seconds(limit.period) >= mostPerSecond,
-    `${average} per ${limit.period} is under ${mostPerSecond} a second`,
+    limit.average / seconds(limit.period) >= mostPerSecond,
+    `${limit.average} per ${limit.period} is under ${mostPerSecond} a second`,
   );
   // The issue's own floor, met many times over.
-  assert.ok(burst >= 2 * perWindow && average / seconds(limit.period) >= 21);
+  assert.ok(limit.burst >= 2 * perWindow && limit.average / seconds(limit.period) >= 21);
 });
 
 test("the edge rate limit: the measurement's Traefik carries the chart's numbers on the chart's paths (#205)", () => {
-  const { scope } = renderedIngress();
-  const limit = scope.Values.ingress.apiRateLimit;
+  const limit = apiRateLimit();
   const traefik = uncommented(readFileSync(fileURLToPath(MEASUREMENT_TRAEFIK), 'utf8'));
   const http = traefik.slice(traefik.indexOf('\nhttp:\n'), traefik.indexOf('\ntls:\n'));
   const routers = [...http.matchAll(/^ {4}([\w-]+):\n((?: {6}.*\n)+)/gm)]
@@ -710,570 +1819,24 @@ test("the edge rate limit: the measurement's Traefik carries the chart's numbers
 
   // The chart's numbers, unless the chart has the limit off (its recovery),
   // when the measurement keeps the numbers it measured.
-  if (limit.average !== '0') {
-    assert.equal(only(middleware, 'average'), limit.average);
+  if (limit.average !== 0) {
+    assert.equal(only(middleware, 'average'), String(limit.average));
     assert.equal(only(middleware, 'period'), limit.period);
-    assert.equal(only(middleware, 'burst'), limit.burst);
-  }
-});
-
-test('render: the actions the Ingress template uses, trimming as Go does, and any other refused', () => {
-  // A release whose name, namespace and chart differ, so that each is seen
-  // read from its own place.
-  const scope = {
-    Values: {
-      ingress: { host: 'h.test', none: '', tls: { enabled: 'true' }, off: 'false' },
-    },
-    Release: { Name: 'rel', Namespace: 'ns', Service: 'Helm' },
-    Chart: { Name: 'chart', Version: '1.0.0' },
-  };
-  const on = '{{ if .Values.ingress.tls.enabled }}';
-  const off = '{{ if .Values.ingress.off }}';
-
-  assert.equal(render('a: {{ .Values.ingress.host }}\n', scope), 'a: h.test\n');
-  // A string is true unless empty, as Go's `if` takes it: a second host is
-  // rendered when one is given (D275).
-  assert.equal(render('a{{ if .Values.ingress.host }}b{{ end }}c', scope), 'abc');
-  assert.equal(render('a{{ if .Values.ingress.none }}b{{ end }}c', scope), 'ac');
-  assert.equal(
-    render('x\n  {{- if .Values.ingress.tls.enabled }}\n  y\n  {{- end }}\nz', scope),
-    'x\n  y\nz',
-  );
-  assert.equal(render('x\n  {{- if .Values.ingress.off }}\n  y\n  {{- end }}\nz', scope), 'x\nz');
-  // Nested: an `if` inside a hidden one is hidden whatever its own value,
-  // and what follows the hidden one's end is shown again.
-  assert.equal(render(`a${off}b${on}c{{ end }}d{{ end }}e${on}f{{ end }}`, scope), 'aef');
-  assert.equal(render(`a${on}b${off}c{{ end }}d{{ end }}e`, scope), 'abde');
-  assert.equal(render(`${off}{{ .Values.ingress.missing }}{{ end }}`, scope), '');
-  assert.equal(
-    render('{{ .Release.Namespace }}-{{ include "qa-tools.name" . }}@k', scope),
-    'ns-rel@k',
-  );
-  assert.equal(
-    render('labels:\n    {{- include "qa-tools.labels" . | nindent 4 }}\n', scope),
-    'labels:\n    app.kubernetes.io/name: rel\n    app.kubernetes.io/instance: rel\n' +
-      '    app.kubernetes.io/managed-by: Helm\n    helm.sh/chart: chart-1.0.0\n',
-  );
-
-  for (const unknown of [
-    '{{ .Values.ingress.host | quote }}',
-    '{{ printf "%s" .Values.ingress.host }}',
-    '{{ include "qa-tools.imageTag" . }}',
-    '{{ include "qa-tools.labels" . | nindent 100 }}',
-    '{{ .Values.ingress.missing }}',
-    '{{ .Values.ingress.tls }}',
-    '{{ if .Values.ingress.host }}x',
-    '{{ end }}',
-    '{{ range .Values.ingress }}{{ end }}',
-    `${off}{{ printf "%s" .Values.ingress.host }}{{ end }}`,
-    '{{.Values.ingress.host}}',
-    '{{ .Values.ingress.host }',
-    'a }} b',
-  ]) {
-    assert.throws(() => render(unknown, scope), undefined, unknown);
-  }
-
-  // Hostile shapes, each answered as the rules above say.
-  const size = 10_000;
-
-  assert.throws(() => render('{{ '.repeat(size), scope));
-  assert.throws(() => render(`{{ ${'a'.repeat(size)}`, scope));
-  assert.throws(() => render(`${off}${' '.repeat(size)}`, scope));
-  assert.equal(render('{{ .Values.ingress.host }}'.repeat(size), scope), 'h.test'.repeat(size));
-  // Deep nesting, shown and hidden, and one end short.
-  assert.equal(render(`${on.repeat(size)}x${'{{ end }}'.repeat(size)}`, scope), 'x');
-  assert.equal(render(`${off.repeat(size)}x${'{{ end }}'.repeat(size)}`, scope), '');
-  assert.equal(
-    render(`${on}${off.repeat(size)}x${'{{ end }}'.repeat(size)}y{{ end }}`, scope),
-    'y',
-  );
-  assert.throws(() => render(`${on.repeat(size)}x${'{{ end }}'.repeat(size - 1)}`, scope));
-  // A long run of white space that does not end the text it trims.
-  assert.equal(
-    render(`${' '.repeat(size)}x ${'\t'.repeat(size)}{{- .Values.ingress.host }}`, scope),
-    `${' '.repeat(size)}xh.test`,
-  );
-  assert.equal(
-    render(`{{ .Values.ingress.host -}}${' \n'.repeat(size)}x${' '.repeat(size)}`, scope),
-    `h.testx${' '.repeat(size)}`,
-  );
-});
-
-test('ingressValues: reads the section as values.yaml writes it, and refuses a shape it cannot read', () => {
-  assert.deepEqual(
-    ingressValues(
-      "x: 1\ningress:\n  host: h # a comment\n  # a line\n  tls:\n    enabled: true\n    name: 'q'\n  rate:\n    average: 0\nnext:\n  host: no\n",
-    ),
-    { ingress: { host: 'h', tls: { enabled: 'true', name: 'q' }, rate: { average: '0' } } },
-  );
-  assert.throws(() => ingressValues('ingress:\n  hosts:\n    - a\n'));
-  assert.throws(() => ingressValues('ingress:\n  text: |\n    a\n'));
-  assert.throws(() => ingressValues('nothing: here\n'));
-
-  // Hostile lines, each answered as the rules above say.
-  const size = 10_000;
-
-  assert.throws(() => ingressValues(`ingress:\n  ${'a'.repeat(size)}`));
-  assert.throws(() => ingressValues(`ingress:\n  k: ${'-'.repeat(size)}`));
-  assert.deepEqual(ingressValues(`ingress:\n  k: a${' '.repeat(size)}b`), {
-    ingress: { k: `a${' '.repeat(size)}b` },
-  });
-  assert.deepEqual(ingressValues(`ingress:\n  k: a${' \t'.repeat(size)}# x`), {
-    ingress: { k: 'a' },
-  });
-});
-
-/** The pipeline, where the inspector's address is set (D274). */
-const PIPELINE = new URL('../.gitlab-ci.yml', import.meta.url);
-
-/** The top-level key `name` of a GitLab CI file, from its line to the next one's. */
-function pipelineKey(text, name) {
-  const start = text.indexOf(`\n${name}:\n`);
-
-  assert.ok(start >= 0, `${name} is not in the pipeline`);
-
-  const rest = text.slice(start + 1);
-  const end = rest.search(/\n(?![\s#])/);
-
-  return end < 0 ? rest : rest.slice(0, end + 1);
-}
-
-/** A line of `.inspector-address` setting `name`, and its value; `null` without one. */
-function addressLine(name, pipeline = readFileSync(PIPELINE, 'utf8')) {
-  return new RegExp(`^ {4}${name}: '(https://[a-z0-9.-]+)'\n`, 'm').exec(
-    pipelineKey(pipeline, '.inspector-address'),
-  );
-}
-
-/** The site's second host as the pipeline gives it to the chart (D275), `webhook.qa-tools.ru` today. */
-function pipelineAliasHost() {
-  const alias = addressLine('APP_ALIAS_ORIGIN');
-
-  assert.ok(alias, '.inspector-address sets no APP_ALIAS_ORIGIN');
-
-  return new URL(alias[1]).host;
-}
-
-test("the inspector's address: .gitlab-ci.yml names each origin once, and the frontend image, the chart, the environment and the smoke take them from there (#320, D274, D275)", () => {
-  const pipeline = readFileSync(PIPELINE, 'utf8');
-  const app = addressLine('APP_ORIGIN', pipeline);
-  const receive = addressLine('RECEIVE_ORIGIN', pipeline);
-  const alias = addressLine('APP_ALIAS_ORIGIN', pipeline);
-
-  // The three values, whatever they are: a change of address (#324) is these
-  // lines. Each passes the deploy job's own check, and nothing else in the
-  // pipeline outside comments names production or any of the hosts.
-  assert.ok(app && receive, '.inspector-address sets no APP_ORIGIN or RECEIVE_ORIGIN');
-  assert.ok(alias, '.inspector-address sets no APP_ALIAS_ORIGIN');
-  assert.equal(deployHosts(app[1], receive[1], alias[1]).status, 0);
-
-  const rest = uncommented(pipeline)
-    .replace(app[0], '')
-    .replace(receive[0], '')
-    .replace(alias[0], '');
-
-  for (const name of [
-    'qa-tools.ru',
-    new URL(app[1]).host,
-    new URL(receive[1]).host,
-    new URL(alias[1]).host,
-  ]) {
-    assert.ok(!rest.includes(name), `the pipeline names ${name} outside .inspector-address`);
-  }
-  // Not global: the test jobs' backend expects them unset. The comments
-  // before .inspector-address, which this key's text runs into, may name them.
-  assert.doesNotMatch(uncommented(pipelineKey(pipeline, 'variables')), /ORIGIN/);
-
-  const image = pipelineKey(pipeline, '.image');
-  const frontend = pipelineKey(pipeline, 'image:frontend');
-
-  assert.equal(image.split('docker build --pull $BUILD_ARGS -f ').length - 1, 2);
-  assert.equal(image.split('docker build').length - 1, 2);
-  assert.match(image, /^ {2}extends: \.inspector-address$/m);
-  assert.match(frontend, /^ {2}extends: \.image$/m);
-  assert.match(
-    frontend,
-    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'$/m,
-  );
-  for (const job of ['image:backend', 'image:postgres']) {
-    assert.doesNotMatch(pipelineKey(pipeline, job), /BUILD_ARGS/, job);
-  }
-
-  const dockerfile = readFileSync(new URL('../apps/frontend/Dockerfile', import.meta.url), 'utf8');
-  const build = dockerfile.indexOf('RUN npm run build');
-
-  for (const argument of ['ARG APP_ORIGIN\n', 'ARG RECEIVE_ORIGIN\n', 'ARG APP_ALIAS_ORIGIN\n']) {
-    const at = dockerfile.indexOf(`\n${argument}`);
-
-    assert.ok(at > dockerfile.indexOf('RUN npm ci') && at < build, argument);
-  }
-
-  const deploy = pipelineKey(pipeline, 'deploy');
-
-  assert.match(deploy, /^ {2}extends: \.inspector-address$/m);
-  assert.match(deploy, /^ {2}environment:\n {4}name: production\n {4}url: \$APP_ORIGIN$/m);
-  for (const value of [
-    'ingress.host="${APP_ORIGIN#https://}"',
-    'ingress.aliasHost="${APP_ALIAS_ORIGIN#https://}"',
-    'receive.host="${RECEIVE_ORIGIN#https://}"',
-    'alerts.siteUrl="$APP_ORIGIN"',
-  ]) {
-    assert.equal(deploy.split(`--set-string ${value}\n`).length - 1, 1, value);
-  }
-  assert.ok(deploy.indexOf('for name in') < deploy.indexOf('- helm upgrade --install'));
-
-  const smoke = pipelineKey(pipeline, 'deployment-smoke');
-
-  assert.match(smoke, /^ {2}extends: \.inspector-address$/m);
-  assert.ok(
-    smoke.includes(
-      '- node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN"\n',
-    ),
-  );
-  // Room for the second host's certificate wait, about 5 minutes, and the
-  // checks after it (D275).
-  assert.match(smoke, /^ {2}timeout: 10m$/m);
-});
-
-/**
- * The deploy job's check of the origins, as the runner's shell runs it: the
- * first item of its script, the pattern of a label too long included (#340).
- */
-function originCheck() {
-  const deploy = pipelineKey(readFileSync(PIPELINE, 'utf8'), 'deploy');
-  const block = /\n( +)script:\n\1 {2}- \|\n((?:\1 {4}[^\n]*\n)+)/.exec(deploy);
-
-  assert.ok(
-    block?.[2].includes('for name in APP_ORIGIN RECEIVE_ORIGIN APP_ALIAS_ORIGIN; do\n'),
-    'the deploy job checks no origin',
-  );
-
-  return block[2]
-    .split('\n')
-    .map((line) => line.slice(block[1].length + 4))
-    .join('\n');
-}
-
-/**
- * The check's exit status, the hosts the chart would be given - the site's,
- * the receive host's and, when there is a second site origin, its host - and
- * what it printed, under `shell`: `sh` as the runner's image has it, or
- * `bash`.
- */
-function deployHosts(appOrigin, receiveOrigin, aliasOrigin = '', shell = 'sh') {
-  const run = spawnSync(
-    shell,
-    [
-      '-c',
-      `${originCheck()}printf '%s %s' "\${APP_ORIGIN#https://}" "\${RECEIVE_ORIGIN#https://}"; ` +
-        `if [ -n "\${APP_ALIAS_ORIGIN#https://}" ]; then printf ' %s' "\${APP_ALIAS_ORIGIN#https://}"; fi`,
-    ],
-    {
-      env: {
-        PATH: process.env.PATH,
-        APP_ORIGIN: appOrigin,
-        RECEIVE_ORIGIN: receiveOrigin,
-        APP_ALIAS_ORIGIN: aliasOrigin,
-      },
-    },
-  );
-
-  return run.status === 0
-    ? { status: 0, hosts: run.stdout.toString() }
-    : { status: run.status, output: `${run.stdout}${run.stderr}` };
-}
-
-/** The deploy job's refusal of `name`, which names it and never its value. */
-const refusalOf = (name) =>
-  `${name} must be https:// and a host name alone; its value is not printed\n`;
-
-test("the deploy job's check of the two origins passes production's, giving the chart the hosts values.yaml has, and refuses anything but https:// and a host name (D274)", () => {
-  const values = readFileSync(VALUES, 'utf8');
-  const valueOf = (pattern) => pattern.exec(values)?.[1];
-
-  // Production's two origins give the chart the hosts its own values name,
-  // so production renders as it did before the deploy job set them.
-  assert.deepEqual(deployHosts('https://qa-tools.ru', 'https://hook.qa-tools.ru'), {
-    status: 0,
-    hosts: `${valueOf(/^ingress:\n(?: +#[^\n]*\n)* +host: (\S+)$/m)} ${valueOf(/^receive:\n(?: +#[^\n]*\n)* +host: (\S+)$/m)}`,
-  });
-  assert.equal(valueOf(/^ {2}siteUrl: (\S+)$/m), 'https://qa-tools.ru');
-  assert.deepEqual(deployHosts('https://inspector.example', 'https://hook.inspector.example'), {
-    status: 0,
-    hosts: 'inspector.example hook.inspector.example',
-  });
-
-  for (const origin of [
-    '',
-    'qa-tools.ru',
-    'http://qa-tools.ru',
-    'https://',
-    'https://qa-tools.ru/',
-    'https://qa-tools.ru/path',
-    'https://qa-tools.ru:443',
-    'https://Qa-Tools.ru',
-    'https://qa-tools.ru?x=1',
-    'https://user@qa-tools.ru',
-    'https://a b',
-    'https://a\nb',
-    'https://$(touch x)',
-    'https://*',
-    'https://https://qa-tools.ru',
-  ]) {
-    assert.deepEqual(
-      deployHosts(origin, 'https://hook.qa-tools.ru'),
-      { status: 1, output: refusalOf('APP_ORIGIN') },
-      JSON.stringify(origin),
-    );
-    assert.deepEqual(
-      deployHosts('https://qa-tools.ru', origin),
-      { status: 1, output: refusalOf('RECEIVE_ORIGIN') },
-      JSON.stringify(origin),
-    );
-  }
-
-  // A credential pasted into either value is not in the job's output, under
-  // either shell, and neither is anything else of the value.
-  const secret = 'Zq7xK2mW9pL4vN8';
-
-  for (const shell of ['sh', 'bash']) {
-    for (const origin of [
-      `https://user:${secret}@inspector.example`,
-      `https://${secret}@inspector.example`,
-      `https://inspector.example/?token=${secret}`,
-      `https://inspector.example\n${secret}`,
-      `${secret}`,
-    ]) {
-      const app = deployHosts(origin, 'https://hook.inspector.example', '', shell);
-      const receive = deployHosts('https://inspector.example', origin, '', shell);
-      const alias = deployHosts(
-        'https://inspector.example',
-        'https://hook.inspector.example',
-        origin,
-        shell,
-      );
-
-      assert.deepEqual(app, { status: 1, output: refusalOf('APP_ORIGIN') }, `${shell} ${origin}`);
-      assert.deepEqual(receive, { status: 1, output: refusalOf('RECEIVE_ORIGIN') }, shell);
-      assert.deepEqual(alias, { status: 1, output: refusalOf('APP_ALIAS_ORIGIN') }, shell);
-      assert.ok(
-        !app.output.includes(secret) &&
-          !receive.output.includes(secret) &&
-          !alias.output.includes(secret),
-        shell,
-      );
-    }
-  }
-
-  // At growing sizes, a long host of many labels passes and the same with
-  // one character more than a host has is refused.
-  for (const size of [10, 1000, 100_000]) {
-    const host = `${'a.'.repeat(size / 2)}example`;
-
-    assert.deepEqual(deployHosts(`https://${host}`, 'https://hook.example'), {
-      status: 0,
-      hosts: `${host} hook.example`,
-    });
-    assert.deepEqual(deployHosts(`https://${host}/`, 'https://hook.example'), {
-      status: 1,
-      output: refusalOf('APP_ORIGIN'),
-    });
-    assert.deepEqual(deployHosts('https://example', `https://${'/'.repeat(size)}`), {
-      status: 1,
-      output: refusalOf('RECEIVE_ORIGIN'),
-    });
-    assert.deepEqual(
-      deployHosts(`https://user:${'s'.repeat(size)}@example`, 'https://hook.example'),
-      {
-        status: 1,
-        output: refusalOf('APP_ORIGIN'),
-      },
-    );
-  }
-});
-
-test("the deploy job's check of the second site origin: empty is none, production's passes, and anything but https:// and a host name of its own is refused (#319, D275)", () => {
-  const app = 'https://qa-tools.ru';
-  const receive = 'https://hook.qa-tools.ru';
-
-  // None: the chart is given the two hosts alone and an empty aliasHost.
-  assert.deepEqual(deployHosts(app, receive, ''), {
-    status: 0,
-    hosts: 'qa-tools.ru hook.qa-tools.ru',
-  });
-  assert.deepEqual(deployHosts(app, receive, `https://${pipelineAliasHost()}`), {
-    status: 0,
-    hosts: `qa-tools.ru hook.qa-tools.ru ${pipelineAliasHost()}`,
-  });
-  assert.deepEqual(
-    deployHosts(
-      'https://inspector.example',
-      'https://hook.inspector.example',
-      'https://next.example',
-    ),
-    { status: 0, hosts: 'inspector.example hook.inspector.example next.example' },
-  );
-
-  // The site's own origin or the receive host's is no second host.
-  for (const same of [app, receive]) {
-    assert.deepEqual(deployHosts(app, receive, same), {
-      status: 1,
-      output: 'APP_ALIAS_ORIGIN must name a host of its own; its value is not printed\n',
-    });
-  }
-
-  for (const origin of [
-    ' ',
-    'webhook.qa-tools.ru',
-    'http://webhook.qa-tools.ru',
-    'https://',
-    'https://webhook.qa-tools.ru/',
-    'https://webhook.qa-tools.ru:443',
-    'https://Webhook.qa-tools.ru',
-    'https://webhook.qa-tools.ru?x=1',
-    'https://user@webhook.qa-tools.ru',
-    'https://a b',
-    'https://a\nb',
-    'https://$(touch x)',
-    'https://*',
-    'https://https://webhook.qa-tools.ru',
-  ]) {
-    assert.deepEqual(
-      deployHosts(app, receive, origin),
-      { status: 1, output: refusalOf('APP_ALIAS_ORIGIN') },
-      JSON.stringify(origin),
-    );
-  }
-
-  // At growing sizes, a long host of many labels passes and one character
-  // more is refused.
-  for (const size of [10, 1000, 100_000]) {
-    const host = `${'w.'.repeat(size / 2)}example`;
-
-    assert.deepEqual(deployHosts(app, receive, `https://${host}`), {
-      status: 0,
-      hosts: `qa-tools.ru hook.qa-tools.ru ${host}`,
-    });
-    assert.deepEqual(deployHosts(app, receive, `https://${host}/`), {
-      status: 1,
-      output: refusalOf('APP_ALIAS_ORIGIN'),
-    });
-    assert.deepEqual(deployHosts(app, receive, `https://${'/'.repeat(size)}`), {
-      status: 1,
-      output: refusalOf('APP_ALIAS_ORIGIN'),
-    });
-  }
-});
-
-test("the deploy job's check refuses a host that is no host name under sh and bash, with its line, and passes production's three origins (#340)", () => {
-  const production = ['APP_ORIGIN', 'RECEIVE_ORIGIN', 'APP_ALIAS_ORIGIN'].map((name) => {
-    const line = addressLine(name);
-
-    assert.ok(line, `.inspector-address sets no ${name}`);
-
-    return line[1];
-  });
-  const hostsOf = (origins) => origins.map((origin) => new URL(origin).host).join(' ');
-  const app = 'https://inspector.example';
-  const receive = 'https://hook.inspector.example';
-  // Each of the three variables given `origin`, the other two good, under `shell`.
-  const refusedEverywhere = (origin, shell) => {
-    assert.deepEqual(
-      deployHosts(origin, receive, '', shell),
-      { status: 1, output: refusalOf('APP_ORIGIN') },
-      `${shell} APP_ORIGIN ${JSON.stringify(origin.slice(0, 80))}`,
-    );
-    assert.deepEqual(
-      deployHosts(app, origin, '', shell),
-      { status: 1, output: refusalOf('RECEIVE_ORIGIN') },
-      `${shell} RECEIVE_ORIGIN ${JSON.stringify(origin.slice(0, 80))}`,
-    );
-    assert.deepEqual(
-      deployHosts(app, receive, origin, shell),
-      { status: 1, output: refusalOf('APP_ALIAS_ORIGIN') },
-      `${shell} APP_ALIAS_ORIGIN ${JSON.stringify(origin.slice(0, 80))}`,
-    );
-  };
-  const passed = (origin, shell) =>
-    assert.deepEqual(
-      deployHosts(app, receive, origin, shell),
-      { status: 0, hosts: hostsOf([app, receive, origin]) },
-      `${shell} ${JSON.stringify(origin.slice(0, 80))}`,
-    );
-
-  for (const shell of ['sh', 'bash']) {
-    // Production's values, as .inspector-address sets them, give the chart
-    // their hosts as before.
-    assert.deepEqual(deployHosts(...production, shell), {
-      status: 0,
-      hosts: hostsOf(production),
-    });
-
-    // An empty label, a dot or a hyphen at either end, a hyphen beside a
-    // dot, and a label of 64 characters or more.
-    for (const origin of [
-      'https://-',
-      'https://.',
-      'https://a..b',
-      'https://a.b.',
-      'https://-a.example',
-      'https://a-.example',
-      'https://..',
-      'https://.a',
-      'https://a.-b',
-      'https://a.b-',
-      'https://--',
-      `https://${'a'.repeat(64)}`,
-      `https://${'a'.repeat(64)}.example`,
-      `https://a.${'b'.repeat(64)}`,
-      `https://a.${'b'.repeat(64)}.example`,
-    ]) {
-      refusedEverywhere(origin, shell);
-    }
-
-    // Host names: labels of 63, inner hyphens two at a time, digits, punycode.
-    for (const origin of [
-      `https://${'a'.repeat(63)}.${'b'.repeat(63)}.example`,
-      'https://a--b.0.example',
-      'https://xn--e1afmkfd.xn--p1ai',
-      'https://a1.b2',
-      'https://x',
-    ]) {
-      passed(origin, shell);
-    }
-
-    // At growing sizes, hosts built to break the rule: one long label, a run
-    // of dots or of hyphens, many labels with a trailing dot, an empty label,
-    // a hyphen at either end of each, or a last label of 64; and many labels
-    // of 63 with no dot missing, which pass.
-    for (const size of [10, 1000, 100_000]) {
-      const many = 'a.'.repeat(size / 2);
-
-      refusedEverywhere(`https://${'a'.repeat(64 + size)}.example`, shell);
-      refusedEverywhere(`https://${'.'.repeat(size)}`, shell);
-      refusedEverywhere(`https://${'-'.repeat(size)}`, shell);
-      refusedEverywhere(`https://${many}`, shell);
-      refusedEverywhere(`https://${many}.a`, shell);
-      refusedEverywhere(`https://${'a-.'.repeat(Math.ceil(size / 3))}example`, shell);
-      refusedEverywhere(`https://${'-a.'.repeat(Math.ceil(size / 3))}example`, shell);
-      refusedEverywhere(`https://${many}${'b'.repeat(64)}`, shell);
-      passed(`https://${many}example`, shell);
-      passed(`https://${`${'a'.repeat(63)}.`.repeat(Math.ceil(size / 64))}example`, shell);
-    }
+    assert.equal(only(middleware, 'burst'), String(limit.burst));
   }
 });
 
 test("the second site host: two Ingresses of its own with the first host's paths, a certificate of its own, noindex on every router and the edge rate limit on the API's, and the first host's Ingresses as they were (#319, D275)", () => {
-  const aliasHost = pipelineAliasHost();
-  const without = renderedIngress();
-  const { scope, documents } = renderedIngress(RELEASE, { aliasHost });
-  const kinds = documents.map((document) => /^kind: (\S+)$/m.exec(document)?.[1]);
+  const aliasHost = 'webhook.qa-tools.ru';
+  const without = renderedIngress({ DEPLOY_APP_ALIAS_ORIGIN: '' });
+  const { documents } = renderedIngress();
 
-  assert.equal(aliasHost, 'webhook.qa-tools.ru');
-  assert.equal(without.scope.Values.ingress.aliasHost, '', 'values.yaml gives no second host');
-  assert.deepEqual(kinds, ['Ingress', 'Ingress', 'Middleware', 'Ingress', 'Ingress', 'Middleware']);
+  assert.deepEqual(
+    documents.map((each) => each.kind),
+    ['Ingress', 'Ingress', 'Middleware', 'Ingress', 'Ingress', 'Middleware'],
+  );
 
-  // The first host renders byte for byte as it does with no second host: its
+  // The first host renders as it does with no second host: its
   // certificate's hosts are unchanged, so it is not reissued, and neither
   // the noindex middleware nor anything else of the second host reaches it.
   assert.deepEqual(documents.slice(0, 3), without.documents);
@@ -1281,63 +1844,60 @@ test("the second site host: two Ingresses of its own with the first host's paths
   const [api, site] = documents.slice(0, 2).map(ingressOf);
   const [aliasApi, aliasSite] = documents.slice(3, 5).map(ingressOf);
   const noindex = documents[5];
-  const noindexName = /^metadata:\n {2}name: (\S+)$/m.exec(noindex)[1];
-  const host = scope.Values.ingress.host;
+  const host = 'qa-tools.ru';
 
   assert.deepEqual(
-    [aliasApi.name, aliasSite.name, noindexName],
+    [aliasApi.name, aliasSite.name, noindex.metadata.name],
     ['qa-tools-alias-api', 'qa-tools-alias', 'qa-tools-noindex'],
   );
 
   // Every answer on the second host carries X-Robots-Tag: noindex: the
   // middleware sets that one response header and does nothing else.
-  assert.match(noindex, /^apiVersion: traefik\.io\/v1alpha1$/m);
-  assert.match(
-    noindex,
-    /^spec:\n {2}headers:\n {4}customResponseHeaders:\n {6}X-Robots-Tag: noindex\n?$/m,
-  );
-  assert.equal(noindex.slice(noindex.indexOf('\nspec:\n')).trim().split('\n').length, 4);
+  assert.equal(noindex.apiVersion, 'traefik.io/v1alpha1');
+  assert.deepEqual(noindex.spec, {
+    headers: { customResponseHeaders: { 'X-Robots-Tag': 'noindex' } },
+  });
 
   // noindex on both of the second host's Ingresses, first, so that the edge
   // rate limit's own 429 carries it; the rate limit on the API's alone; the
   // certificate asked for by the site's alone.
   assert.deepEqual(aliasApi.annotations, {
     'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
-    'traefik.ingress.kubernetes.io/router.middlewares': `qa-tools-${noindexName}@kubernetescrd,qa-tools-qa-tools-api-rate-limit@kubernetescrd`,
+    'traefik.ingress.kubernetes.io/router.middlewares':
+      'qa-tools-qa-tools-noindex@kubernetescrd,qa-tools-qa-tools-api-rate-limit@kubernetescrd',
   });
   assert.deepEqual(aliasSite.annotations, {
     'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
-    'traefik.ingress.kubernetes.io/router.middlewares': `qa-tools-${noindexName}@kubernetescrd`,
+    'traefik.ingress.kubernetes.io/router.middlewares': 'qa-tools-qa-tools-noindex@kubernetescrd',
     'cert-manager.io/cluster-issuer': 'letsencrypt-production',
   });
   for (const first of [api, site]) {
     assert.ok(
       !(first.annotations['traefik.ingress.kubernetes.io/router.middlewares'] ?? '').includes(
-        noindexName,
+        'noindex',
       ),
       first.name,
     );
   }
 
   // The references are the namespace's, as the rate limit's are.
-  const elsewhere = renderedIngress({ ...RELEASE, Namespace: 'elsewhere' }, { aliasHost });
+  const elsewhere = renderedIngress({}, 'elsewhere');
 
   assert.equal(
     ingressOf(elsewhere.documents[4]).annotations[
       'traefik.ingress.kubernetes.io/router.middlewares'
     ],
-    `elsewhere-${noindexName}@kubernetescrd`,
+    'elsewhere-qa-tools-noindex@kubernetescrd',
   );
 
   // Its own host, and a certificate of its own for that host alone, beside
   // the first host's; the first host's Ingresses name the first host alone.
-  assert.deepEqual(aliasApi.hosts, [aliasHost]);
-  assert.deepEqual(aliasSite.hosts, [aliasHost]);
-  assert.deepEqual(aliasApi.tlsHosts, [aliasHost]);
-  assert.deepEqual(aliasSite.tlsHosts, [aliasHost]);
+  assert.deepEqual(
+    [aliasApi.hosts, aliasSite.hosts, aliasApi.tlsHosts, aliasSite.tlsHosts],
+    [[aliasHost], [aliasHost], [aliasHost], [aliasHost]],
+  );
   assert.equal(aliasSite.secretName, 'webhook-qa-tools-tls');
   assert.equal(aliasApi.secretName, aliasSite.secretName);
-  assert.notEqual(aliasSite.secretName, site.secretName);
   for (const first of [api, site]) {
     assert.deepEqual(first.hosts, [host]);
     assert.deepEqual(first.tlsHosts, [host]);
@@ -1351,9 +1911,7 @@ test("the second site host: two Ingresses of its own with the first host's paths
   // Traefik ranks the second host's routers by their rules' lengths, as the
   // first's: Host(`webhook.qa-tools.ru`) && PathPrefix(`/`) is 46, and every
   // backend path's rule is longer.
-  const catchAll = ruleOf(aliasHost, aliasSite.paths.at(-1));
-
-  assert.equal(catchAll.length, 46);
+  assert.equal(ruleOf(aliasHost, aliasSite.paths.at(-1)).length, 46);
   assert.deepEqual(
     [...aliasApi.paths, ...aliasSite.paths.slice(0, -1)].map(
       (path) => ruleOf(aliasHost, path).length,
@@ -1362,13 +1920,20 @@ test("the second site host: two Ingresses of its own with the first host's paths
   );
 
   // Without TLS, a render on its own: no certificate is asked for or named.
-  const plain = renderedIngress(RELEASE, {
-    aliasHost,
-    tls: { ...scope.Values.ingress.tls, enabled: 'false' },
+  const plain = renderChart(CHART_DIR, {
+    release: 'inspector',
+    set: {
+      ...NEUTRAL,
+      'ingress.aliasHost': 'next.inspector.example',
+      'ingress.tls.enabled': false,
+    },
   });
 
-  for (const document of plain.documents.filter((each) => /^kind: Ingress$/m.test(each))) {
-    assert.doesNotMatch(document, /tls:|secretName|cert-manager/);
+  for (const document of fileDocuments(plain, 'templates/ingress.yaml').filter(
+    (each) => each.kind === 'Ingress',
+  )) {
+    assert.equal(document.spec.tls, undefined);
+    assert.ok(!('cert-manager.io/cluster-issuer' in (document.metadata.annotations ?? {})));
   }
 });
 
@@ -1383,9 +1948,10 @@ test('the backend is given the second site origin as APP_ALIAS_ORIGIN when there
   assert.equal(text.split('.Values.ingress.aliasHost').length - 1, 2);
   assert.equal(text.split('APP_ALIAS_ORIGIN').length - 1, 1);
 
-  // No other template reads it but the Ingresses'.
+  // No other template reads it but the Ingresses' and the helper naming the
+  // second host's certificate.
   for (const name of readdirSync(fileURLToPath(TEMPLATES)).filter(
-    (each) => each !== 'ingress.yaml' && each !== 'backend.yaml',
+    (each) => !['ingress.yaml', 'backend.yaml', '_helpers.tpl'].includes(each),
   )) {
     assert.doesNotMatch(
       readFileSync(fileURLToPath(new URL(name, TEMPLATES)), 'utf8'),
