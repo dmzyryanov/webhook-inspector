@@ -293,16 +293,7 @@ image:postgres:
     NAMED_TAG: $POSTGRES_IMAGE_TAG
   # Built only when its Dockerfile changes. The chart pins this image by a tag a
   # human sets, so a routine deployment never restarts the database (D084).
-  #
-  # Except once: the first pipeline on main, the one whose previous commit is
-  # this repository's empty start, 8ac8b0b, finds deploy/postgres/ new and
-  # would build the image afresh, which never matches the tag copied by digest
-  # from qa-tools' registry before the import (#326), and fail. It reuses that
-  # copy instead. Any later change under deploy/postgres/ builds and compares
-  # as before (D084).
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_BEFORE_SHA == '8ac8b0bb17578fd8d1e672e51cea8bb22647cf8f'
-      when: never
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
       changes:
         - deploy/postgres/**/*
@@ -328,6 +319,8 @@ deploy:
   # serialises deployments but does not stop a running one being cancelled, and
   # a helm client killed mid-upgrade leaves the release in pending-upgrade,
   # where the next deployment refuses to start until someone clears it by hand.
+  # scripts/ci-runners.test.mjs fails when this line goes or another job of
+  # the pipeline files declares it (D216).
   interruptible: false
   environment:
     name: production
