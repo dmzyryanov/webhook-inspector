@@ -3860,7 +3860,10 @@ the start and the end of the series:
 | the same run and eight busy loops, `node -e 'for(;;){}'` | 9.5 to 17.2 | 60 | 72.6 / 96.2 / 268.0 | 26 | 0 | 0 |
 | sixteen busy loops | 11.4 to 15.0 | 40 | 67.7 / 153.3 / 229.5 | 29 | 0 | 0 |
 
-The slowest body was `[` in every round. The suite run under that load, at
+The slowest body was `[` in every round. The full-run row's minimum, 31.9 ms,
+is one round of its 60, the eighth, where every other round read 63 ms or
+more, and is under the 66.8 ms of the row with nothing beside it; why is not
+known. The suite run under that load, at
 the fix's file with the bound at 500 ms, an intermediate value, gave
 `ℹ tests 3407`, `ℹ pass 3406`, `ℹ fail 1`: this file passed, the bodies case
 in 251 ms for all ten bodies, and
@@ -3884,6 +3887,19 @@ Each doubling multiplies the time by about four, as n² does. The fastest
 quadratic reading of 1 MiB built here, 7.6 s, is over 1000 ms on every run,
 and a busier machine only slows it further.
 
+The script is not kept in the tree. Its reader for the `indexOf` row, given
+the body decoded as UTF-8 in `text`, was:
+
+```js
+let found = 0;
+for (let i = 0; i < text.length; i += 1) {
+  if (text.charCodeAt(i) === 0x5b && text.indexOf(']', i + 1) !== -1) found += 1;
+}
+```
+
+The `Buffer` row searched the bytes with `body.indexOf(0x5d, i + 1)` in its
+place, and the `charCodeAt` row a loop over `j` from `i + 1` to the end.
+
 ### The fix
 
 `BOUND_MS` is 1000 ms, for every check of the file: 3.7 times this check's
@@ -3893,8 +3909,13 @@ hostile-input files, would be 1.9 times the worst loaded reading; this check
 takes 75 ms alone, where the slowest cut of `captured.test.ts`, by its
 comment, takes about 3 ms against its 200 ms. The checks that tell a
 quadratic reading from a linear one are the 1 MiB ones, where a quadratic
-reading takes seconds; at 64 KiB the `indexOf` reading took 23 ms, under
-100 ms and 1000 ms alike. The names of the `Origin`, URL and `Accept` cases
+reading that searches from every byte, or every few bytes, takes seconds;
+at 64 KiB the `indexOf` reading took 23 ms, under 100 ms and 1000 ms alike.
+A quadratic reading that searches once per larger unit is not told apart at
+1000 ms: in the runs of #363's tester at 1 MiB, one search per 41-byte
+element of the batch body took 188 ms and one per 16-character `Accept`
+item 491 ms, over the old 100 ms and under 1000 ms. A bound that holds the
+loaded readings above gives those up. The names of the `Origin`, URL and `Accept` cases
 carry the bound and read `within 1000 ms`.
 
 No test holds that a quadratic reading fails the bound: one reading of 1 MiB
