@@ -35,9 +35,16 @@ const SIZES = [1024, 64 * 1024, 1024 * 1024];
 
 /**
  * Milliseconds one check of a hostile value may take, at best of up to five
- * runs. The slowest such check takes about 30 ms on a developer's machine.
+ * runs: 1000, above the 500 of most of the suite's hostile input, as the
+ * slowest check here - `parseMessage` on 1 MiB of `[`, a level of nesting a
+ * byte for V8's own JSON.parse - takes 67 to 80 ms alone on the agents'
+ * server, and up to 268 ms there beside the full backend suite and eight busy
+ * processes; two loaded suite runs took it to 109 and 154 ms, over the 100 ms
+ * of before #363. A quadratic reading of the same body, each `[` searched to
+ * the end for its `]` with V8's own `indexOf`, takes 7.6 s: over the bound on
+ * every run (`docs/testing/flakes.md`, F-24).
  */
-const BOUND_MS = 100;
+const BOUND_MS = 1000;
 
 function json(value: unknown): Buffer {
   return Buffer.from(JSON.stringify(value), 'utf8');
