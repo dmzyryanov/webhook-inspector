@@ -1,0 +1,85 @@
+# Customises the Traefik that k3s packages (D083).
+#
+# k3s applies anything in /var/lib/rancher/k3s/server/manifests/ and merges a
+# HelmChartConfig into its own HelmChart, so the packaged component stays
+# managed by k3s and still carries these values across restarts and upgrades:
+#
+#   sudo install -m 600 deploy/cluster/traefik-config.yaml \
+#     /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        http:
+          redirections:
+            # Plain HTTP is answered with a permanent redirect to HTTPS.
+            # ingress-nginx did this on its own once an Ingress carried TLS;
+            # Traefik does not, and without it the application would be served
+            # unencrypted to anyone who typed the bare host.
+            #
+            # Priority 100 rather than Traefik's default MaxInt-1 (D187). The
+            # HTTP-01 challenge of hook.qa-tools.ru cannot follow the redirect:
+            # on websecure that host is a TCP route to the backend's receive
+            # listener, which would answer the challenge itself. So
+            # cert-manager's temporary solver route has to win on web, and
+            # Traefik refuses a user-defined priority above MaxInt-1000.
+            # Traefik ranks an Ingress route by the length of its rule: a
+            # solver's rule (Host + the 70-odd character challenge path) is
+            # over 100, every application route is under 50
+            # (Host(`qa-tools.ru`) && PathPrefix(`/api/`) is 42). The
+            # application's Ingress is also pinned to websecure; this value
+            # keeps plain HTTP redirected even if a rollback removes that pin.
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+              priority: 100
+        # The time Traefik allows for reading a whole request, body included,
+        # pinned at the value it already had, Traefik's own default of 60 s: no
+        # behaviour changes (D172). A client that declares a body and then
+        # stalls is dropped here after 60 s, before the backend's 90 s
+        # requestTimeout, which is only the backstop for paths without Traefik.
+        # It is written out because the default belongs to Traefik and the
+        # chart, and a k3s upgrade that moves either must not change this bound
+        # silently. The key is confirmed against the packaged chart
+        # 40.1.4+up40.1.0; websecure below carries the same value.
+        transport:
+          respondingTimeouts:
+            readTimeout: 60s
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 60s
+    # The access log stays off, which is Traefik's default. A request URL
+    # contains the session id, and that id is the access key to a session
+    # (D004), so logging it here would defeat the redaction the backend applies
+    # to its own log (D059).
+    logs:
+      access:
+        enabled: false
+    # External connections must reach Traefik carrying the sender's own address
+    # (D111). Under the chart default, Cluster, kube-proxy may forward such a
+    # connection to an endpoint on any node, so it masquerades the source
+    # before Traefik sees it: the Stage 0 probe of 2026-09-18 arrived as
+    # X-Forwarded-For: 10.42.0.1, the node's pod-network gateway and not the
+    # sender. Local forwards only to endpoints on the node that received the
+    # packet, which ends that masquerade, so the real address reaches Traefik
+    # and the X-Forwarded-For and X-Real-Ip it writes. The values key is
+    # confirmed against the packaged chart 40.1.4+up40.1.0, whose
+    # templates/_service.tpl spreads service.spec verbatim into the Service
+    # spec with toYaml, so Helm merges it with the chart's own
+    # service.spec.type: LoadBalancer. Local also drops, rather than forwards,
+    # traffic arriving at a node that carries no Traefik pod, so a second node
+    # must carry one or never receive public traffic (runbook section 4).
+    # Traefik's forwardedHeaders default stays untouched, as either trustedIPs
+    # or insecure would hand the guarantee to the sender (D111). The procedure
+    # and its verification are in the operator's runbook for this setting, kept
+    # outside this repository.
+    service:
+      spec:
+        externalTrafficPolicy: Local

@@ -1,0 +1,17 @@
+# Installed dependencies are recreated inside the image from the lock file, and
+# copying host ones in would mix platforms and defeat layer caching.
+node_modules
+**/node_modules
+**/dist
+
+.git
+.gitlab-ci.yml
+.env
+.env.*
+!.env.example
+
+docs
+deploy/cluster
+*.md
+# The changelog is the frontend's source for /changelog and /changelog.md (D184).
+!CHANGELOG.md

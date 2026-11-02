@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/qa-tools-mark.svg" />
+    <title>Webhook Inspector — проверка вебхуков</title>
+    <meta
+      name="description"
+      content="Создайте временный адрес и смотрите входящие вебхуки и HTTP-запросы в реальном времени. Без регистрации и настройки."
+    />
+    <link rel="canonical" href="https://qa-tools.ru/ru/" />
+    <link rel="alternate" hreflang="en" href="https://qa-tools.ru/" />
+    <link rel="alternate" hreflang="ru" href="https://qa-tools.ru/ru/" />
+    <link rel="alternate" hreflang="x-default" href="https://qa-tools.ru/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Webhook Inspector" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Webhook Inspector — проверка вебхуков" />
+    <meta
+      property="og:description"
+      content="Создайте временный адрес и смотрите входящие вебхуки и HTTP-запросы в реальном времени. Без регистрации и настройки."
+    />
+    <meta property="og:url" content="https://qa-tools.ru/ru/" />
+    <meta property="og:image" content="https://qa-tools.ru/logo-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Логотип Webhook Inspector" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" />
+  </head>
+  <body>
+    <noscript>
+      <h1>Проверяйте вебхуки мгновенно.</h1>
+      <p>
+        Создайте временный адрес и смотрите входящие HTTP-запросы в реальном времени. Без
+        регистрации и настройки.
+      </p>
+      <ol>
+        <li>
+          Создайте адрес — Временный адрес для приёма появится сразу. Всё, что он принимает, видит
+          любой, у кого есть ссылка, поэтому не отправляйте на него чувствительные боевые данные.
+        </li>
+        <li>Отправьте запросы — Из Postman, CI, вебхуков или любого HTTP-клиента.</li>
+        <li>Смотрите вживую — Метод, заголовки, параметры, тело, IP, размер и время.</li>
+      </ol>
+      <p>
+        Агентам и скриптам: читайте <a href="/llms.txt">/llms.txt</a> — полное руководство в
+        <a href="/llms-full.txt">/llms-full.txt</a> (на английском).
+      </p>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

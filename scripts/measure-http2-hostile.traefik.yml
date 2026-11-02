@@ -1,0 +1,40 @@
+# Traefik's dynamic configuration for the HTTP/2 hostile measurement of issue
+# #208 (D266, scripts/measure-http2-hostile.compose.yml): the same as the
+# connection measurement's (scripts/measure-connections.traefik.yml, D227),
+# with the receive host a TCP router on HostSNI, TLS ending at Traefik and a
+# servers transport that writes a PROXY protocol v2 header in front of every
+# connection to the backend's receive listener.
+#
+# The TCP route pipes the decrypted bytes on to the backend without parsing
+# them, so a client that sends the HTTP/2 preface inside TLS - as a prior
+# knowledge h2c client does, whatever ALPN agreed - reaches the backend's
+# preface layer and is served as HTTP/2 with `RECEIVE_HTTP2=on` (D263); this is
+# how #115 will switch the path on. ALPN offers http/1.1 alone, as production's
+# receive route does until #115.
+#
+# No certificate is configured: Traefik serves its own default one, and the
+# client does not verify it.
+tcp:
+  routers:
+    receive:
+      entryPoints: [websecure]
+      rule: HostSNI(`hook.qa-tools.test`)
+      service: receive
+      tls:
+        options: receive
+  services:
+    receive:
+      loadBalancer:
+        serversTransport: receive
+        servers:
+          - address: 10.148.1.3:3001
+  serversTransports:
+    receive:
+      proxyProtocol:
+        version: 2
+
+tls:
+  options:
+    receive:
+      alpnProtocols:
+        - http/1.1

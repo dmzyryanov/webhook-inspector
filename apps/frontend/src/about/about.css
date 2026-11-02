@@ -1,0 +1,192 @@
+/*
+ * The about page, /about (issue #131, D211): direction D1 of the Figma page
+ * `Webhook Inspector · About page (#131)`, frames D1-1 (1440, `748:12`), D1-2
+ * (768, `748:83`) and D1-3 (375, `748:148`). A page of its own with no
+ * script: `about/index.html` links this stylesheet, which brings Inter from
+ * the bundle and the header and the footer band every static page shares.
+ * The values are the application's tokens (src/index.css) and the frames'
+ * own; the facts are drawn as the home page's `How it works` rows are (D199).
+ * Widths follow the application's breakpoints: the desktop from 1024 px, a
+ * tablet from 768 px, a phone below.
+ */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '../static-pages/site-chrome.css';
+
+main {
+  padding: 56px 0 48px;
+}
+
+/* The home page's column: 960 px of text centred from 1024 px. */
+.container {
+  display: flex;
+  max-width: 1024px;
+  flex-direction: column;
+  gap: 28px;
+  margin: 0 auto;
+  padding: 0 32px;
+  overflow-wrap: break-word;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* As the home page's eyebrow (LandingPage.tsx). */
+.eyebrow {
+  margin: 0;
+  color: #2e6be0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 15px;
+}
+
+h1 {
+  margin: 0;
+  color: #1f242e;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 39px;
+}
+
+/* The story: 15/24 in a 680 px column. */
+.story {
+  display: flex;
+  max-width: 680px;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.story p {
+  margin: 0;
+  color: #2e384d;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+/* The MCP address: shown in the application's monospace, never a link (D203). */
+.story code {
+  color: #1f242e;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.story a {
+  border-radius: 4px;
+  color: #1f5ca8;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.story a:hover {
+  text-decoration: underline;
+}
+
+/*
+ * An address with the word before it and the stop after it, on one line: it
+ * never ends up alone on a line, and the mail address never breaks at its
+ * hyphen (scripts/about.mjs).
+ */
+.story .keep {
+  white-space: nowrap;
+}
+
+/* The facts, as the rows of How it works: a label on a 160 px rail, its lines beside it. */
+.facts {
+  margin: 0;
+  border-top: 1px solid #dee3ed;
+  border-bottom: 1px solid #dee3ed;
+}
+
+.fact {
+  display: flex;
+  gap: 32px;
+  padding: 13px 0;
+}
+
+.fact + .fact {
+  border-top: 1px solid #dee3ed;
+}
+
+.fact dt {
+  width: 160px;
+  flex: none;
+  color: #1f242e;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.fact dd {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  color: #2e384d;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.fact dd p {
+  margin: 0;
+}
+
+/*
+ * The Russian page's rail (D255): `Проверка безопасности`, 170 px in Inter
+ * Semi Bold, is wider than 160 px and would break into two lines of a single
+ * word each, so from 768 px, where the labels sit beside their lines, the
+ * rail is 180 px on /ru/about. Every label stays on one line and every
+ * fact's lines start at one edge; /about keeps its 160 px.
+ */
+@media (min-width: 768px) {
+  :lang(ru) .fact dt {
+    width: 180px;
+  }
+}
+
+/* Below 1024 px: a tablet (D1-2), the column at 40 px from each side. */
+@media (max-width: 1023.98px) {
+  main {
+    padding: 56px 0 40px;
+  }
+
+  .container {
+    padding: 0 40px;
+  }
+}
+
+/* Below 768 px: a phone (D1-3), each label above its lines. */
+@media (max-width: 767.98px) {
+  main {
+    padding: 28px 0 40px;
+  }
+
+  .container {
+    gap: 20px;
+    padding: 0 16px;
+  }
+
+  .intro {
+    gap: 10px;
+  }
+
+  h1 {
+    font-size: 26px;
+    line-height: 34px;
+  }
+
+  .fact {
+    display: block;
+  }
+
+  .fact dt {
+    width: auto;
+  }
+
+  .fact dd {
+    margin-top: 2px;
+  }
+}

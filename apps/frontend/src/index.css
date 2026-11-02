@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens taken from the project's approved Figma file.
+ * The file defines no Figma variables, so these are the literal values used
+ * there, with one deliberate exception: the muted text tier. `--color-ink-muted`
+ * departs from the Figma value to reach WCAG AA contrast for small text on every
+ * background it sits on, and the three other muted tokens it replaced are gone
+ * (D131, registered in D071). Keep the values in one place rather than spreading
+ * hex codes through JSX.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+  --color-canvas: #f9fafc;
+  --color-field: #f5f7fa;
+  --color-code: #f6f7fa;
+  --color-panel-note: #eef1f6;
+
+  --color-line: #dee3ed;
+  --color-line-soft: #e0e5ed;
+  --color-line-header: #e3e8f0;
+  --color-line-panel: #e3e5ed;
+  --color-line-tabs: #e8ebf2;
+  /*
+   * The border of a white secondary control on white: the endpoint card's
+   * response button, the `quiet` Button variant (issue #51) and the quick
+   * switch's typed status and delay while they hold a valid value (issue #61,
+   * D158). Where `--color-line` all but vanished and the button read smaller
+   * than Copy beside it, this gives it a boundary. At 2.57:1 on white it is
+   * below WCAG 1.4.11's 3:1 by the owner's choice: the controls stay known by
+   * their label, caret and place. Containers - cards, panels, chips - keep
+   * `--color-line`, which this must stay darker than.
+   */
+  --color-line-strong: #9aa2b1;
+  /*
+   * The line above the quick switch's Response queue section (Figma page
+   * `Webhook Inspector · Collapsible response queue (#142) — approved`, crop
+   * `719:140`, D206): it sets the queue apart from the session response as a
+   * feature of its own. Lighter than `--color-line-strong` and darker than
+   * `--color-line`, the owner's choice of 2026-10-07; a line between two parts
+   * of a popover, not a control's boundary or a text tier.
+   */
+  --color-line-section: #b8bfcc;
+
+  --color-ink: #1f242e;
+  --color-ink-body: #2e384d;
+  --color-ink-strong: #293347;
+  --color-ink-muted: #5f697d;
+  --color-ink-size: #5c667a;
+  --color-ink-id: #475266;
+  --color-ink-mark: #4d5461;
+
+  --color-brand: #1f2e52;
+  --color-accent: #2e6be0;
+  --color-method: #1f5ca8;
+  --color-ok: #1a804d;
+  --color-danger: #b82e2e;
+  --color-danger-line: #e8baba;
+
+  /*
+   * The status of an answer the session gave, state `sent` (issue #138,
+   * D207; Figma page `Webhook Inspector · Response status colour`, sub-variant
+   * C1): the code in a soft pill tinted by its class, the first digit, in the
+   * Response half's heading and in a list row's status cell. Each code is
+   * small text on its own tint, and `contrast.test.ts` holds every pair at AA.
+   * The 2xx code is darker than `--color-ok` on purpose: that green reaches
+   * only 4.26:1 on the 2xx tint.
+   */
+  --color-status-2xx: #e1f2e8;
+  --color-status-2xx-ink: #166b41;
+  --color-status-3xx: #eaedf2;
+  --color-status-3xx-ink: #475266;
+  --color-status-4xx: #fcefd2;
+  --color-status-4xx-ink: #5c4813;
+  --color-status-5xx: #fde6e6;
+  --color-status-5xx-ink: #b82e2e;
+
+  --color-row-selected: #e7f0ff;
+  --color-row-unread: #eef1f4;
+
+  /*
+   * The move banner (issue #321, D276; Figma page `Webhook Inspector · Move
+   * banner (#321)`, direction C1): the 1 px line under the light-blue bar,
+   * whose background is `--color-row-selected`. A line between the bar and
+   * the header, not a text tier D131 governs.
+   */
+  --color-move-line: #c9dcfa;
+
+  /*
+   * The request list's filter (issue #70, D180): the field's placeholder, and
+   * the background behind the text a filter matched in a row. The placeholder
+   * is a hint, not a text tier D131 governs, and repeats what the `Filter
+   * requests` label already says.
+   */
+  --color-placeholder: #8a93a4;
+  --color-match: #ffe9a8;
+
+  /*
+   * The search of headers and bodies (issue #78, D191; Figma page `Webhook
+   * Inspector · Body and header search`, direction A): the notice shown only
+   * when they were not searched - its background, its bottom rule, its text
+   * and the disc behind its `!` - and the track of the 12 px spinner, whose
+   * arc is `--color-ink-muted`. The notice's text and its Retry are small text
+   * on the notice's own background, and `contrast.test.ts` holds both at AA
+   * there; the `!` is a glyph beside a text that says the same.
+   */
+  --color-notice: #fff7e6;
+  --color-notice-line: #f1dfb4;
+  --color-notice-text: #5c4813;
+  --color-notice-mark: #b7791f;
+  --color-spinner-track: #dde2ea;
+
+  /*
+   * The editable response settings (Figma page `Webhook Inspector · Editable
+   * response settings`, D150): the link to the full editor, the response
+   * button while its popover is open, the failure box, and the disabled look
+   * of Apply and Save. The disabled text is below AA on purpose - WCAG exempts
+   * an inactive control - and is not a text tier D131 governs.
+   */
+  --color-link: #1f5ca8;
+  --color-pressed: #cdcdcd;
+  --color-danger-soft: #fff2f2;
+  --color-disabled: #d9d9d9;
+  --color-disabled-line: #b3b3b3;
+  --color-disabled-ink: #9aa3b2;
+  --color-toast-check: #6db48e;
+
+  /*
+   * The request actions (Figma page `Webhook Inspector · Request actions`,
+   * D182): the info icon of a toast that says something did not happen - a
+   * refused copy, a linked request that is gone - and the icons beside the
+   * menu's and the sheet's items. Both are glyphs beside a text that says the
+   * same, not text tiers D131 governs.
+   */
+  --color-toast-info: #e8b44c;
+  --color-menu-icon: #525c70;
+
+  /*
+   * Comparing two requests (Figma page `Webhook Inspector · Compare
+   * requests`, direction A, D186): removed and added lines and their changed
+   * characters, the `−` and `+` pills, and a row hovered while picking. The
+   * changed characters are darker than `--color-danger` and `--color-ok` on
+   * their own line's background.
+   */
+  --color-diff-removed: #fcecec;
+  --color-diff-added: #e8f5ee;
+  --color-diff-removed-ink: #a11d1d;
+  --color-diff-added-ink: #0f6b3c;
+  --color-diff-removed-mark: #fbe6e6;
+  --color-diff-added-mark: #e3f3ea;
+  --color-row-pick-hover: #f3f7ff;
+
+  /*
+   * The home page (Figma page `Webhook Inspector · My sessions`, G3′ and F,
+   * D199): the dashed border of the `+ Generate URL` tile. A border around a
+   * labelled control, not a text tier D131 governs.
+   */
+  --color-tile-dash: #a9b6cc;
+
+  /*
+   * The response queue (Figma page `Webhook Inspector · Response queue (#106)
+   * — chosen, review 2`, D205): the timeline's marker of an answered step and
+   * the ring of a step ahead, and the number of an answered step. Marks beside
+   * a text that says the same, and a number greyed as answered on purpose,
+   * not text tiers D131 governs.
+   */
+  --color-queue-mark: #c5cbd6;
+  --color-queue-done: #b0b7c3;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Every enabled button shows the hand, as links do (issue #246): Tailwind v4's
+ * preflight leaves buttons at the browser's arrow, and this is the rule its
+ * upgrade guide gives for restoring v3's behaviour, with `aria-disabled` left
+ * out as well: a control marked disabled, natively or by `aria-disabled` - the
+ * open request's row while Compare is picking - keeps the arrow. In the base
+ * layer, so a button's own `cursor-*` utility wins over it: the rules
+ * dialog's `⋮⋮` handle keeps `cursor-grab`.
+ * Menu items are neither buttons nor `role="button"`, so this rule never
+ * reaches them; they keep the arrow by their own `cursor-default`.
+ */
+@layer base {
+  button:not(:disabled, [aria-disabled='true']),
+  [role='button']:not(:disabled, [aria-disabled='true']) {
+    cursor: pointer;
+  }
+}

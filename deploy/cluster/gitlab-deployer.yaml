@@ -1,0 +1,80 @@
+# Identity the deploy job uses, scoped to the application namespace (D093).
+#
+#   kubectl apply -f deploy/cluster/gitlab-deployer.yaml
+#
+# The pipeline never holds the administrative kubeconfig: a leaked CI variable
+# reaches this namespace and nothing else in the cluster.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab-deployer
+  namespace: qa-tools
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-deployer
+  namespace: qa-tools
+rules:
+  # Helm stores each release as a Secret in the release namespace, so write
+  # access to secrets is not optional. It is also the reason this account can
+  # read the database password (D087, D093).
+  - apiGroups: ['']
+    resources: ['secrets', 'configmaps', 'services', 'persistentvolumeclaims', 'serviceaccounts']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # Read-only: `helm upgrade --wait` follows rollout status, and events are what
+  # make a failed rollout readable in the job log.
+  - apiGroups: ['']
+    resources: ['pods', 'events']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['apps']
+    resources: ['deployments', 'statefulsets', 'replicasets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['networking.k8s.io']
+    resources: ['ingresses']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # The nightly database backup's CronJob (D176). CronJobs only: the chart
+  # never creates a Job itself; the CronJob controller creates the Jobs.
+  # Added to the live Role by the owner on 2026-09-28; this file records it.
+  - apiGroups: ['batch']
+    resources: ['cronjobs']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # The receive host's TCP route, its TLS option and the transport that sends
+  # the PROXY protocol header (D187, templates/receive.yaml). Applied to the
+  # live Role with sudo on the server before the first deploy of 0.36.0.
+  # And the API's edge rate limit, a Middleware (#205, D264,
+  # templates/ingress.yaml): added to this rule of the live Role by the owner
+  # before #205 was delivered; this file records it.
+  - apiGroups: ['traefik.io']
+    resources: ['ingressroutetcps', 'tlsoptions', 'serverstransporttcps', 'middlewares']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # The receive host's certificate: the Ingress annotation that has
+  # cert-manager issue the application's does not cover a TCP route (D187).
+  - apiGroups: ['cert-manager.io']
+    resources: ['certificates']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-deployer
+  namespace: qa-tools
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-deployer
+subjects:
+  - kind: ServiceAccount
+    name: gitlab-deployer
+    namespace: qa-tools
+---
+# Kubernetes stopped issuing long-lived tokens with a ServiceAccount, and a
+# pipeline cannot refresh a bound one, so the token is requested explicitly.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-deployer-token
+  namespace: qa-tools
+  annotations:
+    kubernetes.io/service-account.name: gitlab-deployer
+type: kubernetes.io/service-account-token

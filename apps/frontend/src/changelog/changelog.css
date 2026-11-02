@@ -1,0 +1,388 @@
+/*
+ * The changelog page, /changelog (issue #97, D184): frames C′1 (1440), C′2
+ * (768) and C′3 (375) of the Figma page `Webhook Inspector · Changelog`. A
+ * page of its own, so it carries its own styles rather than the application's
+ * Tailwind build; the values are the application's tokens (src/index.css) and
+ * the frames' own. The header and the footer band are
+ * `src/static-pages/site-chrome.css`, loaded first. Widths follow the
+ * application's breakpoints: the desktop from 1024 px, a tablet from 768 px, a
+ * phone below.
+ */
+main {
+  padding: 56px 0 48px;
+}
+
+.container {
+  display: flex;
+  max-width: 1024px;
+  flex-direction: column;
+  gap: 28px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  color: #1f242e;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: normal;
+}
+
+.lead {
+  margin: 0;
+  color: #5f697d;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.lead strong {
+  color: #1f242e;
+  font-weight: 600;
+}
+
+.plain {
+  margin: 0;
+  color: #6b758a;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.plain a {
+  color: #1f5ca8;
+  text-decoration: none;
+}
+
+.plain a:hover {
+  text-decoration: underline;
+}
+
+.plain code {
+  font-size: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter {
+  display: flex;
+  gap: 8px;
+}
+
+.chip,
+.expand {
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  border: 1px solid #9aa2b1;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 10px;
+  color: #1f242e;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.chip[aria-pressed='true'] {
+  border-color: #1f2e52;
+  background: #1f2e52;
+  color: #fff;
+}
+
+.expand {
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  padding: 0;
+  color: #1f5ca8;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.expand:hover {
+  text-decoration: underline;
+}
+
+/* Days: the date and its count on a rail at the left, the versions beside it. */
+.days {
+  border-bottom: 1px solid #dee3ed;
+}
+
+.day {
+  display: flex;
+  gap: 32px;
+  border-top: 1px solid #dee3ed;
+}
+
+.day-label {
+  display: flex;
+  width: 160px;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 13px 0;
+}
+
+.day-label time {
+  color: #1f242e;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.count {
+  color: #6b758a;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.count-separator {
+  display: none;
+}
+
+.versions {
+  min-width: 0;
+  flex: 1;
+  border-left: 1px solid #dee3ed;
+}
+
+.version + .version {
+  border-top: 1px solid #dee3ed;
+}
+
+.version[open] {
+  background: #f9fafc;
+}
+
+.version summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 13px 12px 13px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.version summary::-webkit-details-marker {
+  display: none;
+}
+
+.version summary:focus-visible {
+  outline-offset: -2px;
+}
+
+.number {
+  min-width: 60px;
+  flex: none;
+  color: #1f242e;
+  font-family: ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.headline {
+  min-width: 0;
+  flex: 1;
+  color: #1f242e;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.headline code,
+.entry code {
+  color: #2e384d;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.badge {
+  flex: none;
+  border-radius: 4px;
+  background: #fdf2f2;
+  padding: 2px 6px;
+  color: #b82933;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.chevron {
+  flex: none;
+  color: #5f697d;
+  transition: transform 150ms;
+}
+
+.version[open] .chevron {
+  transform: rotate(180deg);
+}
+
+/* The rest of the entry, indented under the headline. */
+.entry {
+  margin-top: -5px;
+  padding: 0 40px 17px 96px;
+  color: #5f697d;
+  font-size: 14px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.entry p {
+  margin: 0;
+}
+
+.entry p + p {
+  margin-top: 8px;
+}
+
+.entry strong {
+  color: #1f242e;
+  font-weight: 600;
+}
+
+.entry .breaking {
+  border-left: 3px solid #b82933;
+  background: #fdf2f2;
+  padding: 8px 12px;
+  color: #1f242e;
+}
+
+.entry .breaking strong:first-child {
+  color: #b82933;
+}
+
+/* Below 1024 px: a tablet (C′2). */
+@media (max-width: 1023.98px) {
+  main {
+    padding: 48px 0;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  .day {
+    gap: 24px;
+  }
+
+  .day-label {
+    width: 112px;
+  }
+}
+
+/* Below 768 px: a phone (C′3), days as grey bands above their versions. */
+@media (max-width: 767.98px) {
+  main {
+    padding: 28px 0 48px;
+  }
+
+  .container {
+    gap: 20px;
+    padding: 0;
+  }
+
+  .intro,
+  .toolbar {
+    padding: 0 16px;
+  }
+
+  .intro {
+    gap: 10px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  .lead {
+    font-size: 14px;
+    line-height: 21px;
+  }
+
+  .day {
+    display: block;
+  }
+
+  .day-label {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    background: #f6f7fa;
+    padding: 8px 16px;
+  }
+
+  .day-label time,
+  .count {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .count-separator {
+    display: inline;
+  }
+
+  .versions {
+    border-left: 0;
+  }
+
+  .version summary {
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .number {
+    min-width: 48px;
+  }
+
+  .title {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .headline {
+    flex: none;
+    align-self: stretch;
+  }
+
+  .entry {
+    margin-top: -4px;
+    padding: 0 16px 16px 76px;
+  }
+}

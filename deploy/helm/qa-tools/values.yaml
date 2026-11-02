@@ -1,0 +1,307 @@
+# Values for the QA Tools chart.
+#
+# Install into its own namespace:
+#   helm upgrade --install qa-tools deploy/helm/qa-tools \
+#     --namespace qa-tools --create-namespace \
+#     --set-string images.registry=<registry-host/namespace/project> \
+#     --set images.tag=<commit-sha>
+
+images:
+  # Default for manual use: the registry of this project, where its images
+  # are built since it moved out of qa-tools (#326). CI passes
+  # CI_REGISTRY_IMAGE explicitly, so builds and deployment always follow the
+  # project path of the moment; a later transfer or rename must update this
+  # default in the same change.
+  registry: registry.gitlab.com/qa-tools-team/webhook-inspector
+  # Applied to the frontend and backend images, and set by CI to the commit SHA
+  # so a release names exactly the code it deploys (D022). There is no default:
+  # a missing tag must fail the install rather than silently deploy something
+  # else.
+  tag: ''
+  backend: backend
+  frontend: frontend
+  # Credentials for the private Container Registry, created from a deploy
+  # token with read_registry scope, of the project or of its group.
+  pullSecret: gitlab-registry
+
+# ingress.host is the site's host. The deploy job sets it from APP_ORIGIN in
+# .gitlab-ci.yml, as it does receive.host and alerts.siteUrl (D274); the value
+# here is for a render of the chart on its own.
+ingress:
+  host: qa-tools.ru
+  # The site's second host (#319, D275): the same site, API, WebSocket and MCP
+  # server on two Ingresses of their own, templates/ingress.yaml, every answer
+  # carrying X-Robots-Tag: noindex. The deploy job sets it from
+  # APP_ALIAS_ORIGIN in .gitlab-ci.yml, webhook.qa-tools.ru in production.
+  # Empty, the default, there is none: a render of the chart on its own, or a
+  # copy installed with its own hosts, asks no certificate for a host of
+  # production's.
+  aliasHost: ''
+  className: traefik
+  tls:
+    enabled: true
+    secretName: qa-tools-tls
+    # The second host's certificate, a Secret of its own that cert-manager
+    # issues for that host alone, so qa-tools-tls is not reissued for it.
+    aliasSecretName: webhook-qa-tools-tls
+    # letsencrypt-staging exists for proving a change to the challenge path
+    # without spending the production allowance; production was reached only
+    # after staging issued a certificate for this host
+    # (deploy/cluster/letsencrypt-issuers.yaml).
+    issuer: letsencrypt-production
+  # No proxy-level body limit: Traefik streams a request body instead of
+  # buffering it, so the application stays the only thing that decides what is
+  # too large, and every oversized body receives the documented error rather
+  # than the proxy's own answer (D008, D089).
+  #
+  # The edge rate limit on the API's two paths, /api/ and /mcp, and on nothing
+  # else (#205, D264): Traefik's rateLimit middleware, a token bucket per
+  # client address Traefik sees - an IPv6 address by its /64 - refilled at
+  # `average` calls per `period` and holding at most `burst`; past it Traefik
+  # answers 429 itself, before the call reaches the backend. Far above the
+  # backend's own limits (D201): one address gets at most 60 + 1200 calls a
+  # minute through them, 21 a second, and twice that within seconds across a
+  # window's edge, twice again during a deployment's overlap (D221) - 5,040
+  # at once and 42 a second at the very most - so a client within them never
+  # meets the edge, and only a flood far beyond them does.
+  # scripts/chart.test.mjs holds the numbers above that bound and equal to the
+  # measurement's (scripts/measure-connections.traefik.yml). `average: 0`
+  # turns the limit off, Traefik's own meaning of 0: the one-line recovery,
+  # which every check passes on, and which must be set before the Traefik
+  # Service's externalTrafficPolicy goes back to Cluster, where every sender
+  # reaches Traefik from one address and would share one bucket (section 7 of
+  # the operator's runbook for that policy, kept outside this repository).
+  apiRateLimit:
+    average: 100
+    period: 1s
+    burst: 6000
+
+# The receive host (D187): webhooks are received on a host of their own,
+# through a Traefik TCP route that terminates TLS and hands the sender's bytes
+# to the backend's receive listener unchanged, behind a PROXY protocol v2
+# header carrying the sender's address. Traefik's HTTP layer, which rewrote
+# header names, order and paths (D091, D144, D173), is not on this path.
+# The host's DNS record, A hook.qa-tools.ru -> the server, is at FirstVDS.
+# The deploy job sets receive.host from RECEIVE_ORIGIN in .gitlab-ci.yml
+# (D274).
+receive:
+  host: hook.qa-tools.ru
+  # The backend's second listener, and the Service port of the same name.
+  port: 3001
+  # v2: Traefik's transport sends a PROXY protocol v2 header in front of every
+  # connection, and the backend accepts a connection only with one, from a
+  # peer in backend.trustedProxyCidrs, which it refuses to start without.
+  # `off` turns it off at both ends, and every capture then stores the Traefik
+  # pod's address as its sender: a fallback, never a configuration (runbook
+  # section 7).
+  proxyProtocol: v2
+  # The certificate cert-manager keeps for the host; the first one was issued
+  # into it during #90's Step 0 (2026-10-01), so the first deploy serves a
+  # valid certificate at once.
+  tlsSecretName: hook-qa-tools-tls
+  # At most this many connections open at once from one sender address to the
+  # receive host (D227, issue #145), counted by the backend's PROXY protocol
+  # layer from the address the header carries - an IPv6 address by its /64 -
+  # from the moment the header is read until the connection closes, an idle
+  # kept-alive one included. The next is closed right after its header with
+  # no HTTP answer, and the backend logs only how many it refused, never an
+  # address. Passed as RECEIVE_CONNECTIONS_PER_ADDRESS (templates/backend.yaml);
+  # anything but 0 or a whole number stops the backend from starting. 0 turns
+  # the bound off: the one-line recovery, which every CI check passes on, and
+  # what must be set before Traefik's policy is reverted to Cluster, where
+  # every sender becomes 10.42.0.1 and would share one count (runbook
+  # section 7). Counted per backend process, so twice during a rollout's
+  # overlap (D221).
+  connectionsPerAddress: 512
+
+backend:
+  port: 3000
+  # The trust boundary, as a comma-separated list of IP addresses or CIDR
+  # ranges (D111): the peers whose PROXY protocol header the receive listener
+  # accepts, and so who decides a capture's sender address (D187), and the
+  # peers whose X-Forwarded-For the application listener believes. Never a hop
+  # count and never "everyone": there is no form here that expresses either.
+  #
+  # 10.42.0.0/24 is this node's pod network, so what it trusts is **every pod
+  # on this node**, not the Traefik pod alone — a pod IP is not stable enough
+  # to name. It is also **per-node**: a second node gets a range of its own and
+  # this list would silently stop matching the peer that forwards, after which
+  # proxy addresses would be stored again. The single-node cluster is what makes
+  # the approximation acceptable, and that is an assumption with an expiry date,
+  # not a property of the design (D111). Adding a node means widening this value
+  # in the same change (runbook section 4).
+  #
+  # Safe to set since 2026-09-21, and it was not before. Traefik now runs
+  # externalTrafficPolicy: Local (deploy/cluster/traefik-config.yaml), and the
+  # Stage 0 header probe re-run afterwards saw the prober's real public address
+  # arrive in X-Forwarded-For and X-Real-Ip, with a forged value still stripped
+  # (D130). While the policy was Cluster those headers carried 10.42.0.1, and
+  # filling this in would only have stored a private address through a path the
+  # code considers trusted (D118).
+  #
+  # **Rollback order, which is the part that matters:** empty this value and
+  # deploy *before* reverting the Traefik policy. The reverse order leaves the
+  # backend trusting an X-Forwarded-For that again carries 10.42.0.1 and storing
+  # it as a verified sender (runbook section 7).
+  #
+  # Empty means the backend ignores forwarding headers entirely and records the
+  # socket peer, which is what local development runs. With
+  # receive.proxyProtocol v2 the backend refuses to start on an empty value.
+  trustedProxyCidrs: '10.42.0.0/24'
+  # The kernel's receive buffer for the backend pod's TCP sockets, as
+  # `net.ipv4.tcp_rmem`'s three numbers in bytes - the least, the size a new
+  # socket starts with, the most the kernel grows it to - set as a sysctl of
+  # the pod's own network namespace (templates/backend.yaml), never the
+  # node's (#217, amending D238 points 7, 9 and 10). Linux's default starts a
+  # socket at 131,072 bytes; a connection the receive host holds unread for
+  # its header lines (D238) never grows its buffer, so what it costs the
+  # backend is that start plus the one read put back in front of it. 16,384
+  # bytes cut that cost so that the floods of held connections are survived
+  # from more addresses (measured, D238's amendment of 2026-10-21). A socket
+  # the backend reads fast still grows to the same 6 MiB. A safe sysctl since
+  # Kubernetes 1.32, allowed by the kubelet without any node setting. Empty
+  # drops it, and the pod has Linux's default again.
+  tcpRmem: '4096 16384 6291456'
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  port: 80
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+postgres:
+  image: postgres
+  # Pinned separately from the application images and bumped by hand when
+  # deploy/postgres/Dockerfile changes. Tagging the database with every commit
+  # SHA would restart it on every deployment.
+  tag: '16-pgcron-1'
+  user: qa_tools
+  database: qa_tools
+  port: 5432
+  # The password is not held in this file or in the release. Create the secret
+  # once, before the first install:
+  #   kubectl -n qa-tools create secret generic qa-tools-postgres \
+  #     --from-literal=password="$(openssl rand -hex 24)"
+  # Hex keeps it free of characters that would need escaping inside the
+  # connection URL the backend receives.
+  existingSecret: qa-tools-postgres
+  secretKey: password
+  storage:
+    size: 20Gi
+    # Empty means the cluster default, which on k3s is local-path (D085).
+    className: ''
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Nightly database backup (D176; the backup and restore runbook is the
+# operator's, kept outside this repository): a CronJob that dumps
+# postgres.database into a directory on the node, checks that each dump
+# restores, and keeps the newest few.
+backup:
+  # 03:00 in Moscow, between the night deliveries at 02:00 and 04:00, neither of
+  # which restarts PostgreSQL.
+  schedule: '0 3 * * *'
+  timeZone: Europe/Moscow
+  # A directory on the node, outside the namespace, so it survives the
+  # namespace's removal. The owner creates it before the first install,
+  # owned by 999:999 with mode 0700; the pod fails to start if it is missing.
+  # Only this directory is mounted, so the #54 dump in its parent is out of
+  # reach.
+  hostPath: /var/backups/qa-tools/nightly
+  # Dumps kept, counted rather than aged: while runs keep failing, the last good
+  # dumps stay until the failure is fixed (D176).
+  keep: 3
+  # A run stops before writing anything when the filesystem holding hostPath
+  # has less free space than this, in GiB (1024³ bytes, what `df -h` shows as
+  # G). A full disk stops the node (D085).
+  minFreeGiB: 10
+  # The scratch server's data directory. A restore needs about the database's
+  # size here; the database is about 10 MB today (2026-09-27).
+  scratchSizeLimit: 2Gi
+  # Modest: the node's 2 cores and 4 GB are serving production meanwhile.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # The off-server copy (D190, the backup and restore runbook): each
+  # run encrypts the dump it has saved and checked to the public key in
+  # files/db-backup-recipient.asc, whose private half only the owner holds, and
+  # an uploader beside the backup in its pod puts that copy into the bucket and
+  # prunes the bucket to `keep` copies, as the directory on the node.
+  offsite:
+    # An empty bucket turns the off-server copy off: the pod has no uploader,
+    # nothing is encrypted, and the backup runs as it did before (local
+    # development, a manual install).
+    bucket: qa-tools-backups
+    # Yandex Object Storage, in Russia; any S3-compatible storage that takes
+    # path-style requests signed with Signature Version 4 would do.
+    endpoint: https://storage.yandexcloud.net
+    region: ru-central1
+    # The static access key is not held in this file or in the release. The
+    # owner creates the Secret, keys access-key-id and secret-access-key; it is
+    # never printed (the backup and restore runbook, section 9). With
+    # the bucket set and the Secret missing, the run fails and says so.
+    existingSecret: qa-tools-offsite-backup
+    # Each run reads the bucket's versioning and uploads nothing while it is
+    # enabled, because a delete would then leave the old versions in place.
+    # false only for a key that is refused that read; the owner then checks the
+    # setting in the console instead (the runbook's section 7).
+    checkVersioning: true
+
+# Alerts (D181; the alerts runbook is the operator's, kept outside this
+# repository): Statuser.cloud messages the owner in Telegram when a heartbeat
+# reports a failure or stops coming. The monitor CronJob sends `site` and
+# `disk` every 5 minutes, and a notifier in the backup pod sends `backup`
+# after each backup. The monitors, their intervals and grace times live in the
+# Statuser account, not here.
+alerts:
+  # Statuser's heartbeat endpoint: a POST to <heartbeatUrl>/<token> reports a
+  # success, and to <heartbeatUrl>/<token>/fail a failure.
+  heartbeatUrl: https://hb.statuser.cloud
+  # The tokens are not held in this file or in the release. The owner creates
+  # the Secret, keys site, disk and backup, one token each; the token is the
+  # credential and is never printed (the alerts runbook).
+  existingSecret: qa-tools-statuser
+  # Probed by its public name, so the check passes through DNS, Traefik, TLS,
+  # the frontend, the backend and the database, as a visitor's request does.
+  # Set by the deploy job from APP_ORIGIN in .gitlab-ci.yml (D274).
+  siteUrl: https://qa-tools.ru
+  # The receive host is probed too, by its public name and through its own TCP
+  # route, so that capture never leaves the monitored path (D187). Its origin
+  # is composed from receive.host.
+  # Every 5 minutes; Statuser expects one every 10 with 5 minutes' grace, so
+  # one missed run is tolerated and silence alerts after about 15 minutes.
+  schedule: '*/5 * * * *'
+  # The node's local-path directory, which holds the database volume (D085).
+  # Its filesystem's usage is what is checked; it is mounted read-only.
+  diskPath: /var/lib/rancher/k3s/storage
+  # `disk/fail` at or above this percentage in use, as `df` rounds it; below
+  # the backup's 10 GiB free-space guard, which is about 83 % of the 59 GB disk.
+  diskThresholdPercent: 80
+  # For the monitor and the backup's notifier alike: one small Node process.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

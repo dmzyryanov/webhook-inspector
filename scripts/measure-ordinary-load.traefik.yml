@@ -1,0 +1,57 @@
+# Traefik's dynamic configuration for the ordinary-load measurement of issue
+# #186 (D232, the `front` profile of scripts/measure-ordinary-load.compose.yml):
+# scripts/measure-connections.traefik.yml (D227) on this project's addresses -
+# what the chart's receive route (deploy/helm/qa-tools/templates/receive.yaml)
+# and the application's Ingress make in production, with the file provider
+# instead of the CRDs.
+#
+# - The receive host, hook.qa-tools.test here: a TCP router on HostSNI, TLS
+#   ending at Traefik with HTTP/1.1 alone in ALPN, and a servers transport
+#   that writes a PROXY protocol v2 header in front of every connection to the
+#   backend's receive listener. No middleware, as in the chart.
+# - qa-tools.test: an HTTP router to the application listener, `/ws/` and the
+#   API included, which writes X-Forwarded-For as the Ingress does. Without
+#   the edge rate limit production has on `/api/` and `/mcp` since #205
+#   (D264), which measure-connections.traefik.yml carries: a run here stays
+#   within D201's limits from its one address (Part 2's budget), far under
+#   that limit, so it would refuse none of its calls.
+#
+# No certificate is configured: Traefik serves its own default one, and the
+# client does not verify it.
+tcp:
+  routers:
+    receive:
+      entryPoints: [websecure]
+      rule: HostSNI(`hook.qa-tools.test`)
+      service: receive
+      tls:
+        options: receive
+  services:
+    receive:
+      loadBalancer:
+        serversTransport: receive
+        servers:
+          - address: 10.186.0.3:3001
+  serversTransports:
+    receive:
+      proxyProtocol:
+        version: 2
+
+http:
+  routers:
+    application:
+      entryPoints: [websecure]
+      rule: Host(`qa-tools.test`)
+      service: application
+      tls: {}
+  services:
+    application:
+      loadBalancer:
+        servers:
+          - url: http://10.186.0.3:3000
+
+tls:
+  options:
+    receive:
+      alpnProtocols:
+        - http/1.1

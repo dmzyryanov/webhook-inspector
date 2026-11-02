@@ -1,0 +1,139 @@
+{{- /*
+Site and disk alerts (D181, issue #68). Every 5 minutes a CronJob probes the
+site by its public name and reads the usage of the disk holding the database
+volume, and reports both to Statuser.cloud as the `site` and `disk`
+heartbeats; Statuser messages the owner in Telegram when one fails, or when
+they stop coming. The script is files/monitor.mjs; the alerts runbook is the
+operator's, kept outside this repository.
+
+As for the backup (D176), the deploy identity may manage CronJobs but not Jobs
+(deploy/cluster/gitlab-deployer.yaml), so the chart creates only the CronJob
+and the ConfigMap it mounts: never a Job, and never a hook.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "qa-tools.name" . }}-monitor
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+data:
+  monitor.mjs: |-
+    {{- .Files.Get "files/monitor.mjs" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "qa-tools.name" . }}-monitor
+  labels:
+    {{- include "qa-tools.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  schedule: {{ .Values.alerts.schedule | quote }}
+  # Never two runs at once; a run is stopped well before the next is due.
+  concurrencyPolicy: Forbid
+  # A run that could not start on time is skipped once the next one is close.
+  startingDeadlineSeconds: 240
+  # The last run of each kind, for reading its log. The monitor's own Job
+  # fails only when a heartbeat could not be delivered or a setting is wrong;
+  # a site that is down is a delivered `site/fail`, not a failed Job.
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "qa-tools.labels" . | nindent 8 }}
+        app.kubernetes.io/component: monitor
+    spec:
+      # No retry: the next run is five minutes away, and Statuser tolerates
+      # one missing heartbeat.
+      backoffLimit: 0
+      # A run takes seconds, and at most about two minutes when every site
+      # attempt waits for its timeout; stopped at four, before the next run.
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            {{- include "qa-tools.labels" . | nindent 12 }}
+            app.kubernetes.io/component: monitor
+        spec:
+          restartPolicy: Never
+          # The pod needs neither the Kubernetes API nor the Services'
+          # environment variables: it reaches the site by its public name.
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- if .Values.images.pullSecret }}
+          imagePullSecrets:
+            - name: {{ .Values.images.pullSecret }}
+          {{- end }}
+          # The backend image's own user, `node`. It can read the usage of the
+          # disk but not the database's files, which belong to 999 with mode
+          # 0700.
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: monitor
+              # The backend image, for its Node: built-in fetch with its own CA
+              # store and fs.statfs, and no third-party image.
+              image: {{ .Values.images.registry }}/{{ .Values.images.backend }}:{{ include "qa-tools.imageTag" . }}
+              command: ['node', '/opt/monitor/monitor.mjs']
+              env:
+                - name: MONITOR_SITE_URL
+                  value: {{ .Values.alerts.siteUrl | quote }}
+                # The receive host, probed through its own TCP route (D187).
+                - name: MONITOR_RECEIVE_URL
+                  value: {{ printf "https://%s" .Values.receive.host | quote }}
+                - name: MONITOR_HEARTBEAT_URL
+                  value: {{ .Values.alerts.heartbeatUrl | quote }}
+                - name: MONITOR_DISK_PATH
+                  value: {{ .Values.alerts.diskPath | quote }}
+                - name: MONITOR_DISK_THRESHOLD
+                  value: {{ .Values.alerts.diskThresholdPercent | quote }}
+                # The heartbeat tokens are the credentials; the chart names the
+                # Secret and never holds them (D087). Optional, so that a
+                # missing Secret or key is a log line and a failed Job rather
+                # than a pod that cannot start.
+                - name: MONITOR_SITE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.alerts.existingSecret }}
+                      key: site
+                      optional: true
+                - name: MONITOR_DISK_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.alerts.existingSecret }}
+                      key: disk
+                      optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ['ALL']
+              resources:
+                {{- toYaml .Values.alerts.resources | nindent 16 }}
+              volumeMounts:
+                # At the node's own path, so the log names the directory as
+                # the node knows it.
+                - name: disk
+                  mountPath: {{ .Values.alerts.diskPath | quote }}
+                  readOnly: true
+                - name: script
+                  mountPath: /opt/monitor
+                  readOnly: true
+          volumes:
+            # The directory holding local-path volumes, the database's among
+            # them (D085), read-only; only its filesystem's usage is read.
+            # `Directory` makes the pod fail rather than create it when it is
+            # missing.
+            - name: disk
+              hostPath:
+                path: {{ .Values.alerts.diskPath | quote }}
+                type: Directory
+            - name: script
+              configMap:
+                name: {{ include "qa-tools.name" . }}-monitor

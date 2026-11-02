@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="./src/assets/qa-tools-mark.svg" />
+    <title>Webhook Inspector — QA Tools</title>
+    <meta
+      name="description"
+      content="Generate a temporary URL and inspect incoming HTTP requests and webhooks in real time. No registration, no setup."
+    />
+    <link rel="canonical" href="https://qa-tools.ru/" />
+    <link rel="alternate" hreflang="en" href="https://qa-tools.ru/" />
+    <link rel="alternate" hreflang="ru" href="https://qa-tools.ru/ru/" />
+    <link rel="alternate" hreflang="x-default" href="https://qa-tools.ru/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Webhook Inspector" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ru_RU" />
+    <meta property="og:title" content="Webhook Inspector — QA Tools" />
+    <meta
+      property="og:description"
+      content="Generate a temporary URL and inspect incoming HTTP requests and webhooks in real time. No registration, no setup."
+    />
+    <meta property="og:url" content="https://qa-tools.ru/" />
+    <meta property="og:image" content="https://qa-tools.ru/logo-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Webhook Inspector logo" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" />
+  </head>
+  <body>
+    <noscript>
+      <h1>Inspect webhooks instantly.</h1>
+      <p>
+        Generate a temporary URL and inspect incoming HTTP requests in real time. No registration,
+        no setup.
+      </p>
+      <ol>
+        <li>
+          Generate URL — Create a temporary endpoint instantly. Anyone with its URL can see what it
+          receives, so do not send sensitive production data.
+        </li>
+        <li>Send requests — Use it from Postman, CI, webhooks, or any HTTP client.</li>
+        <li>Inspect live — See method, headers, query, body, IP, size, and time.</li>
+      </ol>
+      <p>
+        Agents and scripts: read <a href="/llms.txt">/llms.txt</a> — the whole guide is
+        <a href="/llms-full.txt">/llms-full.txt</a>.
+      </p>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

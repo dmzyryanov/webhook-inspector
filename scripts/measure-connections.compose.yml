@@ -1,0 +1,220 @@
+# The connection measurement of issue #145 (D227), driven by
+# `node scripts/measure-connections.mjs`, which starts this project, runs each
+# series against a fresh backend and removes everything it started.
+#
+# What production runs, in miniature: the backend image built from this
+# checkout and limited as the chart limits it, 0.5 CPU and 512 MiB with no
+# swap; PostgreSQL of the project's own image, with 1 CPU and 1 GiB; Traefik
+# 3.7.8 in front, configured as the chart and deploy/cluster/traefik-config.yaml
+# configure it - websecure with a 60 s readTimeout, the receive host as a TCP
+# route on HostSNI with TLS ending at Traefik, HTTP/1.1 alone and a servers
+# transport writing PROXY protocol v2, and an HTTP router for the application
+# listener, `/ws/` among it, with the API's `/api/` and `/mcp` behind the edge
+# rate limit since #205 (scripts/measure-connections.traefik.yml). The
+# backend counts the receive host's connections per sender in its PROXY
+# layer, 512 unless MEASURE_RECEIVE_CONNECTIONS says otherwise. The client
+# runs in a container of its own on two networks, so that Traefik sees it from
+# two addresses: `edge`, the address the series come from, and `other`,
+# another sender.
+#
+# Nothing is published on the host, and nothing is pulled: every image but
+# the backend's, which is built, must be present already (`pull_policy`).
+# MEASURE_BACKEND_IMAGE names another backend image already built, a base
+# commit's for comparison, which the script's `--image` sets.
+name: dev145-measure
+
+x-limits: &backend-limits
+  cpus: 0.5
+  mem_limit: 512m
+  memswap_limit: 512m
+
+services:
+  postgres:
+    image: webhook-inspector-postgres
+    pull_policy: never
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      POSTGRES_USER: webhook_inspector
+      POSTGRES_PASSWORD: webhook_inspector
+      POSTGRES_DB: webhook_inspector
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=webhook_inspector
+      - -c
+      - cron.use_background_workers=on
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'psql -h 127.0.0.1 -U webhook_inspector -d webhook_inspector -tAc "SELECT 1"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      edge:
+        ipv4_address: 10.145.1.4
+
+  migrate:
+    image: ${MEASURE_BACKEND_IMAGE:-dev145-measure-backend}
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+      pull: false
+    pull_policy: missing
+    command: ['node', 'src/db/migrate.ts']
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: 10.145.1.5
+
+  backend:
+    image: ${MEASURE_BACKEND_IMAGE:-dev145-measure-backend}
+    pull_policy: never
+    <<: *backend-limits
+    # The chart's receive buffer, backend.tcpRmem (#217, D238), so that the
+    # backend's sockets start as production's do; chart.test.mjs holds the two
+    # equal. MEASURE_TCP_RMEM sets another: Linux's default,
+    # `4096 131072 6291456`, is what the pod had before it.
+    sysctls:
+      net.ipv4.tcp_rmem: '${MEASURE_TCP_RMEM:-4096 16384 6291456}'
+    environment:
+      DATABASE_URL: postgres://webhook_inspector:webhook_inspector@postgres:5432/webhook_inspector
+      # Traefik, whose X-Forwarded-For and PROXY header name the sender, and
+      # the client, which writes a PROXY header itself in the series that
+      # bypass Traefik (`measure-capture-bursts.mjs`) and an X-Forwarded-For
+      # naming its attacking address in S8, which calls the application
+      # listener straight (#183).
+      TRUSTED_PROXY_CIDRS: 10.145.1.2/32,10.145.1.10/32
+      RECEIVE_PROXY_PROTOCOL: ${MEASURE_RECEIVE_PROXY_PROTOCOL:-v2}
+      RECEIVE_CONNECTIONS_PER_ADDRESS: ${MEASURE_RECEIVE_CONNECTIONS:-512}
+      # The probe inside the backend's process, for a series that asks for it
+      # (#213): its pools' waiting callers and its event loop's delay
+      # (`measure-backend-probe.mjs`). Empty otherwise.
+      NODE_OPTIONS: ${MEASURE_NODE_OPTIONS:-}
+    volumes:
+      - ./measure-backend-probe.mjs:/probe/measure-backend-probe.mjs:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      edge:
+        ipv4_address: 10.145.1.3
+
+  traefik:
+    image: traefik:v3.7.8
+    pull_policy: never
+    command:
+      - --entryPoints.websecure.address=:8443
+      - --entryPoints.websecure.transport.respondingTimeouts.readTimeout=60s
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --log.level=INFO
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+    volumes:
+      - ./measure-connections.traefik.yml:/etc/traefik/dynamic.yml:ro
+    # On every attacking network and the small-captures one, so one client
+    # container can reach Traefik as up to eight attacking addresses (#157,
+    # D228), and Traefik writes each in its PROXY v2 header to the backend.
+    networks:
+      edge:
+        ipv4_address: 10.145.1.2
+      other:
+        ipv4_address: 10.145.2.2
+      attack3:
+        ipv4_address: 10.145.3.2
+      attack4:
+        ipv4_address: 10.145.4.2
+      attack5:
+        ipv4_address: 10.145.5.2
+      attack6:
+        ipv4_address: 10.145.6.2
+      attack7:
+        ipv4_address: 10.145.7.2
+      attack8:
+        ipv4_address: 10.145.8.2
+      small:
+        ipv4_address: 10.145.9.2
+
+  client:
+    image: node:24-slim
+    pull_policy: never
+    command: ['sleep', 'infinity']
+    init: true
+    volumes:
+      - ./:/scripts:ro
+    # The same eight attacking addresses and the small-captures address; the
+    # client binds each outbound connection to one of them (#157).
+    networks:
+      edge:
+        ipv4_address: 10.145.1.10
+      other:
+        ipv4_address: 10.145.2.10
+      attack3:
+        ipv4_address: 10.145.3.10
+      attack4:
+        ipv4_address: 10.145.4.10
+      attack5:
+        ipv4_address: 10.145.5.10
+      attack6:
+        ipv4_address: 10.145.6.10
+      attack7:
+        ipv4_address: 10.145.7.10
+      attack8:
+        ipv4_address: 10.145.8.10
+      small:
+        ipv4_address: 10.145.9.10
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 10.145.1.0/24
+  other:
+    ipam:
+      config:
+        - subnet: 10.145.2.0/24
+  attack3:
+    ipam:
+      config:
+        - subnet: 10.145.3.0/24
+  attack4:
+    ipam:
+      config:
+        - subnet: 10.145.4.0/24
+  attack5:
+    ipam:
+      config:
+        - subnet: 10.145.5.0/24
+  attack6:
+    ipam:
+      config:
+        - subnet: 10.145.6.0/24
+  attack7:
+    ipam:
+      config:
+        - subnet: 10.145.7.0/24
+  attack8:
+    ipam:
+      config:
+        - subnet: 10.145.8.0/24
+  small:
+    ipam:
+      config:
+        - subnet: 10.145.9.0/24

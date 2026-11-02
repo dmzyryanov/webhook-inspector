@@ -1,0 +1,8 @@
+apiVersion: v2
+name: qa-tools
+description: QA Tools — Webhook Inspector
+type: application
+# The chart's own version. The application version deployed is the image tag,
+# which CI sets to the commit SHA (D022).
+version: 0.1.0
+appVersion: '0.1.0'
