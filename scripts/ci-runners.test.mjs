@@ -26,7 +26,6 @@
 //   `default:`, the including file's key winning.
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -238,14 +237,13 @@ function expected(tag) {
   };
 }
 
-// The rules of `image:postgres` (D084, #326), evaluated as GitLab does: in
+// The rules of `image:postgres` (D084), evaluated as GitLab does: in
 // order, the first rule whose `if:` holds and whose `changes:`, when it has
 // one, match a changed path decides, `when: never` leaving the job out and any
 // other rule creating it; a job no rule matches is not created. An `if:` is
 // read for `$VAR == 'text'` and `$VAR == $VAR` joined by `&&` alone, a
 // variable that is not set being null; anything else is refused rather than
 // guessed at. Paths match as rules:changes matches them (test-inputs.mjs).
-const EMPTY_START = '8ac8b0bb17578fd8d1e672e51cea8bb22647cf8f';
 
 /** A job's `rules:` as `{ if, when, changes }`, `changes` null when the rule has none. */
 function rulesOf(lines) {
@@ -295,14 +293,9 @@ function creates(rules, variables, changed) {
   return false;
 }
 
-test("image:postgres is built when deploy/postgres/ changes, except by main's first pipeline after the empty start (D084, #326)", () => {
+test('image:postgres is built when deploy/postgres/ changes, in a merge request and on main (D084)', () => {
   const rules = rulesOf(block(CI, 'image:postgres'));
   assert.deepEqual(rules, [
-    {
-      if: `$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_BEFORE_SHA == '${EMPTY_START}'`,
-      when: 'never',
-      changes: null,
-    },
     {
       if: "$CI_PIPELINE_SOURCE == 'merge_request_event'",
       when: 'on_success',
@@ -314,48 +307,43 @@ test("image:postgres is built when deploy/postgres/ changes, except by main's fi
       changes: ['deploy/postgres/**/*'],
     },
   ]);
-  // A merge request pipeline sets no branch and a before SHA of zeros; a
-  // pipeline on main, the commit main held before the push.
-  const request = (before = '0'.repeat(40)) => ({
+  // A merge request pipeline sets no CI_COMMIT_BRANCH; a push sets it to the
+  // branch pushed.
+  const request = {
     CI_PIPELINE_SOURCE: 'merge_request_event',
     CI_DEFAULT_BRANCH: 'main',
-    CI_COMMIT_BEFORE_SHA: before,
-  });
-  const main = (before) => ({
+  };
+  const main = {
     CI_PIPELINE_SOURCE: 'push',
     CI_COMMIT_BRANCH: 'main',
     CI_DEFAULT_BRANCH: 'main',
-    CI_COMMIT_BEFORE_SHA: before,
-  });
+  };
+  const branch = {
+    CI_PIPELINE_SOURCE: 'push',
+    CI_COMMIT_BRANCH: 'chore/x',
+    CI_DEFAULT_BRANCH: 'main',
+  };
   const image = ['deploy/postgres/Dockerfile'];
   const other = ['apps/backend/src/server.ts', 'deploy/helm/qa-tools/values.yaml'];
-  const later = 'a'.repeat(40);
   for (const [label, variables, changed, expected] of [
-    ["the import's merge request, where everything is new", request(), [...image, ...other], true],
-    ['a merge request changing the database image', request(), image, true],
-    ['a merge request changing other files', request(), other, false],
-    ['a merge request even with the start as its before SHA', request(EMPTY_START), image, true],
+    ["the import's merge request, where everything is new", request, [...image, ...other], true],
+    ['a merge request changing the database image', request, image, true],
     [
-      "main's first pipeline, the import's merge after the empty start",
-      main(EMPTY_START),
-      [...image, ...other],
-      false,
-    ],
-    [
-      "main's first pipeline changing nothing under deploy/postgres/",
-      main(EMPTY_START),
-      other,
-      false,
-    ],
-    ['a later change of the database image on main', main(later), image, true],
-    ['a later pipeline on main changing other files', main(later), other, false],
-    ['a pipeline on main run by hand, with no before SHA', main('0'.repeat(40)), image, true],
-    [
-      'another start: a before SHA one character off',
-      main(`${EMPTY_START.slice(0, -1)}e`),
-      image,
+      'a merge request changing a file under deploy/postgres/ deeper down',
+      request,
+      ['deploy/postgres/initdb/x.sql'],
       true,
     ],
+    ['a merge request changing other files', request, other, false],
+    [
+      'a merge request changing a name that only starts like it',
+      request,
+      ['deploy/postgres-old/Dockerfile'],
+      false,
+    ],
+    ['a change of the database image on main', main, image, true],
+    ['a pipeline on main changing other files', main, other, false],
+    ['a branch pipeline outside a merge request', branch, image, false],
   ]) {
     assert.equal(creates(rules, variables, changed), expected, label);
   }
@@ -363,28 +351,6 @@ test("image:postgres is built when deploy/postgres/ changes, except by main's fi
   assert.throws(() => holds("$A == 'x' || $B == 'y'", {}), /does not read/);
   assert.throws(() => holds('$A =~ /x/', {}), /does not read/);
   assert.throws(() => rulesOf(['  rules:', '    - changes: [x]']), /does not read/);
-});
-
-test('the before SHA that rule names is the empty commit this repository starts from (#326)', () => {
-  const git = (...args) => {
-    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
-    assert.equal(result.error, undefined, `git ${args.join(' ')}: ${result.error}`);
-    return result;
-  };
-  const type = git('cat-file', '-t', EMPTY_START);
-  if (type.status !== 0) {
-    // Only a shallow clone may lack it; delivery-checks clones whole.
-    assert.equal(git('rev-parse', '--is-shallow-repository').stdout.trim(), 'true', type.stderr);
-    return;
-  }
-  assert.equal(type.stdout.trim(), 'commit');
-  assert.equal(
-    git('rev-list', '--parents', '-n', '1', EMPTY_START).stdout.trim(),
-    EMPTY_START,
-    'it has a parent',
-  );
-  assert.equal(git('ls-tree', EMPTY_START).stdout, '', 'its tree is not empty');
-  assert.equal(git('merge-base', '--is-ancestor', EMPTY_START, 'HEAD').status, 0, 'not in HEAD');
 });
 
 test('the jobs of the pipeline are the ones this file places', () => {
@@ -1089,4 +1055,305 @@ test('the model reads a resource group as GitLab does: variables expanded, unkno
   assert.equal(groupOfJob(text, 'job'), 'own');
   assert.equal(groupOfJob(text, 'other'), 't');
   assert.equal(groupOfJob('a:\n  extends: b\n\nb:\n  extends: a\n', 'a'), null, 'a loop ends');
+});
+
+// `deploy` is the one job of the pipeline files that a newer pipeline never
+// cancels (D216, #370). resource_group serialises deployments but does not
+// stop a running one being cancelled, and a helm client killed mid-upgrade
+// leaves the release in pending-upgrade, where the next deployment refuses to
+// start until someone clears it by hand; the delivery lock relies on a
+// deployment that runs to its end. Every other job takes `interruptible:
+// true` from `default:`, which both files hold, but the proof job: the child
+// the gate writes for a proven tree holds no `default:`, so that one job,
+// which prints a line, takes GitLab's own default.
+//
+// The model, from GitLab's documentation (doc/ci/yaml: interruptible,
+// default, extends, inherit:default, !reference): a job's own key wins over
+// one it takes from a template through `extends:`, the last template named
+// winning, and those over `default:`'s, which the job does not take when its
+// `inherit: default:` is false or a list without `interruptible`; with none
+// of them a job is not interruptible. A `!reference` takes the one key it
+// names, so it brings `interruptible` only as that key's own value. A merge
+// request pipeline's `default:` is both files', the including file's key
+// winning. A value other than `true` or `false`, a `!reference` among them,
+// is refused rather than guessed at, and so is `inherit:` on a template.
+
+/** An `interruptible:` key at any depth, its value without a trailing comment. */
+const INTERRUPTIBLE = /^\s*interruptible\s*:\s*(.*?)\s*(?:#.*)?$/;
+
+/**
+ * A block's own `interruptible:`: true, false, a string saying what the model
+ * does not read, or undefined when it has none.
+ */
+function ownInterruptible(lines) {
+  for (const line of lines) {
+    const match = /^ {2}interruptible\s*:\s*(.*?)\s*(?:#.*)?$/.exec(line);
+    if (!match) continue;
+    if (match[1] === 'true') return true;
+    if (match[1] === 'false') return false;
+    return `interruptible: ${match[1]}, a value the model does not read`;
+  }
+  return undefined;
+}
+
+/**
+ * A block's `interruptible:`, its own or one it takes from a block of the
+ * same text through `extends:`, the last named winning; undefined when none
+ * holds one.
+ */
+function declaredInterruptible(text, job, seen = new Set([job])) {
+  const lines = block(text, job) ?? [];
+  const own = ownInterruptible(lines);
+  if (own !== undefined) return own;
+  // The lines without a `!reference`, whose names inheritedFrom would read as templates.
+  const extended = inheritedFrom(lines.filter((line) => !line.includes('!reference')));
+  for (const name of extended.reverse()) {
+    if (seen.has(name) || block(text, name) === null) continue;
+    seen.add(name);
+    const found = declaredInterruptible(text, name, seen);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a job's lines let it take `default:`'s `interruptible`, from its
+ * own `inherit: default:`: true or false, or a string saying what the model
+ * does not read.
+ */
+function takesDefault(lines) {
+  const at = lines.indexOf('  inherit:');
+  if (at < 0) return true;
+  const after = lines.slice(at + 1);
+  const end = after.findIndex((line) => /^ {0,2}\S/.test(line));
+  const inherit = after.slice(0, end < 0 ? after.length : end);
+  const line = inherit.find((item) => /^ {4}default\s*:/.test(item));
+  if (line === undefined) return true;
+  const value = /^ {4}default\s*:\s*(.*?)\s*$/.exec(line)[1];
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  const flow = /^\[(.*)\]$/.exec(value);
+  if (flow) return flow[1].split(',').some((key) => key.trim() === 'interruptible');
+  if (value === '') return (listUnder(inherit, 'default', 4) ?? []).includes('interruptible');
+  return `inherit: default: ${value}, a value the model does not read`;
+}
+
+/**
+ * Whether a job of `text` is interruptible, `fallback` being its pipeline's
+ * `default:` value, undefined when that sets none: true or false, or a
+ * string saying what the model does not read.
+ */
+function interruptibleOf(text, job, fallback) {
+  const declared = declaredInterruptible(text, job);
+  if (declared !== undefined) return declared;
+  const takes = takesDefault(block(text, job) ?? []);
+  if (typeof takes === 'string') return takes;
+  return (takes ? fallback : undefined) ?? false;
+}
+
+/** Every job of each pipeline and whether it is interruptible, in the files as given. */
+function interruptibles(files = {}) {
+  const { ci = CI, validate = VALIDATE } = files;
+  const defaultOf = (text) => ownInterruptible(block(text, 'default') ?? []);
+  return Object.fromEntries(
+    placedJobs({}, files).map(({ key, job, text }) => {
+      const fallback = key.startsWith('merge-request ')
+        ? (defaultOf(ci) ?? defaultOf(validate))
+        : defaultOf(text);
+      return [key, interruptibleOf(text, job, fallback)];
+    }),
+  );
+}
+
+/** What every job should be: interruptible, but `deploy` and the proof job. */
+const expectedInterruptibles = () =>
+  Object.fromEntries(
+    Object.keys(expected(OURS)).map((key) => [
+      key,
+      !['main deploy', `child ${PROOF_JOB}`].includes(key),
+    ]),
+  );
+
+/**
+ * What lets a newer pipeline cancel `deploy`, or keeps another job from being
+ * cancelled, in the files as given: `deploy` must declare `interruptible:
+ * false` itself, and nothing else in the pipeline files or the child
+ * pipelines may declare `interruptible:` as anything but true.
+ */
+function interruptibleProblems(files = {}) {
+  const { ci = CI, validate = VALIDATE } = files;
+  const problems = [];
+  const want = expectedInterruptibles();
+  const found = interruptibles(files);
+  for (const [key, value] of Object.entries(found)) {
+    if (typeof value === 'string') problems.push(`${key}: ${value}`);
+    else if (value !== want[key]) problems.push(`${key} is ${value ? '' : 'not '}interruptible`);
+  }
+  if (ownInterruptible(block(ci, 'deploy') ?? []) !== false) {
+    problems.push('deploy does not declare interruptible: false itself');
+  }
+  for (const [file, text] of credentialFiles({ ci, validate })) {
+    for (const { name, lines } of topLevelBlocks(text)) {
+      const where = `${file} ${name === '' ? 'before any key' : name}`;
+      if (file === '.gitlab-ci.yml' && name === 'deploy') continue;
+      for (const line of lines) {
+        const match = INTERRUPTIBLE.exec(line);
+        if (match && match[1] !== 'true')
+          problems.push(`${where} declares interruptible: ${match[1]}`);
+      }
+      if (name.startsWith('.') && lines.some((line) => /^\s+inherit\s*:/.test(line))) {
+        problems.push(`${where} is a template holding inherit:, which the model does not read`);
+      }
+    }
+  }
+  return problems;
+}
+
+test('deploy is the one job a newer pipeline does not cancel: it declares interruptible: false, and no other job does (D216, #370)', () => {
+  assert.deepEqual(interruptibleProblems(), []);
+  assert.ok(block(CI, 'deploy').includes('  interruptible: false'));
+  assert.deepEqual(interruptibles(), expectedInterruptibles());
+  // Every job but deploy takes the value from default:, in both files.
+  for (const text of [CI, VALIDATE]) {
+    assert.equal(ownInterruptible(block(text, 'default')), true);
+    for (const job of jobsOf(text).filter((name) => name !== 'deploy')) {
+      assert.equal(declaredInterruptible(text, job), undefined, job);
+    }
+  }
+});
+
+test('the interruptible check sees each way of letting deploy be cancelled or keeping another job from it', () => {
+  const line = '  interruptible: false\n';
+  const ownDefault = 'default:\n  interruptible: true\n';
+  assert.ok(CI.includes(ownDefault) && VALIDATE.includes(ownDefault), 'both files hold it');
+  const address = '  extends: .inspector-address\n  # The runner inside';
+  assert.ok(CI.includes(address), "deploy's extends: is where the test looks for it");
+  // [the fault, the file edited, [what is replaced wherever it stands, its replacement]...]
+  const faults = [
+    ['deploy without interruptible: false', 'ci', [line, '']],
+    ['deploy interruptible', 'ci', [line, '  interruptible: true\n']],
+    ['deploy with a value the model does not read', 'ci', [line, '  interruptible: no\n']],
+    [
+      'deploy taking it from a template',
+      'ci',
+      [line, ''],
+      [address, address.replace('.inspector-address', '[.inspector-address, .keep]')],
+      ['\ndeploy:\n', `\n.keep:\n${line}\ndeploy:\n`],
+    ],
+    [
+      'another job of .gitlab-ci.yml with it',
+      'ci',
+      ['image:postgres:\n', `image:postgres:\n${line}`],
+    ],
+    [
+      'the gate on main with it',
+      'ci',
+      ['main-validation-gate:\n', `main-validation-gate:\n${line}`],
+    ],
+    ['the trigger job with it', 'ci', ['main-validation:\n', `main-validation:\n${line}`]],
+    [
+      'a job of the validate stage with it',
+      'validate',
+      ['operations-tests:\n', `operations-tests:\n${line}`],
+    ],
+    ['the image template with it', 'ci', ['.image:\n', `.image:\n${line}`]],
+    ['the node template with it', 'validate', ['.node:\n', `.node:\n${line}`]],
+    ["a job taking deploy's keys", 'ci', ['  extends: .image\n', '  extends: [.image, deploy]\n']],
+    ['default: not interruptible', 'ci', [ownDefault, `default:\n${line}`]],
+    ['.gitlab-ci.yml without its default', 'ci', [ownDefault, 'default:\n']],
+    ['the validate stage without its default', 'validate', [ownDefault, 'default:\n']],
+    [
+      'a job leaving default: out',
+      'ci',
+      ['image:backend:\n', 'image:backend:\n  inherit:\n    default: false\n'],
+    ],
+    [
+      'a job taking default: without interruptible',
+      'validate',
+      ['operations-tests:\n', 'operations-tests:\n  inherit:\n    default: [tags]\n'],
+    ],
+  ];
+  for (const [fault, file, ...edits] of faults) {
+    const original = file === 'ci' ? CI : VALIDATE;
+    let edited = original;
+    for (const [from, to] of edits) {
+      const before = edited;
+      edited = edited.replaceAll(from, to);
+      assert.ok(edited !== before, `${fault}: the edit found nothing to change`);
+    }
+    assert.notDeepEqual(interruptibleProblems({ [file]: edited }), [], fault);
+  }
+});
+
+test('the model reads interruptible as GitLab does: own key, then templates, the last named winning, then default:, then false', () => {
+  const text = [
+    'default:',
+    '  interruptible: true',
+    '',
+    '.yes:',
+    '  interruptible: true',
+    '',
+    '.no:',
+    '  interruptible: false',
+    '',
+    'own:',
+    '  extends: .yes',
+    '  interruptible: false',
+    '',
+    'last:',
+    '  extends: [.yes, .no]',
+    '',
+    'listed:',
+    '  extends:',
+    '    - .no',
+    '    - .yes',
+    '',
+    'referenced:',
+    '  script: !reference [.no, script]',
+    '',
+    'reference:',
+    '  interruptible: !reference [.no, interruptible]',
+    '',
+    'plain:',
+    '  script: [x]',
+    '',
+    'alone:',
+    '  inherit:',
+    '    default: false',
+    '',
+    'kept:',
+    '  inherit:',
+    '    default:',
+    '      - tags',
+    '      - interruptible',
+    '',
+    'dropped:',
+    '  inherit:',
+    '    default: [tags]',
+    '',
+    'loop:',
+    '  extends: loop2',
+    '',
+    'loop2:',
+    '  extends: loop',
+    '',
+    'odd:',
+    '  interruptible: yes',
+    '',
+  ].join('\n');
+  const fallback = ownInterruptible(block(text, 'default'));
+  const of = (job) => interruptibleOf(text, job, fallback);
+  assert.equal(of('own'), false, 'its own key wins');
+  assert.equal(of('last'), false, 'the last template named wins');
+  assert.equal(of('listed'), true, 'a list of templates, the last winning');
+  assert.equal(of('referenced'), true, '!reference takes the one key it names');
+  assert.match(of('reference'), /does not read/);
+  assert.equal(of('plain'), true, "default:'s value");
+  assert.equal(of('alone'), false, 'inherit: default: false drops it');
+  assert.equal(of('kept'), true, 'a list naming interruptible keeps it');
+  assert.equal(of('dropped'), false, 'a list without it drops it');
+  assert.equal(of('loop'), true, 'a loop ends');
+  assert.equal(interruptibleOf(text, 'plain', undefined), false, "GitLab's own default");
+  assert.match(of('odd'), /does not read/);
+  assert.match(takesDefault(['  inherit:', '    default: maybe']), /does not read/);
 });

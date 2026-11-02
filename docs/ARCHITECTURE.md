@@ -1036,10 +1036,6 @@ well as under the commit SHA, so the tag production pulls is produced by the
 pipeline rather than by hand (D084). That named tag is never repointed: a build
 finds it absent and creates it, finds this same image behind it and succeeds
 without touching it, or finds a different image and fails asking for the bump.
-One pipeline is left out: the first on `main`, whose previous commit is this
-repository's empty start, where `deploy/postgres/` is new; it reuses the tag
-copied by digest from qa-tools' registry before the import (#326), which a
-fresh build would never match.
 
 Because two builds of one Dockerfile do not produce one image, a SHA tag already
 in the registry is pulled and reused instead of built again, so rerunning a
@@ -1059,9 +1055,14 @@ reachable from anywhere else (D092), and it authenticates as a ServiceAccount
 scoped to the application namespace rather than with administrative credentials
 (D093). Its kubeconfig variable is scoped to the `production` environment, which
 no other job declares, so no other job receives it (D258). The deploy job is
-also the only job that is not interruptible: deployments are serialised by a
-resource group, but a helm client cancelled part-way through an upgrade leaves
-the release needing manual repair before the next one can run. The validate
+also the only job that declares itself not interruptible: deployments are
+serialised by a resource group, but a helm client cancelled part-way through an
+upgrade leaves the release needing manual repair before the next one can run,
+and the delivery lock relies on a deployment that runs to its end (D216). Every
+other job takes `interruptible: true` from the `default:` of its file, but the
+proof job, which prints one line in a child pipeline that holds no `default:`
+and so takes GitLab's own default; a test of the pipeline files fails when
+`deploy` loses `interruptible: false` or another job declares it (#370). The validate
 stage, the gate on `main`, the proof job and the image builds run on the
 project's own CI runner, on a server of its own that holds nothing else: every
 one takes its runner tag from `QA_TOOLS_RUNNER_TAG`, `qa-tools-ci` by default,
