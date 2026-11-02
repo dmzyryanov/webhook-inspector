@@ -1060,8 +1060,9 @@ serialised by a resource group, but a helm client cancelled part-way through an
 upgrade leaves the release needing manual repair before the next one can run,
 and the delivery lock relies on a deployment that runs to its end (D216). Every
 other job takes `interruptible: true` from the `default:` of its file, but the
-proof job, which prints one line in a child pipeline that holds no `default:`
-and so takes GitLab's own default; a test of the pipeline files fails when
+proof job does not: it prints one line in a child pipeline that holds no
+`default:`, so it is not interruptible, GitLab's own default. A test of the
+pipeline files fails when
 `deploy` loses `interruptible: false` or another job declares it (#370). The validate
 stage, the gate on `main`, the proof job and the image builds run on the
 project's own CI runner, on a server of its own that holds nothing else: every
