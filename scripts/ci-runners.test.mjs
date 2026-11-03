@@ -48,8 +48,8 @@ const VALIDATE = read('.gitlab/ci/validate.yml');
 
 const SHARED = 'saas-linux-small-amd64';
 // The runners are the project's CI/CD variables' since #367, not the
-// pipeline files': production's two, as recorded in qa-tools'
-// docs/RESOURCES.md, with which the jobs land as before.
+// pipeline files': production's two, as the operator's record outside this
+// repository holds them, with which the jobs land as before.
 const OURS = 'qa-tools-ci';
 const DEPLOY = 'qa-tools-vps';
 const DEPLOY_TAG_VARIABLE = 'DEPLOY_RUNNER_TAG';

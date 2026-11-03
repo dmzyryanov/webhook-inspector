@@ -20,7 +20,8 @@
 --
 -- The role is versioned and exists in every environment, including local
 -- development and tests, but only as NOLOGIN and without a password. Both are
--- set by hand on production and nowhere in Git (docs/runbooks/qa-readonly-database-access.md).
+-- set by hand on production, an operator's step as the superuser
+-- (ALTER ROLE qa_readonly LOGIN PASSWORD ...), and nowhere in Git.
 -- Roles are cluster-wide while this migration runs once per database, and the
 -- local cluster holds the development and browser-smoke databases side by
 -- side, so the role is created only when absent and an existing role keeps its

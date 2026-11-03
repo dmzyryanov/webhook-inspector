@@ -182,12 +182,12 @@ test('the rules, on made-up merge requests: a group runs when one of its paths c
 
 test('the paths match as GitLab matches rules:changes, File.fnmatch with FNM_PATHNAME and FNM_DOTMATCH', () => {
   for (const [glob, path, expected] of [
-    ['.claude/**/*', '.claude/settings.json', true],
-    ['.claude/**/*', '.claude/scripts/launchd/install.sh', true],
-    ['.claude/**/*', '.claude', false],
-    ['.claude/**/*', '.claudex/settings.json', false],
-    ['.claude/**/*', 'x/.claude/settings.json', false],
-    ['.claude/**/*', '.claude/.hidden', true],
+    ['.config/**/*', '.config/settings.json', true],
+    ['.config/**/*', '.config/scripts/hooks/install.sh', true],
+    ['.config/**/*', '.config', false],
+    ['.config/**/*', '.configx/settings.json', false],
+    ['.config/**/*', 'x/.config/settings.json', false],
+    ['.config/**/*', '.config/.hidden', true],
     ['a/**/b', 'a/b', true],
     ['a/**/b', 'a/x/y/b', true],
     ['a/**/b', 'a/x/y/c', false],
@@ -252,7 +252,7 @@ test('a path the lists may not use is refused, never guessed at', () => {
 });
 
 test('matching made-up paths at growing sizes against globs at the wildcard limit stays fast', () => {
-  const globs = ['*a*a*a*b', 'a/**/b/**/c*d', '**/**/**/x*', '.claude/**/*'];
+  const globs = ['*a*a*a*b', 'a/**/b/**/c*d', '**/**/**/x*', '.config/**/*'];
   for (const glob of globs) assert.equal(typeof compileGlob(glob), 'function', glob);
   const patterns = compile(globs);
   assert.equal(MAX_WILDCARDS, 4);
@@ -262,7 +262,7 @@ test('matching made-up paths at growing sizes against globs at the wildcard limi
       `${'a/'.repeat(size / 2)}c`,
       `a/${'b/'.repeat(size / 2)}c`,
       `${'x/'.repeat(size / 2)}y`,
-      `.claude/${'d/'.repeat(size / 2)}`,
+      `.config/${'d/'.repeat(size / 2)}`,
     ]) {
       const started = performance.now();
       matches(patterns, path);
@@ -272,53 +272,53 @@ test('matching made-up paths at growing sizes against globs at the wildcard limi
 });
 
 test('the check names each file read and each directory listed that the paths leave out, and nothing else', () => {
-  const patterns = compile(['.claude/**/*', 'docs/tooling/scheduled-fires.md', 'scripts/db*.mjs']);
+  const patterns = compile(['.config/**/*', 'docs/testing/browser-smoke.md', 'scripts/db*.mjs']);
   const files = new Set([
-    '.claude/settings.json',
-    'docs/tooling/scheduled-fires.md',
-    'docs/DECISIONS.md',
+    '.config/settings.json',
+    'docs/testing/browser-smoke.md',
+    'docs/ARCHITECTURE.md',
     'scripts/db.mjs',
     'scripts/check-version.mjs',
   ]);
-  const directories = new Set(['.claude/scripts', 'docs/tooling', 'docs']);
+  const directories = new Set(['.config/scripts', 'docs/testing', 'docs']);
   const kinds = { isFile: (p) => files.has(p), isDirectory: (p) => directories.has(p) };
   const record = [
-    '.claude/settings.json',
-    'docs/tooling/scheduled-fires.md',
-    'docs/DECISIONS.md',
+    '.config/settings.json',
+    'docs/testing/browser-smoke.md',
+    'docs/ARCHITECTURE.md',
     'scripts/db.mjs',
     'scripts/check-version.mjs',
     'scripts/check-version.mjs',
-    '.claude/scripts/',
-    'docs/tooling/',
+    '.config/scripts/',
+    'docs/testing/',
     // Neither a file nor a directory of the checkout, or not a path in it.
     'git',
     '16384',
     'scripts/gone.mjs',
     '../outside.txt',
     '/etc/passwd',
-    'a/../docs/DECISIONS.md',
-    './docs/DECISIONS.md',
+    'a/../docs/ARCHITECTURE.md',
+    './docs/ARCHITECTURE.md',
     '',
     '   ',
     'docs/',
   ].join('\n');
   assert.deepEqual(uncovered(patterns, record, kinds), [
     'docs/',
-    'docs/DECISIONS.md',
-    'docs/tooling/',
+    'docs/ARCHITECTURE.md',
+    'docs/testing/',
     'scripts/check-version.mjs',
   ]);
   assert.deepEqual(uncovered(patterns, record.replace(/\n/g, '\r\n'), kinds), [
     'docs/',
-    'docs/DECISIONS.md',
-    'docs/tooling/',
+    'docs/ARCHITECTURE.md',
+    'docs/testing/',
     'scripts/check-version.mjs',
   ]);
   // Records at growing sizes.
   for (const count of [1_000, 100_000]) {
     const big = Array.from({ length: count }, (_, i) =>
-      i % 2 ? `.claude/f${i}` : `x${i}${'y'.repeat(i % 300)}`,
+      i % 2 ? `.config/f${i}` : `x${i}${'y'.repeat(i % 300)}`,
     ).join('\n');
     const started = performance.now();
     assert.deepEqual(

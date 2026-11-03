@@ -65,7 +65,7 @@ test('docs and delivery tooling may keep the product version', () => {
   checkVersion({
     previous: '0.5.0',
     current: '0.5.0',
-    paths: ['docs/DELIVERY.md', '.gitlab-ci.yml', 'scripts/check-deployment.mjs'],
+    paths: ['docs/ARCHITECTURE.md', '.gitlab-ci.yml', 'scripts/check-deployment.mjs'],
     changelog: '',
   });
 });
@@ -2198,8 +2198,8 @@ test('the version rule gives what the old runtime pattern gave', () => {
     'tsconfig.base.json',
     'tsconfig.json',
     'scripts/check-version.mjs',
-    '.claude/repositories.json',
-    'docs/DECISIONS.md',
+    '.gitlab/ci/validate.yml',
+    'docs/API.md',
     'VERSION',
     'CHANGELOG.md',
     'apps/backend/src/x.test.ts.orig',
