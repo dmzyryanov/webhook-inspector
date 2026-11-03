@@ -596,7 +596,15 @@ the deploy job reads the variables themselves:
 
 - `image:frontend` passes the three to the frontend image build as build
   arguments of `apps/frontend/Dockerfile`, through its `BUILD_ARGS`, so an
-  image is built for one address; the other images take no build argument;
+  image is built for one address; the other images take no build argument.
+  On `main` the image is built once per commit and published under its SHA,
+  and a rerun reuses it, so it holds the variables as they were when it was
+  first built: a later change of one reaches the image only with a new
+  commit, while `deploy` and the smoke read it at once. So since 1.19.10
+  (#367) the build on `main` stops before building, naming the variable,
+  when `DEPLOY_APP_ORIGIN` or `DEPLOY_RECEIVE_ORIGIN` is not set or empty,
+  or `DEPLOY_APP_ALIAS_ORIGIN` is not set (empty is none), rather than
+  publish an image named for the build's fallbacks, production's origins;
 - `deploy` checks that each is `https://` and a host name alone — since
   1.19.1 (#340) dot-separated labels of lowercase letters, digits and
   hyphens, each 1 to 63 characters and neither starting nor ending with a
@@ -662,7 +670,10 @@ the receive host's,
 `https://webhook.qa-tools.ru` the second origin's, or the site's where there
 is none (D275), a `wss://` name its origin under `wss:` or `ws:`, and a bare
 host the host. The second origin defaults to production's while the site is
-production's and to none for any other site, and the build refuses origins
+production's and to none for any other site — so an empty
+`DEPLOY_APP_ALIAS_ORIGIN` beside production's site origin removes the second
+host's Ingresses and certificate while the image still names
+`https://webhook.qa-tools.ru`; a copy on its own origins is unaffected — and the build refuses origins
 it could not name as they are, such as a second origin equal to the site's. The rename leaves the feeds' entry ids `tag:qa-tools.ru,2026:…`
 as they are, which are permanent, and `contact@qa-tools.ru` and
 `status.qa-tools.ru`, which until 1.19.6 every build named as the platform's
@@ -701,7 +712,8 @@ which the `.gitlab-ci.yml` job `image:frontend` gives the three names above
 beside its `BUILD_ARGS`, as `.inspector-address` does the origins; no file of
 the repository names their values. On `main` the build stops before building,
 naming each of the three that is not set, so an unset variable cannot leave a
-detail out of production's site; set empty, the image leaves it out.
+detail out of production's site, whose image is built once per commit (The
+inspector's address, above); set empty, the image leaves it out.
 
 - The status page: `Status ↗` in the application's header (`AppHeader`) and
   the static pages' (`siteHeader`), with the divider before it, comes from

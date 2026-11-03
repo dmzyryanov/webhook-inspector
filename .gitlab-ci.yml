@@ -214,28 +214,39 @@ main-validation:
       # by word: the frontend's names the inspector's address (D274) and its
       # operator (#369); the other images take none.
 
-      # BUILD_VARIABLES names the project CI/CD variables an image's build
-      # reads that may be empty but must be set (#367): the frontend's
-      # operator. On main, where the image is published and deployed, one not
-      # set stops the job here, before anything is built, naming it, so an
-      # unset variable cannot leave a detail out of production's site; set
-      # empty, the detail is left out. A merge request builds with what is
-      # set and throws the image away. The names are checked before `eval`
-      # reads them, and no value is printed.
+      # BUILD_VALUES and BUILD_VARIABLES name the project CI/CD variables an
+      # image's build reads (#367): those that need a value - the frontend's
+      # site and receive origins - and those that may be empty but must be
+      # set - its second origin, empty for none, and its operator, empty for
+      # a detail left out. On main the image is published once per commit and
+      # every rerun reuses it (below), so one not set, or empty where a value
+      # is needed, stops the job here, before anything is built, naming it:
+      # an image built from a fallback, production's origins or no operator,
+      # would stay that commit's image. A merge request builds with what is
+      # set and throws the image away. Each name is checked, with no glob
+      # read, before `eval` reads it, and no value is printed.
       if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        missing=''
-        for name in $BUILD_VARIABLES; do
+        set -f
+        for name in $BUILD_VALUES $BUILD_VARIABLES; do
           case "$name" in
             [!A-Z_]* | *[!A-Z0-9_]*)
-              echo "BUILD_VARIABLES holds something other than variable names"
+              echo "BUILD_VALUES or BUILD_VARIABLES holds something other than variable names"
               exit 1
               ;;
           esac
+        done
+        missing=''
+        for name in $BUILD_VALUES; do
+          eval "given=\${$name:-}"
+          if [ -z "$given" ]; then missing="$missing $name"; fi
+        done
+        for name in $BUILD_VARIABLES; do
           eval "given=\${$name+set}"
           if [ -z "$given" ]; then missing="$missing $name"; fi
         done
+        set +f
         if [ -n "$missing" ]; then
-          echo "Not built: the project CI/CD variables$missing are not set; set empty, each is left out (README.md, Deploying from GitLab CI)"
+          echo "Not built: the project CI/CD variables$missing are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)"
           exit 1
         fi
       fi
@@ -321,13 +332,17 @@ image:frontend:
     # DEPLOY_STATUS_PAGE_URL, DEPLOY_CONTACT_EMAIL and DEPLOY_OPERATOR_TEXTS
     # (#367), which the installation sets; none is named in this file. Set
     # empty, the image leaves the detail out, the repository's sources falling
-    # back to none of them (apps/frontend/src/lib/operator.ts); not set, the
-    # build on main stops before `docker build`, naming it (BUILD_VARIABLES,
-    # .image). The names here are the ones the frontend build reads.
+    # back to none of them (apps/frontend/src/lib/operator.ts). The names here
+    # are the ones the frontend build reads.
     STATUS_PAGE_URL: $DEPLOY_STATUS_PAGE_URL
     CONTACT_EMAIL: $DEPLOY_CONTACT_EMAIL
     OPERATOR_TEXTS: $DEPLOY_OPERATOR_TEXTS
-    BUILD_VARIABLES: 'DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'
+    # On main the build stops before `docker build`, naming it, when one of
+    # the image's project variables is not set, or the site's or the receive
+    # host's origin is empty (.image): built from the fallbacks, the image
+    # would name production's origins or no operator, and stay that commit's.
+    BUILD_VALUES: 'DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN'
+    BUILD_VARIABLES: 'DEPLOY_APP_ALIAS_ORIGIN DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'
     # The image names the inspector's address (D274, D275) and its operator
     # (#369): each argument takes the value of the variable of its name.
     BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'

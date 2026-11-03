@@ -115,7 +115,10 @@ assume they are this site's.** Someone installing the inspector on a server of
 their own now gives it their own addresses, and its off-server backup copy and
 its alerts are options they switch on with storage and an alerting service of
 their own; this site sets the same values it had, kept outside the code.
-Every address answers exactly as before. (#367)
+The automated build of the site now stops, naming the setting, when the site's
+or the receive host's address, or one of the operator's details, has not been
+given, rather than build a copy that names this site's addresses or leaves its
+details out. Every address answers exactly as before. (#367)
 
 ## 1.19.9
 

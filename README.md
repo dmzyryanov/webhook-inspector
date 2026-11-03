@@ -312,26 +312,36 @@ project runs the same pipeline, nothing being included from another project,
 with its own runners and these CI/CD variables of the project; no file of the
 repository holds an installation's values:
 
-| Variable | What it is | Read by |
-| --- | --- | --- |
-| `DEPLOY_APP_ORIGIN` | The site's origin, `https://<host>` | frontend image, `deploy`, `deployment-smoke` |
-| `DEPLOY_RECEIVE_ORIGIN` | The receive host's origin | frontend image, `deploy`, `deployment-smoke` |
-| `DEPLOY_APP_ALIAS_ORIGIN` | The site's second origin; empty for none | frontend image, `deploy`, `deployment-smoke` |
-| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image |
-| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image |
-| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image |
-| `DEPLOY_ALIAS_TLS_SECRET` | The second host's certificate Secret; with a second origin | `deploy` |
-| `DEPLOY_RECEIVE_TLS_SECRET` | The receive host's certificate Secret | `deploy` |
-| `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_DATABASE` | The database role and database | `deploy` |
-| `DEPLOY_BACKUP_HOST_PATH` | The backup directory on the node | `deploy` |
-| `DEPLOY_BACKUP_BUCKET` | The off-server copy's bucket; empty for none | `deploy` |
-| `DEPLOY_BACKUP_ENDPOINT`, `DEPLOY_BACKUP_REGION`, `DEPLOY_BACKUP_SECRET` | Its storage and the Secret holding its key; with a bucket | `deploy` |
-| `DEPLOY_BACKUP_RECIPIENT_KEY` | Type File: the public key the copies are encrypted to; with a bucket | `deploy` |
-| `DEPLOY_HEARTBEAT_URL` | The heartbeat endpoint; empty for no monitor | `deploy` |
-| `DEPLOY_HEARTBEAT_SECRET` | The Secret holding the heartbeat tokens; with a heartbeat URL | `deploy` |
-| `DEPLOY_RUNNER_TAG` | The tag of the runner inside the server: letters, digits, `.`, `_` and `-` | `deploy`'s `tags:`, the rules of `deploy`, `deployment-smoke` and `deploy-runner-tag` |
-| `QA_TOOLS_RUNNER_TAG` | The tag of the runner for every other job but the smoke; unset, GitLab's shared runners | every job's `tags:` but those two |
-| `KUBECONFIG_DEPLOYER` | Type File, protected, environment `production`: the kubeconfig of `gitlab-deployer.yaml`'s ServiceAccount | `deploy` |
+| Variable | What it is | Read by | Environment |
+| --- | --- | --- | --- |
+| `DEPLOY_APP_ORIGIN` | The site's origin, `https://<host>` | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_RECEIVE_ORIGIN` | The receive host's origin | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_APP_ALIAS_ORIGIN` | The site's second origin; empty for none (below) | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image | all |
+| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image | all |
+| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image | all |
+| `DEPLOY_ALIAS_TLS_SECRET` | The second host's certificate Secret; with a second origin | `deploy` | `production` |
+| `DEPLOY_RECEIVE_TLS_SECRET` | The receive host's certificate Secret | `deploy` | `production` |
+| `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_DATABASE` | The database role and database | `deploy` | `production` |
+| `DEPLOY_BACKUP_HOST_PATH` | The backup directory on the node | `deploy` | `production` |
+| `DEPLOY_BACKUP_BUCKET` | The off-server copy's bucket; empty for none | `deploy` | `production` |
+| `DEPLOY_BACKUP_ENDPOINT`, `DEPLOY_BACKUP_REGION`, `DEPLOY_BACKUP_SECRET` | Its storage and the Secret holding its key; with a bucket | `deploy` | `production` |
+| `DEPLOY_BACKUP_RECIPIENT_KEY` | Type File: the public key the copies are encrypted to; with a bucket | `deploy` | `production` |
+| `DEPLOY_HEARTBEAT_URL` | The heartbeat endpoint; empty for no monitor | `deploy` | `production` |
+| `DEPLOY_HEARTBEAT_SECRET` | The Secret holding the heartbeat tokens; with a heartbeat URL | `deploy` | `production` |
+| `DEPLOY_RUNNER_TAG` | The tag of the runner inside the server: letters, digits, `.`, `_` and `-`, starting with a letter or digit | `deploy`'s `tags:`, the rules of `deploy`, `deployment-smoke` and `deploy-runner-tag` | all |
+| `QA_TOOLS_RUNNER_TAG` | The tag of the runner for every other job but the smoke; unset, GitLab's shared runners | every job's `tags:` but those two | all |
+| `KUBECONFIG_DEPLOYER` | Type File, protected: the kubeconfig of `gitlab-deployer.yaml`'s ServiceAccount | `deploy` | `production` |
+
+Each variable is set with no environment scope, but those the table marks
+`production`, which only `deploy`, the one job with that environment, reads;
+protecting any of them to protected branches is fine. `DEPLOY_RUNNER_TAG`, the
+origins and the operator variables must not be scoped to `production`: the
+runner tag is read when the pipeline is created, and the others by the image
+build and the smoke, which have no environment. In the project's Settings →
+CI/CD → Variables, set "Minimum role to use pipeline variables" to "No one
+allowed": a variable given to a pipeline when it is run outranks the project's
+own, and could send `deploy` to another runner or give the chart other values.
 
 The deploy job stops before `helm upgrade` and names every variable it reads
 that is not set, so an unset one cannot switch the backup's off-server copy or
@@ -339,14 +349,28 @@ the monitor off. It stops the same way for one set empty, but for the three
 options: an empty second origin, bucket or heartbeat URL is none, and its
 companions are then not needed. It refuses a value holding anything but
 letters, digits and `.`, `_`, `:`, `/` and `-`, naming the variable and never
-printing the value. On `main` the frontend image's build likewise stops before
-building, naming each of its three operator variables that is not set; set
-empty, the image leaves that detail out. With `DEPLOY_RUNNER_TAG` not set, or
-holding anything but one runner tag, neither `deploy` nor `deployment-smoke`
-is created, so the job holding the cluster's credential never runs untagged on
-a shared runner, and the job `deploy-runner-tag` fails the pipeline before
-anything is built, naming the variable. The pipeline installs the release
-`qa-tools` into the namespace `qa-tools`.
+printing the value. With `DEPLOY_RUNNER_TAG` not set, or holding anything but
+one runner tag, neither `deploy` nor `deployment-smoke` is created, so the job
+holding the cluster's credential never runs untagged on a shared runner, and
+the job `deploy-runner-tag` fails the pipeline before anything is built, naming
+the variable. The pipeline installs the release `qa-tools` into the namespace
+`qa-tools`.
+
+On `main` the frontend image is built once per commit and published under the
+commit's SHA; a rerun of the pipeline reuses it. It reads its variables when it
+is first built, so a change of `DEPLOY_APP_ORIGIN`, `DEPLOY_RECEIVE_ORIGIN`,
+`DEPLOY_APP_ALIAS_ORIGIN` or an operator variable reaches the image only with a
+new commit, while `deploy` and the smoke read the new value at once. For the
+same reason the build stops before building, naming the variable, when one of
+the six is not set, or the site's or the receive host's origin is empty: an
+image built from the frontend's fallbacks would stay that commit's. An empty
+second origin or operator variable is left out of the image.
+
+An empty `DEPLOY_APP_ALIAS_ORIGIN` while `DEPLOY_APP_ORIGIN` is this site's
+own, `https://qa-tools.ru`, removes the second host's Ingresses and certificate,
+while the frontend image still names `https://webhook.qa-tools.ru`, the
+build's default for this site (`apps/frontend/scripts/site-origin.mjs`); a copy
+on its own origins has no second origin by default and is unaffected.
 
 ## License
 

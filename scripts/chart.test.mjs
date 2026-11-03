@@ -1588,6 +1588,76 @@ function filesUnder(path) {
   );
 }
 
+/** The project CI/CD variables an installation sets that the pipeline files read: `DEPLOY_*`, the runner tags and the kubeconfig, outside comments. */
+function pipelineVariables(texts) {
+  const names = new Set();
+
+  for (const text of texts) {
+    for (const [name] of uncommented(text).matchAll(
+      /\b(?:DEPLOY_[A-Z0-9_]+|[A-Z0-9_]+_RUNNER_TAG|KUBECONFIG_[A-Z0-9_]+)\b/g,
+    )) {
+      names.add(name);
+    }
+  }
+
+  return [...names].sort();
+}
+
+/** The names README.md's table of "Deploying from GitLab CI" lists, each row's first cell. */
+function readmeVariables(readme) {
+  const from = readme.indexOf('\n### Deploying from GitLab CI\n');
+
+  assert.ok(from >= 0, 'README.md has no "Deploying from GitLab CI"');
+
+  const section = readme.slice(from + 1, readme.indexOf('\n## ', from + 1));
+  const names = new Set();
+
+  for (const [, cell] of section.matchAll(/^\| ([^|\n]+?) \|/gm)) {
+    for (const [, name] of cell.matchAll(/`([A-Z][A-Z0-9_]*)`/g)) names.add(name);
+  }
+
+  return [...names].sort();
+}
+
+/** The pipeline files: .gitlab-ci.yml and every file under .gitlab/ci/. */
+const pipelineFiles = () => [
+  readFileSync(PIPELINE, 'utf8'),
+  ...readdirSync(join(ROOT, '.gitlab/ci')).map((name) =>
+    readFileSync(join(ROOT, '.gitlab/ci', name), 'utf8'),
+  ),
+];
+
+test("README.md's table of CI/CD variables lists every one the pipeline files read, and nothing they do not (#367)", () => {
+  const read = pipelineVariables(pipelineFiles());
+  const listed = readmeVariables(readFileSync(join(ROOT, 'README.md'), 'utf8'));
+
+  assert.deepEqual(listed, read);
+  // Twenty-one of them today: the installation's nineteen DEPLOY_* values,
+  // QA_TOOLS_RUNNER_TAG and the deploy credential.
+  assert.equal(read.length, 21, read.join(' '));
+  for (const name of ['QA_TOOLS_RUNNER_TAG', 'DEPLOY_RUNNER_TAG', 'KUBECONFIG_DEPLOYER']) {
+    assert.ok(read.includes(name), name);
+  }
+
+  // The comparison sees a row missing, a row of a name no file reads, and a
+  // name read in a file under .gitlab/ci/ only.
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const row = readme.match(/^\| `DEPLOY_HEARTBEAT_SECRET` \|[^\n]*\n/m)?.[0];
+
+  assert.ok(row, 'the test looks for the row of DEPLOY_HEARTBEAT_SECRET');
+  assert.notDeepEqual(readmeVariables(readme.replace(row, '')), read);
+  assert.notDeepEqual(
+    readmeVariables(readme.replace(row, `${row}| \`DEPLOY_UNREAD\` | x | x | all |\n`)),
+    read,
+  );
+  assert.notDeepEqual(
+    pipelineVariables([...pipelineFiles(), 'x:\n  script:\n    - echo "$DEPLOY_NEW_VALUE"\n']),
+    listed,
+  );
+  // Comments do not count as reading.
+  assert.deepEqual(pipelineVariables(['# DEPLOY_ONLY_SAID\nx: 1\n']), []);
+});
+
 test("the pipeline and deploy/ name no host, account or runner of production's: the CI/CD variables do (#367, criterion 6)", () => {
   const pipeline = readFileSync(PIPELINE, 'utf8');
   const validate = readFileSync(fileURLToPath(CI), 'utf8');
@@ -1639,8 +1709,8 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
 });
 
 /* ------------------------------------------------------------------------ */
-/* The frontend image's operator (#369), from the project's CI/CD variables  */
-/* (#367).                                                                   */
+/* The frontend image's address and operator (#369), from the project's      */
+/* CI/CD variables (#367).                                                    */
 /* ------------------------------------------------------------------------ */
 
 /** The `.image` template's script, the check and the builds, as the runner's shell runs it. */
@@ -1653,15 +1723,31 @@ const OPERATOR_VARIABLES = [
   ['DEPLOY_OPERATOR_TEXTS', 'OPERATOR_TEXTS'],
 ];
 
+/** The image's origins: the project's CI/CD variable, empty allowed or not. */
+const ORIGIN_VARIABLES = [
+  ['DEPLOY_APP_ORIGIN', false],
+  ['DEPLOY_RECEIVE_ORIGIN', false],
+  ['DEPLOY_APP_ALIAS_ORIGIN', true],
+];
+
+/** Production's origins and operator as the frontend build sees them, in the stand-in's order. */
+const PRODUCTION_ORIGINS = [
+  'https://qa-tools.ru',
+  'https://hook.qa-tools.ru',
+  'https://webhook.qa-tools.ru',
+];
+const PRODUCTION_SETTINGS = ['https://status.qa-tools.ru/', 'contact@qa-tools.ru', 'true'];
+
 // A stand-in docker: `manifest inspect` finds nothing, so a build on main
-// builds and pushes; each other call is recorded with the operator's settings
-// as the build sees them, `-` for one not in its environment.
+// builds and pushes; each other call is recorded with the origins and the
+// operator's settings as the build sees them, `-` for one not in its
+// environment.
 writeFileSync(
   join(STAND_INS, 'docker'),
   [
     '#!/bin/sh',
     'if [ "$1" = manifest ]; then echo "manifest unknown" >&2; exit 1; fi',
-    'printf \'%s|%s|%s|%s\\n\' "$*" "${STATUS_PAGE_URL--}" "${CONTACT_EMAIL--}" "${OPERATOR_TEXTS--}" >> "$DOCKER_CALLS"',
+    'printf \'%s|%s|%s|%s|%s|%s|%s\\n\' "$*" "${APP_ORIGIN--}" "${RECEIVE_ORIGIN--}" "${APP_ALIAS_ORIGIN--}" "${STATUS_PAGE_URL--}" "${CONTACT_EMAIL--}" "${OPERATOR_TEXTS--}" >> "$DOCKER_CALLS"',
     '',
   ].join('\n'),
   { mode: 0o755 },
@@ -1694,13 +1780,13 @@ function jobVariables(jobs, project) {
 }
 
 /**
- * The `.image` script of `image:frontend` with the project's CI/CD variables
- * `project`, in a pipeline on main or in a merge request: its status, its
- * output and docker's calls.
+ * The `.image` script of `image:frontend`, or of `job`, with the project's
+ * CI/CD variables `project`, in a pipeline on main or in a merge request,
+ * from `cwd`: its status, its output and docker's calls.
  */
-function frontendBuild(
+function imageBuild(
   project,
-  { main = true, shell = 'sh', jobs = ['.inspector-address', '.image', 'image:frontend'] } = {},
+  { main = true, shell = 'sh', job = 'image:frontend', cwd = STAND_INS } = {},
 ) {
   const record = join(STAND_INS, `docker-${(runs += 1)}`);
   const predefined = {
@@ -1710,11 +1796,11 @@ function frontendBuild(
     ...(main ? { CI_COMMIT_BRANCH: 'main' } : {}),
   };
   const run = spawnSync(shell, ['-c', IMAGE_SCRIPT], {
-    cwd: STAND_INS,
+    cwd,
     env: {
       PATH: `${STAND_INS}:${process.env.PATH}`,
       DOCKER_CALLS: record,
-      ...jobVariables(jobs, { ...predefined, ...project }),
+      ...jobVariables(['.inspector-address', '.image', job], { ...predefined, ...project }),
     },
     encoding: 'utf8',
   });
@@ -1730,20 +1816,32 @@ function frontendBuild(
   return { status: run.status, output: `${run.stdout}${run.stderr}`, docker };
 }
 
-/** The frontend image's build and push, as recorded, with the operator's settings the build saw. */
-const builtWith = (settings, image = `${PRODUCTION.CI_REGISTRY_IMAGE}/frontend`) => [
-  `build --pull --build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS -f apps/frontend/Dockerfile -t ${image}:${'a'.repeat(40)} .|${settings.join('|')}`,
-  `push ${image}:${'a'.repeat(40)}|${settings.join('|')}`,
-];
+/** The frontend image's build and push, as recorded, with the operator's settings and the origins the build saw. */
+const builtWith = (
+  settings,
+  origins = PRODUCTION_ORIGINS,
+  image = `${PRODUCTION.CI_REGISTRY_IMAGE}/frontend`,
+) => {
+  const seen = [...origins, ...settings].join('|');
 
-/** The build's refusal when the variables `names` are not set. */
+  return [
+    `build --pull --build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS -f apps/frontend/Dockerfile -t ${image}:${'a'.repeat(40)} .|${seen}`,
+    `push ${image}:${'a'.repeat(40)}|${seen}`,
+  ];
+};
+
+/** The build's refusal when the variables `names` are missing: exit 1, their names, docker not run. */
 const notBuilt = (names) => ({
   status: 1,
-  output: `Not built: the project CI/CD variables ${names.join(' ')} are not set; set empty, each is left out (README.md, Deploying from GitLab CI)\n`,
+  output: `Not built: the project CI/CD variables ${names.join(' ')} are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)\n`,
   docker: [],
 });
 
-test("the operator's details: the frontend image's build takes production's from the project's CI/CD variables, which the pipeline does not name, under the names the build reads (#369, #367)", async () => {
+/** PRODUCTION without the variables `names`. */
+const productionWithout = (...names) =>
+  Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
+
+test("the frontend image's address and operator: its build takes production's from the project's CI/CD variables, which the pipeline does not name, under the names the build reads (#369, #367)", async () => {
   const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
   const pipeline = readFileSync(PIPELINE, 'utf8');
   const frontend = pipelineKey(pipeline, 'image:frontend');
@@ -1752,16 +1850,19 @@ test("the operator's details: the frontend image's build takes production's from
     assert.match(frontend, new RegExp(`^ {4}${name}: \\$${variable}$`, 'm'), name);
     assert.equal(pipeline.split(`${name}:`).length - 1, 1, `the pipeline sets ${name} elsewhere`);
   }
+  // What the build checks on main: the two origins need a value; the second
+  // origin and the operator's settings must be set, empty for none.
+  assert.match(frontend, /^ {4}BUILD_VALUES: 'DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN'$/m);
   assert.match(
     frontend,
-    /^ {4}BUILD_VARIABLES: 'DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'$/m,
+    /^ {4}BUILD_VARIABLES: 'DEPLOY_APP_ALIAS_ORIGIN DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'$/m,
   );
   // Not global, not the inspector's address, not the other images': the
   // deploy job and the smoke do not read them, and the test jobs build no
   // image.
   assert.doesNotMatch(
     uncommented(pipelineKey(pipeline, 'variables')),
-    /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES/,
+    /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_VALUES/,
   );
   for (const job of [
     '.inspector-address',
@@ -1772,7 +1873,7 @@ test("the operator's details: the frontend image's build takes production's from
   ]) {
     assert.doesNotMatch(
       uncommented(pipelineKey(pipeline, job)),
-      /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_ARGS/,
+      /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_VALUES|BUILD_ARGS/,
       job,
     );
   }
@@ -1816,14 +1917,15 @@ test("the operator's details: the frontend image's build takes production's from
   }
 
   // Production's variables: the image is built and pushed naming
-  // production's status page, address and texts, as before #367.
-  const production = frontendBuild(PRODUCTION);
-  const settings = ['https://status.qa-tools.ru/', 'contact@qa-tools.ru', 'true'];
-
-  assert.deepEqual(production, { status: 0, output: '', docker: builtWith(settings) });
+  // production's origins, status page, address and texts, as before #367.
+  assert.deepEqual(imageBuild(PRODUCTION), {
+    status: 0,
+    output: '',
+    docker: builtWith(PRODUCTION_SETTINGS),
+  });
   assert.deepEqual(
     parseOperator(
-      Object.fromEntries(OPERATOR_VARIABLES.map(([, name], at) => [name, settings[at]])),
+      Object.fromEntries(OPERATOR_VARIABLES.map(([, name], at) => [name, PRODUCTION_SETTINGS[at]])),
     ),
     {
       statusPageUrl: 'https://status.qa-tools.ru/',
@@ -1833,32 +1935,60 @@ test("the operator's details: the frontend image's build takes production's from
   );
 });
 
-test("on main the frontend image's build stops before docker build, naming the variable, when an operator's variable is not set; set empty, the detail is left out; a merge request builds either way (#367)", async () => {
+test("on main the frontend image's build stops before docker build, naming the variable, when an origin or an operator's variable is not set, or the site's or the receive host's origin is empty; an empty second origin or detail is left out; a merge request builds either way (#367)", async () => {
   const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
-  const without = (...names) =>
-    Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
-  const names = OPERATOR_VARIABLES.map(([variable]) => variable);
-  const settings = ['https://status.qa-tools.ru/', 'contact@qa-tools.ru', 'true'];
+  const operator = OPERATOR_VARIABLES.map(([variable]) => variable);
+  const origins = ORIGIN_VARIABLES.map(([variable]) => variable);
 
   for (const shell of ['sh', 'bash']) {
-    for (const name of names) {
+    // Not set: each stops the build on main.
+    for (const name of [...origins, ...operator]) {
       assert.deepEqual(
-        frontendBuild(without(name), { shell }),
+        imageBuild(productionWithout(name), { shell }),
         notBuilt([name]),
         `${shell} ${name}`,
       );
     }
-    assert.deepEqual(frontendBuild(without(...names), { shell }), notBuilt(names), shell);
+    // Every one at once, the origins first.
+    assert.deepEqual(
+      imageBuild(productionWithout(...origins, ...operator), { shell }),
+      notBuilt([...origins, ...operator]),
+      shell,
+    );
 
-    // Set empty, each is left out of the build, and the others kept; with
-    // the texts off, the status page and the address may go too.
-    for (const [at, name] of names.entries()) {
-      if (name !== 'DEPLOY_OPERATOR_TEXTS') {
-        const run = frontendBuild(
-          { ...PRODUCTION, DEPLOY_OPERATOR_TEXTS: '', [name]: '' },
-          { shell },
+    // Set empty: the site's and the receive host's origins stop the build
+    // as unset; the second origin is none, built for the first alone.
+    for (const [name, mayBeEmpty] of ORIGIN_VARIABLES) {
+      const run = imageBuild({ ...PRODUCTION, [name]: '' }, { shell });
+
+      if (mayBeEmpty) {
+        assert.deepEqual(
+          run,
+          {
+            status: 0,
+            output: '',
+            docker: builtWith(PRODUCTION_SETTINGS, [...PRODUCTION_ORIGINS.slice(0, 2), '']),
+          },
+          `${shell} ${name}`,
         );
-        const seen = settings.map((value, index) => (index === at || index === 2 ? '' : value));
+      } else {
+        assert.deepEqual(run, notBuilt([name]), `${shell} ${name}`);
+      }
+    }
+    assert.deepEqual(
+      imageBuild({ ...PRODUCTION, DEPLOY_APP_ORIGIN: '', DEPLOY_RECEIVE_ORIGIN: '' }, { shell }),
+      notBuilt(['DEPLOY_APP_ORIGIN', 'DEPLOY_RECEIVE_ORIGIN']),
+      shell,
+    );
+
+    // Set empty, each detail is left out of the build, and the others kept;
+    // with the texts off, the status page and the address may go too.
+    for (const [at, name] of operator.entries()) {
+      if (name !== 'DEPLOY_OPERATOR_TEXTS') {
+        const run = imageBuild({ ...PRODUCTION, DEPLOY_OPERATOR_TEXTS: '', [name]: '' }, { shell });
+        const seen = PRODUCTION_SETTINGS.map((value, index) =>
+          index === at || index === 2 ? '' : value,
+        );
 
         assert.deepEqual(
           run,
@@ -1868,8 +1998,8 @@ test("on main the frontend image's build stops before docker build, naming the v
       }
     }
 
-    const none = frontendBuild(
-      { ...PRODUCTION, ...Object.fromEntries(names.map((name) => [name, ''])) },
+    const none = imageBuild(
+      { ...PRODUCTION, ...Object.fromEntries(operator.map((name) => [name, ''])) },
       { shell },
     );
 
@@ -1884,85 +2014,93 @@ test("on main the frontend image's build stops before docker build, naming the v
     );
 
     // A merge request builds what is set and pushes nothing.
-    const request = frontendBuild(without(...names), { main: false, shell });
+    const request = imageBuild(productionWithout(...origins, ...operator), { main: false, shell });
 
     assert.equal(request.status, 0, request.output);
-    assert.deepEqual(request.docker, [builtWith(['', '', ''])[0]]);
+    assert.deepEqual(request.docker, [builtWith(['', '', ''], ['', '', ''])[0]]);
 
     // The other images read none: with no variable of the project at all,
     // the backend's builds on main.
-    const backend = spawnSync(shell, ['-c', IMAGE_SCRIPT], {
-      cwd: STAND_INS,
-      env: {
-        PATH: `${STAND_INS}:${process.env.PATH}`,
-        DOCKER_CALLS: join(STAND_INS, `docker-${(runs += 1)}`),
-        ...jobVariables(['.inspector-address', '.image', 'image:backend'], {
-          CI_DEFAULT_BRANCH: 'main',
-          CI_COMMIT_BRANCH: 'main',
-          CI_COMMIT_SHA: 'a'.repeat(40),
-          CI_REGISTRY_IMAGE: 'registry.example/inspector',
-        }),
-      },
-      encoding: 'utf8',
-    });
+    const backend = imageBuild({}, { shell, job: 'image:backend' });
 
-    assert.equal(backend.status, 0, `${backend.stdout}${backend.stderr}`);
+    assert.equal(backend.status, 0, backend.output);
+    assert.equal(backend.docker.length, 2, backend.output);
   }
 });
 
-test('the image build reads BUILD_VARIABLES as variable names alone, never running or expanding what else it holds, at growing sizes (#367)', () => {
+test('the image build reads BUILD_VALUES and BUILD_VARIABLES as variable names alone, never running, globbing or expanding what else they hold, at growing sizes (#367)', () => {
   const marker = join(STAND_INS, 'ran');
   const refused = {
     status: 1,
-    output: 'BUILD_VARIABLES holds something other than variable names\n',
+    output: 'BUILD_VALUES or BUILD_VARIABLES holds something other than variable names\n',
     docker: [],
   };
+  // A directory holding one file named like a variable that is set: a
+  // glob read there would turn `*` into that name.
+  const globbed = mkdtempSync(join(tmpdir(), 'chart-test-glob-'));
+
+  writeFileSync(join(globbed, 'DEPLOY_CONTACT_EMAIL'), '');
+  after(() => rmSync(globbed, { recursive: true, force: true }));
 
   for (const shell of ['sh', 'bash']) {
-    for (const value of [
-      `$(touch ${marker})`,
-      `\`touch ${marker}\``,
-      `A;touch ${marker}`,
-      `A}; touch ${marker}; {`,
-      'A-B',
-      'a',
-      '1A',
-      'A.B',
-      '*',
-      '${PATH}',
-    ]) {
-      assert.deepEqual(
-        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: value }, { shell }),
-        refused,
-        `${shell} ${JSON.stringify(value)}`,
-      );
-      assert.throws(() => readFileSync(marker), /ENOENT/, `${shell} ${JSON.stringify(value)}`);
-    }
+    for (const list of ['BUILD_VALUES', 'BUILD_VARIABLES']) {
+      for (const value of [
+        `$(touch ${marker})`,
+        `\`touch ${marker}\``,
+        `A;touch ${marker}`,
+        `A}; touch ${marker}; {`,
+        'A-B',
+        'a',
+        '1A',
+        'A.B',
+        '*',
+        'DEPLOY_CONTACT_EMAI?',
+        '${PATH}',
+      ]) {
+        for (const cwd of [STAND_INS, globbed]) {
+          assert.deepEqual(
+            imageBuild({ ...PRODUCTION, [list]: value }, { shell, cwd }),
+            refused,
+            `${shell} ${list} ${JSON.stringify(value)} in ${cwd}`,
+          );
+        }
+        assert.throws(() => readFileSync(marker), /ENOENT/, `${shell} ${JSON.stringify(value)}`);
+      }
 
-    // Names: words split at white space, each checked; one not set is named.
+      // Names: words split at white space, each checked; one missing is named.
+      assert.deepEqual(
+        imageBuild({ ...PRODUCTION, [list]: ' DEPLOY_CONTACT_EMAIL\n\tNOT_SET_X ' }, { shell }),
+        notBuilt(['NOT_SET_X']),
+        `${shell} ${list}`,
+      );
+
+      for (const size of [10, 1000, 100_000]) {
+        const long = `N${'A'.repeat(size)}`;
+
+        assert.deepEqual(
+          imageBuild({ ...PRODUCTION, [list]: long }, { shell }),
+          notBuilt([long]),
+          `${shell} ${list} ${size}`,
+        );
+        assert.deepEqual(
+          imageBuild({ ...PRODUCTION, [list]: `${long}-` }, { shell }),
+          refused,
+          `${shell} ${list} ${size}`,
+        );
+      }
+    }
+    // A name that needs a value, set empty, is named; the same name in the
+    // list that needs it set alone passes.
     assert.deepEqual(
-      frontendBuild(
-        { ...PRODUCTION, BUILD_VARIABLES: ' DEPLOY_CONTACT_EMAIL\n\tNOT_SET_X ' },
-        { shell },
-      ),
-      notBuilt(['NOT_SET_X']),
+      imageBuild({ ...PRODUCTION, BUILD_VALUES: 'DEPLOY_X', DEPLOY_X: '' }, { shell }),
+      notBuilt(['DEPLOY_X']),
       shell,
     );
-
-    for (const size of [10, 1000, 100_000]) {
-      const long = `N${'A'.repeat(size)}`;
-
-      assert.deepEqual(
-        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: long }, { shell }),
-        notBuilt([long]),
-        `${shell} ${size}`,
-      );
-      assert.deepEqual(
-        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: `${long}-` }, { shell }),
-        refused,
-        `${shell} ${size}`,
-      );
-    }
+    assert.equal(
+      imageBuild({ ...PRODUCTION, BUILD_VARIABLES: 'DEPLOY_X', DEPLOY_X: '' }, { shell }).status,
+      0,
+      shell,
+    );
   }
 });
 
