@@ -37,9 +37,10 @@ const moveArrival = takeMoveFromAddress(storage, {
 // One opened over a page already shown - the same address with only its
 // fragment changed, which loads no new document - is read the same way by
 // loading the page again, so it never stays in the address unread. A session
-// page's own `hashchange` reading leaves it in the address for that load
-// (`takeKeyUnlessMove`, issue #345), however late the browser takes the
-// address to load.
+// page's own readings of its fragment leave it in the address for that load -
+// on `hashchange` (`takeKeyUnlessMove`, issue #345) and once its first list
+// load has answered (`resolveRequestLinkUnlessMove`, issue #362) - however
+// late the browser takes the address to load.
 window.addEventListener('hashchange', () => {
   if (holdsMoveFragment(window.location.href)) {
     window.location.reload();

@@ -59,12 +59,10 @@ import {
 } from '../lib/requests.ts';
 import { createRawSearch, RAW_SEARCH_OFF, type RawSearchState } from '../lib/raw-search.ts';
 import { filterRequests } from '../lib/request-filter.ts';
-import { takeKeyUnlessMove } from '../lib/move-link.ts';
+import { resolveRequestLinkUnlessMove, takeKeyUnlessMove } from '../lib/move-link.ts';
 import {
   afterLinkedOpening,
-  readRequestLink,
   removesFragment,
-  resolveRequestLink,
   takeKeyFromAddress,
   type AddressBar,
   type OpeningOutcome,
@@ -166,7 +164,9 @@ const addressBar: AddressBar = {
  * too. D182's `#<request-id>` changes nothing here: a page reads it once,
  * after its first list load, as before. A move link's fragment (D276) is left
  * where it is, for `main.tsx`, which loads the page again to read it
- * (`takeKeyUnlessMove`, issue #345).
+ * (`takeKeyUnlessMove`, issue #345); the reading after the first list load,
+ * whose answer may come before that load takes the address, leaves it too
+ * (`resolveRequestLinkUnlessMove`, issue #362).
  */
 export function SessionPage({ sessionId }: SessionPageProps) {
   const [opening, setOpening] = useState(0);
@@ -851,13 +851,15 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
         }
 
         // A request link is read once, now that the list is known, and its
-        // fragment leaves the address whatever it held (D182). The fragment
-        // goes first, so the entry the push flow pushes for the linked request
-        // copies the address without it.
+        // fragment leaves the address whatever it held (D182) - but a move
+        // link's, pasted while this load was in flight, which stays for
+        // `main.tsx`'s reload to read, as on `hashchange` (issue #362). The
+        // fragment goes first, so the entry the push flow pushes for the
+        // linked request copies the address without it.
         if (!linkRead.current) {
           linkRead.current = true;
 
-          const link = resolveRequestLink(readRequestLink(window.location.href), loadedRequests);
+          const link = resolveRequestLinkUnlessMove(window.location.href, loadedRequests);
 
           if (removesFragment(link)) {
             removeAddressFragment();

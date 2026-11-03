@@ -113,6 +113,16 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.13
+
+2026-11-03
+
+**The link that carries your sessions to webhook.qa-tools.ru is now read when
+it is pasted into a tab whose session page is still loading its requests.**
+Before, in some browsers, that page could take the link out of the address as
+its requests arrived, before the link was read, and the sessions and keys it
+carried did not arrive. (#362)
+
 ## 1.19.12
 
 2026-11-03
