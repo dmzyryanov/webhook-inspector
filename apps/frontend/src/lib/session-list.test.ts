@@ -650,8 +650,21 @@ describe('parseSessionList: what a stored value is read as', () => {
 describe('parseSessionList: hostile values at growing sizes', () => {
   /** localStorage holds about 5 MB per origin; the largest size is more than one key can be. */
   const SIZES = [1024, 64 * 1024, 1024 * 1024, 5 * 1024 * 1024];
-  /** Generous; a regression to quadratic time is seconds. */
-  const LIMIT_MS = 1500;
+  /**
+   * Nesting stops at 2 MiB (#355). V8's JSON.parse builds an array for each
+   * `[`, its time growing faster than the length: 5 MiB took up to 0.8 s
+   * alone and 2.0 s in a loaded suite, failing the 1.5 s a parse was held to.
+   * 2 MiB takes 0.2 s alone and at most 0.75 s loaded, while a scan from each
+   * `[` for a `]`, quadratic in the depth, takes 7.6 s.
+   */
+  const NESTING_MAX = 2 * 1024 * 1024;
+  const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
+  /**
+   * Generous: a parse took 0.75 s at most in a loaded suite (#355), while a
+   * quadratic one takes 7.6 s on 2 MiB of nesting and over 70 s on 5 MiB of
+   * entries.
+   */
+  const LIMIT_MS = 2500;
 
   function timed(raw: string): ListedSession[] {
     const started = performance.now();
@@ -688,14 +701,19 @@ describe('parseSessionList: hostile values at growing sizes', () => {
       assert.deepEqual(timed(stored([{ id: `${id(1)}${'a'.repeat(size)}`, openedAt: 1 }])), []);
     });
 
-    it(`reads ${size} characters of nesting, garbage or an unclosed value as nothing`, () => {
+    it(`reads ${size} characters of garbage or an unclosed value as nothing`, () => {
+      assert.deepEqual(timed('\u0000'.repeat(size)), []);
+      assert.deepEqual(timed(`{"v":1,"items":[{"id":"${'a'.repeat(size)}`), []);
+      assert.deepEqual(timed(stored(Array.from({ length: size / 8 }, () => null))), []);
+    });
+  }
+
+  for (const size of NESTING_SIZES) {
+    it(`reads ${size} characters of nesting as nothing`, () => {
       const depth = Math.floor(size / 2);
 
       assert.deepEqual(timed('['.repeat(depth) + ']'.repeat(depth)), []);
       assert.deepEqual(timed(`{"v":1,"items":${'['.repeat(depth)}${']'.repeat(depth)}}`), []);
-      assert.deepEqual(timed('\u0000'.repeat(size)), []);
-      assert.deepEqual(timed(`{"v":1,"items":[{"id":"${'a'.repeat(size)}`), []);
-      assert.deepEqual(timed(stored(Array.from({ length: size / 8 }, () => null))), []);
     });
   }
 });
