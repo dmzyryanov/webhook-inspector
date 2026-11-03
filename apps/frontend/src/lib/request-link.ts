@@ -9,9 +9,10 @@
  * carries it. The page reads a key at once, before its first load, and again
  * whenever only the fragment changes under it (`takeKeyFromAddress`), holds
  * it and takes it out of the address, leaving only the request id, if any; it
- * reads a request id once, after its first list load, removes it from the
- * address whatever it held, and opens the request it names. The selection is
- * still never written into the address (D157).
+ * reads a request id once, after its first list load, removes the fragment
+ * from the address whatever it held but a move link (D276, issue #362), and
+ * opens the request it names. The selection is still never written into the
+ * address (D157).
  *
  * Everything here is pure but `takeKeyFromAddress`, which holds the key it
  * reads and replaces the address it is given. `SessionPage` carries the
@@ -305,14 +306,22 @@ export function withoutFragment(href: string): string {
  * - `ignore`: remove a malformed fragment and open the session as usual;
  * - `open`: remove the fragment and open the request, as a click does;
  * - `stale`: remove the fragment, open nothing and say the request is gone -
- *   deleted, or pushed out of the newest 1000 (D006).
+ *   deleted, or pushed out of the newest 1000 (D006);
+ * - `move`: nothing, a move link's fragment (D276) stays in the address for
+ *   `main.tsx`'s reload to read (issue #362). `resolveRequestLink` never
+ *   answers it: `resolveRequestLinkUnlessMove` (`lib/move-link.ts`) does,
+ *   before it reads the fragment as a request link.
  *
  * The list is the whole session, newest first, with no paging, so a request
  * it does not hold is not in the session. One that it holds and the server
  * answers `REQUEST_NOT_FOUND` for is found stale only by opening it.
  */
 export type RequestLinkOutcome =
-  { kind: 'none' } | { kind: 'ignore' } | { kind: 'open'; requestId: string } | { kind: 'stale' };
+  | { kind: 'none' }
+  | { kind: 'ignore' }
+  | { kind: 'open'; requestId: string }
+  | { kind: 'stale' }
+  | { kind: 'move' };
 
 export function resolveRequestLink(
   fragment: RequestLinkFragment,
@@ -330,9 +339,12 @@ export function resolveRequestLink(
   }
 }
 
-/** Whether an outcome leaves a fragment in the address to remove. */
+/**
+ * Whether the page removes the address's fragment for an outcome: every
+ * fragment it read, but a move link's, left for the reading on arrival.
+ */
 export function removesFragment(outcome: RequestLinkOutcome): boolean {
-  return outcome.kind !== 'none';
+  return outcome.kind !== 'none' && outcome.kind !== 'move';
 }
 
 /**

@@ -25,8 +25,8 @@
  * drawn and takes it out of the address at once by replacing the history
  * entry (`takeMoveFromAddress`), whatever it held. One opened over a page
  * already shown is read by loading the page again (`main.tsx`); a session
- * page's own reading of its fragment leaves it there for that load
- * (`takeKeyUnlessMove`).
+ * page's own readings of its fragment leave it there for that load
+ * (`takeKeyUnlessMove`, `resolveRequestLinkUnlessMove`).
  *
  * **The arrival only adds** (Decision 4 of #321): sessions by id, the later
  * `openedAt` kept, within `MAX_LISTED_SESSIONS`, and keys within
@@ -66,9 +66,12 @@ import {
   serializeQueueSectionOpen,
 } from './queue-section-open.ts';
 import {
+  readRequestLink,
+  resolveRequestLink,
   takeKeyFromAddress,
   withoutFragment,
   type AddressBar,
+  type RequestLinkOutcome,
   type SessionLinkFragment,
 } from './request-link.ts';
 import {
@@ -470,6 +473,30 @@ export function takeKeyUnlessMove(
   }
 
   return takeKeyFromAddress(sessionId, storage, address);
+}
+
+/**
+ * What a session page does with its fragment once its first list load has
+ * answered (issue #362): D182's request link, read and resolved against the
+ * list as always (`readRequestLink`, `resolveRequestLink`), except a move
+ * link's, read or refused, which it leaves in the address and answers `move`,
+ * as its `hashchange` reading does (`takeKeyUnlessMove`). A move link is in
+ * the address then only when it was pasted over the page while that load was
+ * in flight - one the page opened with was taken out before anything was
+ * drawn - so `main.tsx` has asked for the reload that reads it. Taken out
+ * here, as a malformed request link, it would leave that reload nothing to
+ * read in a browser that takes the address only after the load's answer has
+ * been handled.
+ */
+export function resolveRequestLinkUnlessMove(
+  href: string,
+  listed: readonly { id: string }[],
+): RequestLinkOutcome {
+  if (holdsMoveFragment(href)) {
+    return { kind: 'move' };
+  }
+
+  return resolveRequestLink(readRequestLink(href), listed);
 }
 
 /** Takes a section state where this address stores none. */
