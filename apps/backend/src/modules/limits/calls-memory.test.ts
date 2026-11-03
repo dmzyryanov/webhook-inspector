@@ -9,7 +9,11 @@
  * wait with 100 lines and a URL of 13,000 bytes - as much of the 16 KiB as
  * the lines leave - must hold at most `PER_WAIT_BYTES`, and a request of
  * 1,000 lines is refused `431` and holds nothing. On the code before D213 the
- * last shape was pending, at about 100 KiB a wait.
+ * last shape was pending, at about 100 KiB a wait. A shape's round that reads
+ * over the bound is made again, up to three rounds, and the least reading is
+ * held to it: a reading has caught a few hundred KiB of the process besides
+ * the round's calls, once a round, under load (F-25 in
+ * `docs/testing/flakes.md`).
  *
  * A `PUT .../response` waits for the session's row lock - behind a capture,
  * a change or a queue call - with its request in hand, and its body is up to
@@ -123,11 +127,22 @@ after(async () => {
   await pool?.end();
 });
 
+/** What the process holds once the garbage is collected. */
+interface Held {
+  /** The V8 heap and the memory behind buffers: what a bound is held to. */
+  bytes: number;
+  /** The memory behind buffers alone. */
+  arrayBuffers: number;
+  /** What each of the heap's spaces holds, by its name. */
+  spaces: Map<string, number>;
+}
+
 /**
- * The bytes the process holds once the garbage is collected: the V8 heap and
- * the memory behind buffers. Each collection runs in a job of its own.
+ * What the process holds once the garbage is collected: the V8 heap and the
+ * memory behind buffers, and the heap space by space, for the report. Each
+ * collection runs in a job of its own.
  */
-async function heldBytes(): Promise<number> {
+async function held(): Promise<Held> {
   for (let round = 0; round < 3; round += 1) {
     await new Promise((resolve) => setImmediate(resolve));
     collectGarbage();
@@ -135,7 +150,38 @@ async function heldBytes(): Promise<number> {
 
   const { heapUsed, arrayBuffers } = process.memoryUsage();
 
-  return heapUsed + arrayBuffers;
+  return {
+    bytes: heapUsed + arrayBuffers,
+    arrayBuffers,
+    spaces: new Map(
+      v8.getHeapSpaceStatistics().map((space) => [space.space_name, space.space_used_size]),
+    ),
+  };
+}
+
+/** The bytes the process holds once the garbage is collected (`held`). */
+async function heldBytes(): Promise<number> {
+  return (await held()).bytes;
+}
+
+function signedKiB(bytes: number): string {
+  return `${bytes < 0 ? '-' : '+'}${(Math.abs(bytes) / 1024).toFixed(1)} KiB`;
+}
+
+/**
+ * What grew or shrank from `baseline` to `reading`, in each heap space that
+ * moved and in the memory behind buffers: `old_space +690.2 KiB, …`.
+ */
+function growth(baseline: Held, reading: Held): string {
+  const spaces = [...reading.spaces]
+    .map(([name, used]) => [name, used - (baseline.spaces.get(name) ?? 0)] as const)
+    .filter(([, change]) => change !== 0)
+    .map(([name, change]) => `${name} ${signedKiB(change)}`);
+
+  return [
+    ...spaces,
+    `array buffers ${signedKiB(reading.arrayBuffers - baseline.arrayBuffers)}`,
+  ].join(', ');
 }
 
 async function createSession(): Promise<string> {
@@ -237,6 +283,76 @@ async function clear(sessionId: string): Promise<void> {
   assert.equal(cleared.statusCode, 204);
 }
 
+/**
+ * Rounds of a wait shape, at most, before the least of their readings is
+ * held to the bound (F-25). A wait that keeps more than `PER_WAIT_BYTES` is
+ * over it in every round; a reading that caught something of the process
+ * besides the round's calls is not repeated.
+ */
+const WAIT_ROUNDS = 3;
+
+interface WaitReading {
+  /** What the process held more with the round's calls settled than before them. */
+  more: number;
+  report: string;
+}
+
+/**
+ * One round of `WAITS` calls of `shape` on a session of its own: the
+ * baseline, the calls, each answered or pending, whichever its shape makes
+ * it, and the reading. However it went, the session is then cleared and
+ * every answer awaited before anything else, so that no wait of the round is
+ * still pending when the next baseline is read, or is counted among the next
+ * round's (F-25); and every call answered as its shape is.
+ */
+async function waitRound(shape: WaitShape): Promise<WaitReading> {
+  const sessionId = await createSession();
+  const head = waitHead(sessionId, shape);
+
+  assert.ok(head.length < 16 * 1024, `${head.length} bytes of head`);
+
+  const baseline = await held();
+  let answered = 0;
+  const answers = Array.from({ length: WAITS }, () =>
+    rawRequest(head).then((answer) => {
+      answered += 1;
+
+      return answer;
+    }),
+  );
+  let reading: Held;
+  let pending: number;
+
+  try {
+    // Each call answered or pending, whichever its shape makes it: what is
+    // measured is what the server does with it, not what it should.
+    await until(() => answered + waits.size === WAITS, `${WAITS} calls are settled`);
+    pending = waits.size;
+    reading = await held();
+  } finally {
+    await clear(sessionId);
+    await Promise.all(answers);
+  }
+
+  for (const answer of await Promise.all(answers)) {
+    if (shape.refused === true) {
+      assert.match(answer, /^HTTP\/1\.1 431 Request Header Fields Too Large\r\n/);
+    } else {
+      assert.match(answer, /^HTTP\/1\.1 200 OK\r\n/);
+      assert.ok(answer.endsWith('\r\n\r\n[]'), answer.slice(-80));
+    }
+  }
+
+  assert.equal(waits.size, 0);
+
+  const more = reading.bytes - baseline.bytes;
+
+  return {
+    more,
+    report: `${WAITS} calls, ${pending} pending: ${(more / 1024).toFixed(1)} KiB more held, ${(more / WAITS / 1024).toFixed(1)} KiB a call; ${growth(baseline, reading)}`,
+  };
+}
+
 describe('a pending wait on the API (D213)', () => {
   before(async () => {
     // The same sixteen waits, pending and then ended: every path a wait
@@ -253,48 +369,24 @@ describe('a pending wait on the API (D213)', () => {
 
   for (const shape of WAIT_SHAPES) {
     it(`keeps at most ${PER_WAIT_BYTES / 1024} KiB a wait: ${shape.name}`, async (t: TestContext) => {
-      const sessionId = await createSession();
-      const head = waitHead(sessionId, shape);
+      const reports: string[] = [];
+      let least = Number.POSITIVE_INFINITY;
 
-      assert.ok(head.length < 16 * 1024, `${head.length} bytes of head`);
+      // A round over the bound is made again, up to `WAIT_ROUNDS` in all,
+      // and the least is held to it (F-25).
+      for (let round = 1; round <= WAIT_ROUNDS && least > WAITS * PER_WAIT_BYTES; round += 1) {
+        const reading = await waitRound(shape);
+        const report = `round ${round}: ${reading.report}`;
 
-      const baseline = await heldBytes();
-      let answered = 0;
-      const answers = Array.from({ length: WAITS }, () =>
-        rawRequest(head).then((answer) => {
-          answered += 1;
+        least = Math.min(least, reading.more);
+        reports.push(report);
+        t.diagnostic(report);
+      }
 
-          return answer;
-        }),
+      assert.ok(
+        least <= WAITS * PER_WAIT_BYTES,
+        `over ${PER_WAIT_BYTES / 1024} KiB a call in each of ${WAIT_ROUNDS} rounds: ${reports.join('; ')}`,
       );
-      let held: number;
-      let pending: number;
-
-      try {
-        // Each call answered or pending, whichever its shape makes it: what
-        // is measured is what the server does with it, not what it should.
-        await until(() => answered + waits.size === WAITS, `${WAITS} calls are settled`);
-        pending = waits.size;
-        held = (await heldBytes()) - baseline;
-      } finally {
-        await clear(sessionId);
-      }
-
-      const report = `${WAITS} calls, ${pending} pending: ${(held / 1024).toFixed(1)} KiB more held, ${(held / WAITS / 1024).toFixed(1)} KiB a call`;
-
-      t.diagnostic(report);
-      assert.ok(held <= WAITS * PER_WAIT_BYTES, report);
-
-      for (const answer of await Promise.all(answers)) {
-        if (shape.refused === true) {
-          assert.match(answer, /^HTTP\/1\.1 431 Request Header Fields Too Large\r\n/);
-        } else {
-          assert.match(answer, /^HTTP\/1\.1 200 OK\r\n/);
-          assert.ok(answer.endsWith('\r\n\r\n[]'), answer.slice(-80));
-        }
-      }
-
-      assert.equal(waits.size, 0);
     });
   }
 });
