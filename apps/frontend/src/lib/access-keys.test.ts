@@ -76,6 +76,23 @@ function stored(items: unknown, v: unknown = 1): string {
   return JSON.stringify({ v, items });
 }
 
+/**
+ * The longest nesting these tests read, 2 MiB (#355, F-26 in flakes.md). V8's
+ * JSON.parse builds an array for each `[`, its time growing faster than the
+ * length: 5 MiB took up to 1.1 s alone and 2.0 s in a loaded suite, failing
+ * the 1.5 s a parse was held to. 2 MiB takes 0.2 s alone, and a scan from
+ * each `[` for a `]`, quadratic in the depth, 8 s. Every other hostile value
+ * goes on to 5 MiB.
+ */
+const NESTING_MAX = 2 * 1024 * 1024;
+
+/** `[` then as many `]`, `length` characters in all, at most `NESTING_MAX`. */
+function nesting(length: number): string {
+  const depth = Math.floor(Math.min(length, NESTING_MAX) / 2);
+
+  return '['.repeat(depth) + ']'.repeat(depth);
+}
+
 afterEach(() => {
   releaseAllAccessKeys();
 });
@@ -476,21 +493,27 @@ describe('a key removed in another tab', () => {
   });
 
   for (const size of [1024, 1024 * 1024, 5 * 1024 * 1024]) {
-    it(`reads old and new values of ${size} characters, hostile or full, in bounded time`, () => {
-      const started = performance.now();
+    const nested = Math.min(size, NESTING_MAX);
+
+    it(`reads full or garbage old and new values of ${size} characters, and ${nested} of nesting, in bounded time`, () => {
       const full = stored(
         Array.from({ length: Math.floor(size / 100) }, (_, n) => ({
           id: id(n % 999_999),
           key: key(n),
         })),
       );
-      const depth = Math.floor(size / 2);
+      const deep = nesting(size);
+      const garbage = '\u0000'.repeat(size);
+      // The time holds the reads, not the building of the values (#355).
+      const started = performance.now();
 
       assert.ok(removedAccessKeys(full, stored([])).size <= MAX_STORED_ACCESS_KEYS);
       assert.deepEqual(removedAccessKeys(full, full), new Map());
-      assert.deepEqual(removedAccessKeys('['.repeat(depth) + ']'.repeat(depth), null), new Map());
-      assert.deepEqual(removedAccessKeys('\u0000'.repeat(size), '\u0000'.repeat(size)), new Map());
-      assert.ok(performance.now() - started < 3000, `${size} characters took too long`);
+      assert.deepEqual(removedAccessKeys(deep, null), new Map());
+      assert.deepEqual(removedAccessKeys(garbage, garbage), new Map());
+      // The reads took 1.4 s at most in a loaded suite (#355); a quadratic
+      // parse takes 8 s on the nesting and 38 s on each full value.
+      assert.ok(performance.now() - started < 5000, `${size} characters took too long`);
     });
   }
 });
@@ -582,8 +605,14 @@ describe('parseAccessKeys: what a stored value is read as', () => {
 
 describe('parseAccessKeys: hostile values at growing sizes', () => {
   const SIZES = [1024, 64 * 1024, 1024 * 1024, 5 * 1024 * 1024];
-  /** Generous; a regression to quadratic time is seconds. */
-  const LIMIT_MS = 1500;
+  /** Nesting stops at 2 MiB, not 5 (`NESTING_MAX`). */
+  const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
+  /**
+   * Generous: in loaded suites the two parses of the 2 MiB nesting test took
+   * 1.3 s together at most (#355), while a quadratic parse takes 8 s on 2 MiB
+   * of nesting and 38 s on 5 MiB of entries.
+   */
+  const LIMIT_MS = 3000;
 
   function timed(raw: string): Map<string, string> {
     const started = performance.now();
@@ -624,16 +653,16 @@ describe('parseAccessKeys: hostile values at growing sizes', () => {
       assert.deepEqual(timed(stored([{ id: 'a'.repeat(size), key: key(1) }])), new Map());
     });
 
-    it(`reads ${size} characters of nesting, garbage or an unclosed value as nothing`, () => {
-      const depth = Math.floor(size / 2);
-
-      assert.deepEqual(timed('['.repeat(depth) + ']'.repeat(depth)), new Map());
-      assert.deepEqual(
-        timed(`{"v":1,"items":${'['.repeat(depth)}${']'.repeat(depth)}}`),
-        new Map(),
-      );
+    it(`reads ${size} characters of garbage or an unclosed value as nothing`, () => {
       assert.deepEqual(timed('\u0000'.repeat(size)), new Map());
       assert.deepEqual(timed(`{"v":1,"items":[{"id":"${'a'.repeat(size)}`), new Map());
+    });
+  }
+
+  for (const size of NESTING_SIZES) {
+    it(`reads ${size} characters of nesting as nothing`, () => {
+      assert.deepEqual(timed(nesting(size)), new Map());
+      assert.deepEqual(timed(`{"v":1,"items":${nesting(size)}}`), new Map());
     });
   }
 });
