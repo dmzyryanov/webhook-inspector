@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { RequestDetails } from '@webhook-inspector/shared';
+import { REQUEST_ID_DISPLAY_LENGTH, type RequestDetails } from '@webhook-inspector/shared';
 import { requestDownloadFileName, requestDownloadText } from './request-download.ts';
 
 const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
@@ -80,8 +80,18 @@ function binaryRequest(): RequestDetails {
 }
 
 describe('requestDownloadFileName', () => {
-  it('names the file after the short id the list row shows', () => {
-    assert.equal(requestDownloadFileName(REQUEST), 'qa-tools-request-2b906b8.json');
+  it('names the file after the service and the short id the list row shows', () => {
+    assert.equal(requestDownloadFileName(REQUEST), 'webhook-inspector-request-2b906b8.json');
+  });
+
+  it('takes the same characters of any id as the list row does', () => {
+    const other = 'f0e1d2c3-b4a5-4968-8776-655443322110';
+
+    assert.equal(requestDownloadFileName(other), 'webhook-inspector-request-f0e1d2c.json');
+    assert.equal(
+      requestDownloadFileName(other),
+      `webhook-inspector-request-${other.slice(0, REQUEST_ID_DISPLAY_LENGTH)}.json`,
+    );
   });
 });
 
