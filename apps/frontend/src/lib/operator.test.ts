@@ -16,9 +16,6 @@ import process from 'node:process';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { act, createElement } from 'react';
-import { renderAboutBody } from '../../scripts/about.mjs';
-import { openApiText, siteFiles } from '../../scripts/build-site-files.mjs';
-import { buildLlmsFiles } from '../../scripts/build-llms.mjs';
 import { nginxConf, STATUS_MARKER, statusLocations } from '../../scripts/nginx-conf.mjs';
 import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
 import {
@@ -39,9 +36,7 @@ import {
   PRODUCTION_OPERATOR,
   withoutOperator,
 } from '../testing/production-operator.ts';
-import { aboutRussian } from './about-copy-ru.ts';
-import { aboutEnglish, aboutParagraphText, type AboutCopy } from './about-copy.ts';
-import { legalPages } from './legal-copy.ts';
+import type { AboutCopy } from './about-copy.ts';
 import {
   NO_OPERATOR,
   OPERATOR,
@@ -56,8 +51,29 @@ import {
 } from './operator.ts';
 import { footerText } from './privacy-footer.ts';
 
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the pages this file builds in this process are production's but for the
+ * operator, and a build for a copy's origins is made in a process of its
+ * own. The build's modules read the origins from the environment as they
+ * load, so they are imported once these are set, not with the static
+ * imports above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const { renderAboutBody } = await import('../../scripts/about.mjs');
+const { openApiText, siteFiles } = await import('../../scripts/build-site-files.mjs');
+const { buildLlmsFiles } = await import('../../scripts/build-llms.mjs');
+const { aboutRussian } = await import('./about-copy-ru.ts');
+const { aboutEnglish, aboutParagraphText } = await import('./about-copy.ts');
+const { legalPages } = await import('./legal-copy.ts');
 // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-import * as buildCheck from '../../scripts/check-build.mjs';
+const buildCheck = await import('../../scripts/check-build.mjs');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS } = await import('../../scripts/site-origin.mjs');
 
 const { MemoryRouter } = await import('react-router-dom');
 const { LanguageProvider } = await import('../i18n/LanguageProvider.tsx');
@@ -118,6 +134,10 @@ const PRODUCTION_NAMES =
 const text = (markup: string) => markup.replace(/<[^>]*>/g, '');
 
 describe('the operator settings', () => {
+  it('are read here beside production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('are none when unset or blank, and production’s exactly as the image build gives them', () => {
     assert.deepEqual(parseOperator({}), NO_OPERATOR);
     assert.deepEqual(

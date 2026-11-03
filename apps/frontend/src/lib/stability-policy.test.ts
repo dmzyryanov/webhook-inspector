@@ -6,10 +6,25 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildLlmsFiles } from '../../scripts/build-llms.mjs';
-import {
+import type { ChangelogEntry } from '../../scripts/changelog.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the policy's feed addresses pinned here are production's (D274). The
+ * build's modules read the origins from the environment as they load, so
+ * they are imported once these are set, not with the static imports above,
+ * which would load them first; the scripts this file runs inherit them.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const { buildLlmsFiles } = await import('../../scripts/build-llms.mjs');
+const {
   BREAKING_FEED_PATH,
-  type ChangelogEntry,
   changelogFeed,
   changelogMarkdown,
   FEED_PATH,
@@ -18,7 +33,15 @@ import {
   readFeedEntries,
   renderChangelogBody,
   SITE_URL,
-} from '../../scripts/changelog.mjs';
+} = await import('../../scripts/changelog.mjs');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS } = await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /**
  * The stability policy (D154, D184, D212), in force since 1.0.0 (D233), is
@@ -175,6 +198,10 @@ const PUBLISHED: readonly (readonly [string, string])[] = [
 ];
 
 describe('the stability policy, in the three places that state it (D212, D233)', () => {
+  it('is read here for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   for (const [place, text] of PLACES) {
     it(`${place} states every point`, () => {
       assert.ok(text.length > 0, `${place} was not found`);
@@ -251,6 +278,39 @@ describe('the stability policy, in the three places that state it (D212, D233)',
   it('names the feeds the build writes, at the addresses nginx serves', () => {
     assert.equal(`${SITE_URL}${FEED_PATH}`, 'https://qa-tools.ru/changelog.xml');
     assert.equal(`${SITE_URL}${BREAKING_FEED_PATH}`, 'https://qa-tools.ru/changelog-breaking.xml');
+  });
+
+  it('names the feeds of a build for another address at that address, and every other point as written (D274)', () => {
+    // The changelog's text as build-changelog.mjs writes it for the copy
+    // (#354), in a process of its own whose environment names it.
+    const dist = mkdtempSync(join(tmpdir(), 'qa-stability-build-'));
+
+    try {
+      execFileSync(
+        process.execPath,
+        [fileURLToPath(new URL('../../scripts/build-changelog.mjs', import.meta.url)), dist],
+        {
+          env: {
+            ...process.env,
+            APP_ORIGIN: ANOTHER.app,
+            RECEIVE_ORIGIN: ANOTHER.receive,
+            APP_ALIAS_ORIGIN: '',
+          },
+          encoding: 'utf8',
+        },
+      );
+
+      const text = readFileSync(join(dist, 'changelog.md'), 'utf8');
+
+      assert.deepEqual(missingPoints(text), ['the two feeds']);
+      assert.ok(
+        flat(text).includes(
+          `Subscribe with a feed reader, Slack or a Telegram bot: all changes, ${ANOTHER.app}/changelog.xml · breaking changes and deprecations only, ${ANOTHER.app}/changelog-breaking.xml.`,
+        ),
+      );
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
   });
 
   it('says in the MCP section of docs/API.md that the MCP server is experimental', () => {
