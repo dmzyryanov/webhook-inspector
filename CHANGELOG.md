@@ -99,12 +99,32 @@ How to write an entry (issue #97, D184):
   `Notice`, and shows it under `Breaking only`; the breaking feed carries it. Like
   Breaking, it is never the headline: the build refuses an entry that opens
   with it.
+- **Addresses.** Write production's addresses: a build for another address
+  names its own in their place, and in `webhook.qa-tools.ru`'s its second
+  address, or its own where it has none (D274, D275). A build with no second address
+  leaves out every Breaking, Deprecated or Notice paragraph that names
+  `webhook.qa-tools.ru`, which would announce a move from its address to the
+  same one, as 1.16.0's notice of the move did; such a paragraph is
+  production's alone (#343).
 - **Markup.** Paragraphs separated by blank lines, `code` in backticks and
   `**bold**`; nothing else is interpreted, and the page escapes the rest, so
   `<session-id>` shows as written. The build fails when an entry has no date
   or does not open with a bold headline, and a frontend test fails when the
   published text names an issue, a decision, a repository path or an
   infrastructure object.
+
+## 1.19.11
+
+2026-11-03
+
+**Nothing changes on this site; a copy of the inspector built for an address
+of its own, with no second address, no longer publishes this site's notice of
+its move.** Such a copy names its own address wherever this changelog names
+one of this site's, so the notice in the entry for 1.16.0 came out saying
+that the copy's addresses would stop answering and redirect to the same
+address. The copy's changelog page, its text and both its feeds now leave
+that notice out, so its feed of breaking changes and deprecations no longer
+lists 1.16.0. Every address here answers exactly as before. (#343)
 
 ## 1.19.10
 

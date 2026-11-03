@@ -1,4 +1,6 @@
 /** Types for `changelog.mjs`, imported by the Vite configurations and the tests. */
+import type { SiteOrigins } from './site-origin.mjs';
+
 export interface ChangelogEntry {
   version: string;
   date: string;
@@ -65,7 +67,8 @@ export function groupByDay(
   entries: ChangelogEntry[],
 ): { date: string; entries: ChangelogEntry[] }[];
 export function renderChangelogBody(entries: ChangelogEntry[]): string;
-export function readChangelog(file?: string): ChangelogEntry[];
+export function siteEntries(entries: ChangelogEntry[], origins?: SiteOrigins): ChangelogEntry[];
+export function readChangelog(file?: string, origins?: SiteOrigins): ChangelogEntry[];
 export function renderChangelogPage(template: string, entries: ChangelogEntry[]): string;
 export function changelogPagePlugin(): import('vite').Plugin;
 export function publishedTextProblems(text: string): string[];

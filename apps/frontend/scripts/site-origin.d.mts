@@ -20,6 +20,7 @@ export const RECEIVE_ORIGIN: string;
 export function relayApiOrigin(origins?: SiteOrigins): string;
 export function isProduction(origins: SiteOrigins): boolean;
 export function renameProduction(text: string, origins: SiteOrigins): string;
+export function namesSecondOrigin(text: string): boolean;
 export function nameSite(text: string, origins?: SiteOrigins): string;
 export function siteOriginPlugin(origins?: SiteOrigins): {
   name: string;
