@@ -651,18 +651,18 @@ describe('parseSessionList: hostile values at growing sizes', () => {
   /** localStorage holds about 5 MB per origin; the largest size is more than one key can be. */
   const SIZES = [1024, 64 * 1024, 1024 * 1024, 5 * 1024 * 1024];
   /**
-   * Nesting stops at 2 MiB (#355). V8's JSON.parse builds an array for each
-   * `[`, its time growing faster than the length: 5 MiB took up to 0.8 s
-   * alone and 2.0 s in a loaded suite, failing the 1.5 s a parse was held to.
-   * 2 MiB takes 0.2 s alone and at most 0.75 s loaded, while a scan from each
-   * `[` for a `]`, quadratic in the depth, takes 7.6 s.
+   * Nesting stops at 2 MiB (#355, F-26 in flakes.md). V8's JSON.parse builds
+   * an array for each `[`, its time growing faster than the length: 5 MiB
+   * took up to 0.8 s alone and 2.0 s in a loaded suite, failing the 1.5 s a
+   * parse was held to. 2 MiB takes 0.2 s alone, and a scan from each `[` for
+   * a `]`, quadratic in the depth, 7.6 s.
    */
   const NESTING_MAX = 2 * 1024 * 1024;
   const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
   /**
-   * Generous: in a loaded suite a parse took 0.75 s at most, and the two of
-   * the 2 MiB nesting test 1.3 s together (#355), while a quadratic parse
-   * takes 7.6 s on 2 MiB of nesting and over 70 s on 5 MiB of entries.
+   * Generous: in loaded suites the two parses of the 2 MiB nesting test took
+   * 1.35 s together at most (#355), while a quadratic parse takes 7.6 s on
+   * 2 MiB of nesting and over 70 s on 5 MiB of entries.
    */
   const LIMIT_MS = 3000;
 

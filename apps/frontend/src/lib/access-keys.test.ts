@@ -77,16 +77,16 @@ function stored(items: unknown, v: unknown = 1): string {
 }
 
 /**
- * The longest nesting these tests read, 2 MiB (#355). V8's JSON.parse builds
- * an array for each `[`, its time growing faster than the length: 5 MiB took
- * up to 1.1 s alone and 2.0 s in a loaded suite, failing the 1.5 s a parse
- * was held to. 2 MiB takes 0.2 s alone and at most 0.5 s loaded, while a scan
- * from each `[` for a `]`, quadratic in the depth, takes 8 s. Every other
- * hostile value goes on to 5 MiB.
+ * The longest nesting these tests read, 2 MiB (#355, F-26 in flakes.md). V8's
+ * JSON.parse builds an array for each `[`, its time growing faster than the
+ * length: 5 MiB took up to 1.1 s alone and 2.0 s in a loaded suite, failing
+ * the 1.5 s a parse was held to. 2 MiB takes 0.2 s alone, and a scan from
+ * each `[` for a `]`, quadratic in the depth, 8 s. Every other hostile value
+ * goes on to 5 MiB.
  */
 const NESTING_MAX = 2 * 1024 * 1024;
 
-/** `length` characters, or `NESTING_MAX` if fewer, of `[` then as many `]`. */
+/** `[` then as many `]`, `length` characters in all, at most `NESTING_MAX`. */
 function nesting(length: number): string {
   const depth = Math.floor(Math.min(length, NESTING_MAX) / 2);
 
@@ -608,9 +608,9 @@ describe('parseAccessKeys: hostile values at growing sizes', () => {
   /** Nesting stops at 2 MiB, not 5 (`NESTING_MAX`). */
   const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
   /**
-   * Generous: in a loaded suite a parse took 0.5 s at most, and the two of the
-   * 2 MiB nesting test 1.3 s together (#355), while a quadratic parse takes
-   * 8 s on 2 MiB of nesting and 38 s on 5 MiB of entries.
+   * Generous: in loaded suites the two parses of the 2 MiB nesting test took
+   * 1.3 s together at most (#355), while a quadratic parse takes 8 s on 2 MiB
+   * of nesting and 38 s on 5 MiB of entries.
    */
   const LIMIT_MS = 3000;
 
