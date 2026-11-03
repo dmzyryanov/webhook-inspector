@@ -106,6 +106,20 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.8
+
+2026-11-03
+
+**The realtime connection again answers a subprotocol that starts like an
+access-key prefix in another letter case, such as
+`Webhook-Inspector.Access-Key.x` or `QA-TOOLS.ACCESS-KEY.x`, as it did before
+1.19.0.** The prefixes are compared exactly, so such a name carries no key and
+is answered like any other name: a connection offering it alone opens on a
+public session, and on a private one opens and is closed `4404`, as without a
+key. From 1.19.0 it was answered with no subprotocol, which a browser fails as
+an abnormal closure, `1006`. The key under `webhook-inspector.access-key.` or
+`qa-tools.access-key.` is still never written back. (#356, D279)
+
 ## 1.19.7
 
 2026-11-03

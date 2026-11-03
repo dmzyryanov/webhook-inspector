@@ -141,22 +141,12 @@ function keyPrefixOf(protocol: string): string | undefined {
   return KEY_PROTOCOL_PREFIXES.find((prefix) => protocol.startsWith(prefix));
 }
 
-/** Whether a subprotocol the handshake offered carries a key, under either prefix. */
+/**
+ * Whether a subprotocol the handshake offered carries a key - starts with
+ * either prefix, exactly - and so is never echoed.
+ */
 export function isKeyProtocol(protocol: string): boolean {
   return keyPrefixOf(protocol) !== undefined;
-}
-
-/**
- * Whether a subprotocol may never be echoed: one that carries a key, or one
- * that starts with either prefix in another letter case (D279). The second
- * carries no key - names are compared exactly, as the browser compares the
- * answer with what it offered - but it is a key mistyped, and is not written
- * back either.
- */
-function mayNotEcho(protocol: string): boolean {
-  const lowered = protocol.toLowerCase();
-
-  return KEY_PROTOCOL_PREFIXES.some((prefix) => lowered.startsWith(prefix));
 }
 
 /**
@@ -206,13 +196,17 @@ export function protocolKey(header: string | string[] | undefined): PresentedKey
  * offered, under either name (D279). A browser fails a handshake that offered
  * subprotocols and was answered none, so one that sends its key offers
  * `REALTIME_PROTOCOL` beside it, first, which this echoes; the key itself is
- * never written back, under either prefix, nor a name that starts with
- * either in another letter case (`mayNotEcho`). Decided before the session is
- * looked up, so it says nothing about the session.
+ * never written back, under either prefix. The prefixes are compared exactly
+ * here as in `protocolKey` (D245), so a name that starts with either in
+ * another letter case carries no key and is answered as any other name is,
+ * as before 1.19.0 (#356). `offered` is what `ws` parsed: distinct tokens,
+ * never an empty name, since `ws` refuses any other header `400` first.
+ * Decided before the session is looked up, so it says nothing about the
+ * session.
  */
 export function chooseProtocol(offered: ReadonlySet<string>): string | false {
   for (const protocol of offered) {
-    if (!mayNotEcho(protocol)) {
+    if (!isKeyProtocol(protocol)) {
       return protocol;
     }
   }
