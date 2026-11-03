@@ -2,7 +2,10 @@ import process from 'node:process';
 
 /**
  * Production's operator settings (issue #369), as `.gitlab-ci.yml` gives
- * them to production's image build, put into this process's environment.
+ * them to production's image build from the project's CI/CD variables
+ * `DEPLOY_STATUS_PAGE_URL`, `DEPLOY_CONTACT_EMAIL` and `DEPLOY_OPERATOR_TEXTS`
+ * since #367 (`scripts/chart.test.mjs` holds these values equal to its record
+ * of them), put into this process's environment.
  * The repository's sources fall back to none of them (`src/lib/operator.ts`):
  * a build without them leaves the status page, the contact address and the
  * operator's texts out. The frontend suite and the browser suite test

@@ -1221,12 +1221,24 @@ test('the smoke expects the titles the Terms of Use and the Privacy Policy carry
 // built security.txt publish (D177).
 test('the smoke expects the contact the footer and security.txt publish', () => {
   // Production's, the frontend image's CONTACT_EMAIL (#369): a build with no
-  // contact address publishes none, so the address is the pipeline's.
-  const line = /^ {4}CONTACT_EMAIL: '([^'\n]*)'$/m.exec(
-    readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8'),
+  // contact address publishes none. Since #367 the pipeline gives the build
+  // the project's CI/CD variable DEPLOY_CONTACT_EMAIL, whose value no file of
+  // the pipeline holds; the tests' record of production's operator settings
+  // is apps/frontend/src/testing/production-operator-env.ts, which
+  // scripts/chart.test.mjs holds equal to production's variables. Read as
+  // text: importing it would set this process's environment.
+  const line = /^ {2}CONTACT_EMAIL: '([^'\n]*)',$/m.exec(
+    readFileSync(
+      new URL('../apps/frontend/src/testing/production-operator-env.ts', import.meta.url),
+      'utf8',
+    ),
   );
 
-  assert.ok(line, '.gitlab-ci.yml sets no CONTACT_EMAIL');
+  assert.ok(line, 'production-operator-env.ts sets no CONTACT_EMAIL');
+  assert.match(
+    readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8'),
+    /^ {4}CONTACT_EMAIL: \$DEPLOY_CONTACT_EMAIL$/m,
+  );
   assert.equal(SECURITY_CONTACT, `Contact: ${mailtoOf(parseContactEmail(line[1]))}`);
 });
 

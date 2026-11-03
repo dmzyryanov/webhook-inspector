@@ -1800,6 +1800,21 @@ test("the operator's details: the frontend image's build takes production's from
     assert.ok(at > dockerfile.indexOf('RUN npm ci') && at < build, name);
   }
 
+  // The frontend's and the browser suite's record of production's settings
+  // is these variables' values.
+  const recorded = readFileSync(
+    new URL('../apps/frontend/src/testing/production-operator-env.ts', import.meta.url),
+    'utf8',
+  );
+
+  for (const [variable, name] of OPERATOR_VARIABLES) {
+    assert.match(
+      recorded,
+      new RegExp(`^ {2}${name}: '${PRODUCTION[variable].replaceAll('.', '\\.')}',$`, 'm'),
+      name,
+    );
+  }
+
   // Production's variables: the image is built and pushed naming
   // production's status page, address and texts, as before #367.
   const production = frontendBuild(PRODUCTION);
