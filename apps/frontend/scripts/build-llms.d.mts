@@ -1,4 +1,5 @@
 /** Types for `build-llms.mjs`, imported by `vite.config.ts` and the tests. */
+import type { Operator } from '../src/lib/operator.ts';
 import type { SiteOrigins } from './site-origin.mjs';
 
 export interface OpenApiDescription {
@@ -17,7 +18,11 @@ export function llmsFull(sources: {
   /** The site's origin the header names; the build's `APP_ORIGIN` unless given. */
   origin?: string;
 }): string;
-export function buildLlmsFiles(origins?: SiteOrigins): {
+/** `operator` is the build's unless given (issue #369). */
+export function buildLlmsFiles(
+  origins?: SiteOrigins,
+  operator?: Operator,
+): {
   'llms.txt': string;
   'llms-full.txt': string;
 };

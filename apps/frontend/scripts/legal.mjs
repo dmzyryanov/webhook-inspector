@@ -2,9 +2,11 @@
  * The Terms of Use, `/terms`, and the Privacy Policy, `/privacy` (issue #112,
  * D217): two static pages built like `/about` (D184, D211). The body of
  * `terms/index.html` and of `privacy/index.html` is written here, from
- * `TERMS_PAGE` and `PRIVACY_PAGE` of `src/lib/legal-copy.ts`, and put in place
- * by `legalPagesPlugin()` when Vite builds them (`vite.legal.config.ts`) or
- * serves them in development (`vite.config.ts`). The pages are readable
+ * `LEGAL_PAGES` of `src/lib/legal-copy.ts`, and put in place by
+ * `legalPagesPlugin()` when Vite builds them (`vite.legal.config.ts`) or
+ * serves them in development (`vite.config.ts`). A build that does not show
+ * the operator's texts (issue #369) has no page in `LEGAL_PAGES`, and writes
+ * neither (`vite.legal.config.ts`). The pages are readable
  * without JavaScript and load none: their stylesheet and the Inter it draws
  * in are content-hashed files under `/assets/`.
  *
@@ -13,10 +15,10 @@
  * `check-build.mjs` fails the build when a page is missing, has not been
  * written, lacks its title or asks not to be indexed.
  */
-import { LEGAL_PAGES, PRIVACY_PAGE, TERMS_PAGE } from '../src/lib/legal-copy.ts';
+import { LEGAL_PAGES } from '../src/lib/legal-copy.ts';
 import { escapeHtml, escapeText, keptRuns, siteFooter, siteHeader } from './site-chrome.mjs';
 
-export { LEGAL_PAGES, PRIVACY_PAGE, TERMS_PAGE };
+export { LEGAL_PAGES };
 
 /** Where a page's template holds the body this module writes. */
 export const LEGAL_PLACEHOLDER = '<!-- legal:page -->';

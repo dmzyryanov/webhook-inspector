@@ -19,11 +19,16 @@ import {
   type LegalPage,
   type LegalPart,
   legalLineText,
-  PRIVACY_PAGE,
+  privacyPage,
   STABILITY_POLICY_HREF,
-  TERMS_PAGE,
+  termsPage,
 } from './legal-copy.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/** The two pages as production's build writes them (issue #369). */
+const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
+const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 /**
  * The Terms of Use at `/terms` and the Privacy Policy at `/privacy` (issue
@@ -479,7 +484,7 @@ describe('the build check', () => {
 
   /** A page as the build writes it, its stylesheet a hashed file. */
   const built = (page: LegalPage, html?: string) =>
-    (html ?? (PAGES.find((item) => item.page === page)?.html as string)).replace(
+    (html ?? (PAGES.find((item) => item.page.path === page.path)?.html as string)).replace(
       '<link rel="stylesheet" href="/src/legal/legal.css" />',
       '<link rel="stylesheet" crossorigin href="/assets/legal-EEEEEEEE.css">',
     );

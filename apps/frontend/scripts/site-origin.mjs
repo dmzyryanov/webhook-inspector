@@ -179,7 +179,10 @@ export function isProduction(origins) {
  * `qa-tools.ru`, `hook.qa-tools.ru` or, since D275, `webhook.qa-tools.ru`.
  * Not one inside a longer name: a letter, digit, `@`, `.`, `:` or `-` before
  * it keeps `contact@qa-tools.ru`, `status.qa-tools.ru` and the feeds'
- * `tag:qa-tools.ru,2026:` ids as they are, the platform's and permanent; a
+ * `tag:qa-tools.ru,2026:` ids as they are: the ids are permanent, and the
+ * other two are no address of the inspector's but operator's details, which
+ * since issue #369 a build names only where its settings name them
+ * (`src/lib/operator.ts`) or the changelog's history does; a
  * letter, digit or `-` after it, or a `.` and one of them, keeps a longer
  * host; and a `:` and a digit after it, a port, keeps the host with its port,
  * another origin than production's (#339). So a configured origin on a

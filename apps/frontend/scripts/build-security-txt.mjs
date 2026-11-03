@@ -2,13 +2,17 @@
  * Writes `/.well-known/security.txt` (RFC 9116) into the frontend build
  * (issue #88, D177):
  *
- * - `Contact:` the project's contact address as a `mailto:` link, from
+ * - `Contact:` the operator's contact address as a `mailto:` link, from
  *   `src/lib/contact.ts`, the module the footer reads it from;
  * - `Expires:` the build time plus 364 days, in UTC. RFC 9116 says it SHOULD be
  *   less than a year ahead; every deployment builds the file again, so it stays
  *   current with no one having to remember it;
  * - `Preferred-Languages: en, ru`;
  * - `Canonical:` the address it is served at.
+ *
+ * The file is the contact address's: a build that names none (issue #369,
+ * `CONTACT_EMAIL`, `src/lib/operator.ts`) writes no `security.txt`, and
+ * nginx answers its address with a plain 404.
  *
  * Runs in `npm run build`, and so in the frontend image build, after the two
  * Vite builds and before `check-build.mjs`, which checks the file it wrote.
@@ -45,12 +49,20 @@ function utcSeconds(time) {
   return time.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-/** The whole file for a build made at `builtAt`, one field per line. */
-export function securityTxt(builtAt = new Date()) {
+/**
+ * The whole file for a build made at `builtAt`, one field per line, its
+ * `Contact` `contact`, the build's link to its contact address; `null` for a
+ * build with none, which has no file.
+ */
+export function securityTxt(builtAt = new Date(), contact = CONTACT_MAILTO) {
+  if (contact === null) {
+    return null;
+  }
+
   const expires = new Date(builtAt.getTime() + EXPIRES_AFTER_DAYS * DAY_MS);
 
   return [
-    `Contact: ${CONTACT_MAILTO}`,
+    `Contact: ${contact}`,
     `Expires: ${utcSeconds(expires)}`,
     'Preferred-Languages: en, ru',
     `Canonical: ${SECURITY_TXT_URL}`,
@@ -63,7 +75,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const path = join(dist, SECURITY_TXT_FILE);
   const text = securityTxt();
 
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, text);
-  console.log(`security.txt: wrote ${SECURITY_TXT_FILE} (${Buffer.byteLength(text)} bytes)`);
+  if (text === null) {
+    console.log(
+      'security.txt: the build names no contact address (CONTACT_EMAIL), so none is written',
+    );
+  } else {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+    console.log(`security.txt: wrote ${SECURITY_TXT_FILE} (${Buffer.byteLength(text)} bytes)`);
+  }
 }

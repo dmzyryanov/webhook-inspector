@@ -21,8 +21,10 @@
  * - The agent documentation `llms.txt` and `llms-full.txt` (D165), written by
  *   `scripts/build-llms.mjs`, is there and not empty.
  * - `.well-known/security.txt` (RFC 9116, D177), written by
- *   `scripts/build-security-txt.mjs`, is there with the project's `Contact`
- *   and an `Expires` in the future and less than a year ahead.
+ *   `scripts/build-security-txt.mjs`, is there with the build's contact
+ *   address as its `Contact` and an `Expires` in the future and less than a
+ *   year ahead; and is not there in a build that names no contact address
+ *   (issue #369).
  * - The changelog (D184): `dist/changelog/index.html`, the page at
  *   /changelog, loads only content-hashed files and no Scalar, and lists
  *   versions; `changelog.md`, written by `scripts/build-changelog.mjs`, is
@@ -51,7 +53,9 @@
  * - The Terms of Use and the Privacy Policy (D217): `dist/terms/index.html`
  *   and `dist/privacy/index.html`, the pages at /terms and /privacy, the same
  *   way, each with its own title; and neither claims compliance with a law
- *   nor names one but the law that governs the terms (D224).
+ *   nor names one but the law that governs the terms (D224). They are the
+ *   operator's texts (issue #369): a build that does not show them has
+ *   neither page, and its sitemap lists neither address.
  * - The files for search engines and link previews (D183), copied from
  *   `public/`, are there: `robots.txt`; `sitemap.xml`, which lists every page
  *   the site offers search engines and no session page or address
@@ -68,6 +72,12 @@
  *   feeds' `tag:qa-tools.ru` ids, and in its own hosts; and no text file
  *   names a configured host that has a port with a second port after it
  *   (#339).
+ * - No file of the build names one of production's operator details its
+ *   settings do not name (issue #369): `status.qa-tools.ru`,
+ *   `contact@qa-tools.ru`, `FirstVDS` or `Yandex Object Storage`, in any
+ *   case, inside a longer word, split across lines or escaped, outside the
+ *   changelog's history. A copy built with none of the settings names none
+ *   of them.
  *
  * Usage: node scripts/check-build.mjs [dist directory]
  */
@@ -79,8 +89,9 @@ import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
-import { CONTACT_MAILTO } from '../src/lib/contact.ts';
-import { LEGAL_PAGES } from '../src/lib/legal-copy.ts';
+import { legalPages } from '../src/lib/legal-copy.ts';
+import { PRIVACY_LINK, TERMS_LINK } from '../src/lib/legal-links.ts';
+import { mailtoOf, OPERATOR, operatorWithTexts } from '../src/lib/operator.ts';
 import { isWellFormedXml } from '../src/lib/xml-format.ts';
 import {
   ABOUT_EN,
@@ -234,58 +245,83 @@ export function homePageProblems(file, html) {
 export const CHANGELOG_PAGE = 'changelog/index.html';
 export const CHANGELOG_TEXT = 'changelog.md';
 
-/**
- * The Terms of Use and the Privacy Policy (D217), by the name each is called
- * in a problem, `terms` and `privacy`, with its built file.
- */
-export const LEGAL_PAGE_FILES = Object.fromEntries(
-  LEGAL_PAGES.map((page) => [page.path.slice(1), legalTemplate(page)]),
-);
+/** The addresses of the Terms of Use and the Privacy Policy (D217), the operator's texts (#369). */
+export const LEGAL_PATHS = [TERMS_LINK.href, PRIVACY_LINK.href];
 
 /**
- * Every page the build writes — the application, the Russian home page, the
- * API reference, the changelog, the about page and its Russian twin, the
- * Terms of Use and the Privacy Policy — whose comments, served in their
- * source, are held to the changelog's rules.
+ * The Terms of Use and the Privacy Policy (D217) of a build for `operator`,
+ * by the name each is called in a problem, `terms` and `privacy`, with its
+ * built file; none for a build that does not show the operator's texts
+ * (issue #369).
  */
-export const COMMENTED_PAGES = [
-  'index.html',
-  RUSSIAN_HOME_PAGE,
-  'docs/index.html',
-  CHANGELOG_PAGE,
-  ABOUT_PAGE,
-  RUSSIAN_ABOUT_PAGE,
-  ...Object.values(LEGAL_PAGE_FILES),
-];
+export function legalPageFiles(operator = OPERATOR) {
+  return operator.texts
+    ? Object.fromEntries(LEGAL_PATHS.map((path) => [path.slice(1), legalTemplate({ path })]))
+    : {};
+}
+
+/** This build's legal pages and their files (`legalPageFiles`). */
+export const LEGAL_PAGE_FILES = legalPageFiles();
 
 /**
- * Every page the build writes, by the name a problem calls it, with its built
- * file: each must be there and load only content-hashed files.
+ * Every page a build for `operator` writes — the application, the Russian
+ * home page, the API reference, the changelog, the about page and its
+ * Russian twin, and the Terms of Use and the Privacy Policy when it shows
+ * them — whose comments, served in their source, are held to the
+ * changelog's rules.
  */
-export const BUILT_PAGES = {
-  application: 'index.html',
-  'Russian home': RUSSIAN_HOME_PAGE,
-  'API reference': 'docs/index.html',
-  changelog: CHANGELOG_PAGE,
-  about: ABOUT_PAGE,
-  'Russian about': RUSSIAN_ABOUT_PAGE,
-  ...LEGAL_PAGE_FILES,
-};
+export function commentedPages(operator = OPERATOR) {
+  return [
+    'index.html',
+    RUSSIAN_HOME_PAGE,
+    'docs/index.html',
+    CHANGELOG_PAGE,
+    ABOUT_PAGE,
+    RUSSIAN_ABOUT_PAGE,
+    ...Object.values(legalPageFiles(operator)),
+  ];
+}
+
+/** This build's (`commentedPages`). */
+export const COMMENTED_PAGES = commentedPages();
 
 /**
- * Every page of `BUILT_PAGES` but the API reference, as its problems name it:
- * none may reach Scalar. A page built but missing here would never be
- * checked, so `docs-serving.test.ts` holds the two lists to each other.
+ * Every page a build for `operator` writes, by the name a problem calls it,
+ * with its built file: each must be there and load only content-hashed files.
  */
-export const SCALAR_FREE_PAGES = {
-  application: 'the application',
-  'Russian home': 'the Russian home page',
-  changelog: 'the changelog',
-  about: 'the about page',
-  'Russian about': 'the Russian about page',
-  terms: 'the terms page',
-  privacy: 'the privacy page',
-};
+export function builtPages(operator = OPERATOR) {
+  return {
+    application: 'index.html',
+    'Russian home': RUSSIAN_HOME_PAGE,
+    'API reference': 'docs/index.html',
+    changelog: CHANGELOG_PAGE,
+    about: ABOUT_PAGE,
+    'Russian about': RUSSIAN_ABOUT_PAGE,
+    ...legalPageFiles(operator),
+  };
+}
+
+/** This build's (`builtPages`). */
+export const BUILT_PAGES = builtPages();
+
+/**
+ * Every page of `builtPages(operator)` but the API reference, as its problems
+ * name it: none may reach Scalar. A page built but missing here would never
+ * be checked, so `docs-serving.test.ts` holds the two lists to each other.
+ */
+export function scalarFreePages(operator = OPERATOR) {
+  return {
+    application: 'the application',
+    'Russian home': 'the Russian home page',
+    changelog: 'the changelog',
+    about: 'the about page',
+    'Russian about': 'the Russian about page',
+    ...(operator.texts ? { terms: 'the terms page', privacy: 'the privacy page' } : {}),
+  };
+}
+
+/** This build's (`scalarFreePages`). */
+export const SCALAR_FREE_PAGES = scalarFreePages();
 
 /**
  * The text of every comment in `html`, in order, as a browser reads it: from
@@ -501,20 +537,26 @@ export const LOGO_IMAGES = { 'favicon-192.png': 192, 'logo-512.png': 512 };
 export const FAVICON_SIZES = [16, 32, 48];
 
 /**
- * Every address the site offers search engines (D183, D184, D211, D217,
- * D226, D255), in the sitemap's order: a build whose sitemap lacks one is
- * refused, so a page cannot drop out of search unnoticed.
+ * Every address a build for `operator` offers search engines (D183, D184,
+ * D211, D217, D226, D255), in the sitemap's order: a build whose sitemap
+ * lacks one is refused, so a page cannot drop out of search unnoticed.
+ * `/terms` and `/privacy` are among them only when the build shows the
+ * operator's texts (issue #369).
  */
-export const SITEMAP_ADDRESSES = [
-  '/',
-  '/ru/',
-  '/docs',
-  '/changelog',
-  '/about',
-  '/ru/about',
-  '/terms',
-  '/privacy',
-].map((path) => `${APP_ORIGIN}${path}`);
+export function sitemapAddresses(operator = OPERATOR) {
+  return [
+    '/',
+    '/ru/',
+    '/docs',
+    '/changelog',
+    '/about',
+    '/ru/about',
+    ...(operator.texts ? LEGAL_PATHS : []),
+  ].map((path) => `${APP_ORIGIN}${path}`);
+}
+
+/** This build's (`sitemapAddresses`). */
+export const SITEMAP_ADDRESSES = sitemapAddresses();
 
 /**
  * Paths no sitemap address may lie under: session pages (`/v/`, whose id is
@@ -605,11 +647,13 @@ export function icoSizes(bytes) {
 }
 
 /**
- * What is wrong with a `sitemap.xml`: no address, one it must not list, or
- * the lack of one of `required`, the addresses it must list; the build check
- * requires `SITEMAP_ADDRESSES`.
+ * What is wrong with a `sitemap.xml`: no address, one it must not list, the
+ * lack of one of `required`, the addresses it must list, or one of
+ * `unserved`, addresses the build does not serve; the build check requires
+ * `sitemapAddresses()` and, without the operator's texts, refuses the legal
+ * pages' (issue #369).
  */
-export function sitemapProblems(text, required = []) {
+export function sitemapProblems(text, required = [], unserved = []) {
   const problems = [];
   const addresses = [...text.matchAll(/<loc>\s*([^<]*?)\s*<\/loc>/g)].map((match) => match[1]);
 
@@ -622,6 +666,12 @@ export function sitemapProblems(text, required = []) {
   for (const address of required) {
     if (!listed.has(address)) {
       problems.push(`sitemap.xml does not list ${address}`);
+    }
+  }
+
+  for (const address of unserved) {
+    if (listed.has(address)) {
+      problems.push(`sitemap.xml lists ${address}, which this build does not serve`);
     }
   }
 
@@ -645,16 +695,20 @@ export function sitemapProblems(text, required = []) {
 
 /**
  * What is wrong with a `security.txt` at `now`: RFC 9116's two required
- * fields, `Contact` with the project's address and exactly one `Expires`, an
- * RFC 3339 UTC time later than `now` and less than a year after it, plus the
- * two fields D177 adds.
+ * fields, `Contact` with `contact`, the link to the build's contact address,
+ * and exactly one `Expires`, an RFC 3339 UTC time later than `now` and less
+ * than a year after it, plus the two fields D177 adds.
  */
-export function securityTxtProblems(text, now = new Date()) {
+export function securityTxtProblems(
+  text,
+  now = new Date(),
+  contact = OPERATOR.contactEmail === null ? null : mailtoOf(OPERATOR.contactEmail),
+) {
   const problems = [];
   const lines = text.split(/\r?\n/);
 
   for (const field of [
-    `Contact: ${CONTACT_MAILTO}`,
+    `Contact: ${contact}`,
     'Preferred-Languages: en, ru',
     `Canonical: ${SECURITY_TXT_URL}`,
   ]) {
@@ -689,9 +743,11 @@ export function securityTxtProblems(text, now = new Date()) {
 }
 
 /**
- * The names of production the build keeps whatever its origins (D274): the
- * platform's contact address and status page, and the feeds' entry ids, which
- * are permanent.
+ * The names of production the rename leaves as they are whatever the
+ * origins (D274): the feeds' entry ids, which are permanent, and the contact
+ * address and the status page on production's domain, which since issue #369
+ * a build names only when its settings do, or in the changelog's history;
+ * `operatorNameProblems()` holds a build to that.
  */
 export const KEPT_PRODUCTION_NAMES = /(?:contact@|status\.|tag:)qa-tools\.ru/gi;
 
@@ -761,6 +817,130 @@ export function productionNameProblems(dist, origins = SITE_ORIGINS) {
 }
 
 /**
+ * The ways a build might write a `.` or an `@` of a name: as itself, percent-
+ * escaped, as an HTML character reference, or as a JavaScript or JSON escape.
+ */
+const DOT = String.raw`(?:\.|%2e|&#0*46;|&#x0*2e;|&period;|\\u002e|\\x2e)`;
+const AT = String.raw`(?:@|%40|&#0*64;|&#x0*40;|&commat;|\\u0040|\\x40)`;
+
+/**
+ * What may stand between two words of a name: any run of white space, a
+ * no-break space as itself, as a character reference or an escape, an
+ * escaped line break, or an HTML line break, so a name split across lines of
+ * Markdown, a page or a JSON string is still the name.
+ */
+const GAP = String.raw`(?:\s|&nbsp;|&#0*160;|&#x0*a0;|\\[nrt]|\\u00a0|\\xa0|<br\s*\/?>)+`;
+
+/**
+ * Production's operator details (issue #369): what a build names only when
+ * its settings name it. `named` says whether `operator`'s do: the status page
+ * and the contact address when they are production's, the hosting the
+ * operator's texts name when the build shows them. Each `pattern` is fixed
+ * text, the escapes above and a run of `GAP`, whose alternatives begin with
+ * different characters, so a scan is linear in the text's length; every
+ * pattern ignores case and finds the name inside a longer word too.
+ */
+export const OPERATOR_NAMES = Object.freeze([
+  {
+    name: 'status.qa-tools.ru',
+    pattern: new RegExp(`status${DOT}qa-tools${DOT}ru`, 'gi'),
+    named: (operator) =>
+      operator.statusPageUrl !== null &&
+      new URL(operator.statusPageUrl).hostname === 'status.qa-tools.ru',
+  },
+  {
+    name: 'contact@qa-tools.ru',
+    pattern: new RegExp(`contact${AT}qa-tools${DOT}ru`, 'gi'),
+    named: (operator) => operator.contactEmail?.toLowerCase() === 'contact@qa-tools.ru',
+  },
+  {
+    name: 'FirstVDS',
+    pattern: new RegExp(`first(?:${GAP})?vds`, 'gi'),
+    named: (operator) => operator.texts,
+  },
+  {
+    name: 'Yandex Object Storage',
+    pattern: new RegExp(`yandex${GAP}object${GAP}storage`, 'gi'),
+    named: (operator) => operator.texts,
+  },
+]);
+
+/**
+ * The files whose text is the changelog's history, `CHANGELOG.md` as it is:
+ * an entry may name the operator's details of its day, as the changelog of
+ * 0.49.0 names the status page, and the history is not rewritten for a
+ * copy. The changelog page is read with its `<main>`, the entries, left out,
+ * so its header and footer are held to the rule like every other page's.
+ */
+export const CHANGELOG_HISTORY_FILES = [
+  CHANGELOG_TEXT,
+  ...Object.values(FEEDS).map((feed) => feed.path.slice(1)),
+];
+
+/** What of a built file the operator check reads: all of it, but the changelog's entries. */
+function operatorCheckedText(path, text) {
+  if (CHANGELOG_HISTORY_FILES.includes(path)) {
+    return '';
+  }
+
+  if (path === CHANGELOG_PAGE) {
+    const start = text.indexOf('<main>');
+    const end = text.lastIndexOf('</main>');
+
+    return start === -1 || end < start ? text : `${text.slice(0, start)} ${text.slice(end)}`;
+  }
+
+  return text;
+}
+
+/**
+ * The names of `OPERATOR_NAMES` that `text` holds though `operator`'s
+ * settings do not name them. The build's own status page and contact address
+ * are read out first, in case either holds one of the names inside a longer
+ * one, such as `https://mystatus.qa-tools.ru/`.
+ */
+export function operatorNamesLeft(text, operator = OPERATOR) {
+  const own = [
+    operator.statusPageUrl && new URL(operator.statusPageUrl).host,
+    operator.contactEmail,
+  ]
+    .filter((value) => value !== null)
+    .map((value) => new RegExp(literally(value), 'gi'));
+  const read = own.reduce((rest, pattern) => rest.replace(pattern, ' '), text);
+
+  return OPERATOR_NAMES.filter((item) => !item.named(operator))
+    .filter((item) => new RegExp(item.pattern.source, item.pattern.flags).test(read))
+    .map((item) => item.name);
+}
+
+/**
+ * The files of a build for `operator` that still name one of production's
+ * operator details its settings do not name (issue #369, criterion 2), each
+ * with the names: every file of the build, read as UTF-8, whose ASCII names
+ * survive any other bytes around them, images and fonts included, but the
+ * changelog's history. A build with production's settings has nothing to
+ * look for.
+ */
+export function operatorNameProblems(dist, operator = OPERATOR) {
+  if (OPERATOR_NAMES.every((item) => item.named(operator))) {
+    return [];
+  }
+
+  return filesUnder(dist).flatMap((path) => {
+    const names = operatorNamesLeft(
+      operatorCheckedText(path, readFileSync(join(dist, path), 'utf8')),
+      operator,
+    );
+
+    return names.length === 0
+      ? []
+      : [
+          `${path} names ${names.join(', ')}, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name`,
+        ];
+  });
+}
+
+/**
  * The configured hosts with a port of their own that `text` names with a
  * second port after it (#339), such as `https://qa-tools.ru:8443:8443/about`,
  * an address no browser opens: what a rename writes when it names a
@@ -807,18 +987,22 @@ function addEach(problems, found) {
 /**
  * Everything wrong with the build in `dist`. `now` is the time `security.txt`
  * must not have expired at, and `entries` the changelog the feeds must carry,
- * `CHANGELOG.md`'s unless a test gives its own.
+ * `CHANGELOG.md`'s unless a test gives its own; `origins` and `operator` are
+ * what the build was made for, this process's settings unless a test gives
+ * its own.
  */
 export function checkBuild(
   dist,
   now = new Date(),
   entries = readChangelog(),
   origins = SITE_ORIGINS,
+  operator = OPERATOR,
 ) {
   const problems = [];
   const graphs = {};
+  const texts = operatorWithTexts(operator);
 
-  for (const [page, file] of Object.entries(BUILT_PAGES)) {
+  for (const [page, file] of Object.entries(builtPages(operator))) {
     const path = join(dist, file);
 
     if (!existsSync(path)) {
@@ -891,7 +1075,7 @@ export function checkBuild(
     }
   }
 
-  for (const file of COMMENTED_PAGES) {
+  for (const file of commentedPages(operator)) {
     const path = join(dist, file);
 
     if (existsSync(path)) {
@@ -915,7 +1099,7 @@ export function checkBuild(
     }
   }
 
-  for (const page of LEGAL_PAGES) {
+  for (const page of texts === null ? [] : legalPages(texts)) {
     const path = join(dist, legalTemplate(page));
 
     if (existsSync(path)) {
@@ -923,6 +1107,17 @@ export function checkBuild(
       for (const problem of legalPageProblems(page, readFileSync(path, 'utf8'))) {
         problems.push(problem);
       }
+    }
+  }
+
+  // The operator's texts (#369): a build that does not show them has no page of them.
+  for (const path of texts === null ? LEGAL_PATHS : []) {
+    const file = legalTemplate({ path });
+
+    if (existsSync(join(dist, file))) {
+      problems.push(
+        `${file} is in the build, though OPERATOR_TEXTS does not show the operator's texts`,
+      );
     }
   }
 
@@ -956,7 +1151,14 @@ export function checkBuild(
   const sitemap = join(dist, 'sitemap.xml');
 
   if (existsSync(sitemap)) {
-    addEach(problems, sitemapProblems(readFileSync(sitemap, 'utf8'), SITEMAP_ADDRESSES));
+    addEach(
+      problems,
+      sitemapProblems(
+        readFileSync(sitemap, 'utf8'),
+        sitemapAddresses(operator),
+        texts === null ? LEGAL_PATHS.map((path) => `${APP_ORIGIN}${path}`) : [],
+      ),
+    );
   }
 
   const openapi = join(dist, OPENAPI_FILE);
@@ -977,11 +1179,22 @@ export function checkBuild(
   }
 
   problems.push(...doubledPortProblems(dist, origins));
+  addEach(problems, operatorNameProblems(dist, operator));
 
   const securityTxt = join(dist, SECURITY_TXT_FILE);
 
-  if (existsSync(securityTxt)) {
-    problems.push(...securityTxtProblems(readFileSync(securityTxt, 'utf8'), now));
+  if (operator.contactEmail === null) {
+    if (existsSync(securityTxt)) {
+      problems.push(`${SECURITY_TXT_FILE} is in the build, though it names no contact address`);
+    }
+  } else if (existsSync(securityTxt)) {
+    problems.push(
+      ...securityTxtProblems(
+        readFileSync(securityTxt, 'utf8'),
+        now,
+        mailtoOf(operator.contactEmail),
+      ),
+    );
   } else {
     problems.push(`${SECURITY_TXT_FILE} was not built`);
   }
@@ -989,7 +1202,7 @@ export function checkBuild(
   const contents = (graph) =>
     [...graph].map((name) => [name, readFileSync(join(dist, 'assets', name), 'utf8')]);
 
-  for (const [page, named] of Object.entries(SCALAR_FREE_PAGES)) {
+  for (const [page, named] of Object.entries(scalarFreePages(operator))) {
     for (const [name, text] of graphs[page] ? contents(graphs[page]) : []) {
       for (const marker of SCALAR_MARKERS) {
         if (text.includes(marker)) {
@@ -1041,7 +1254,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = 1;
   } else {
     console.log(
-      'frontend build: the application and its Russian home page, the API reference, the changelog, the about page and its Russian twin and the terms and privacy pages are separate; the changelog text and its two Atom feeds, the agent documentation, security.txt, the files for search engines and the relay script with its documented SHA-256 are there',
+      `frontend build: the application and its Russian home page, the API reference, the changelog, the about page and its Russian twin${OPERATOR.texts ? ' and the terms and privacy pages' : ''} are separate; the changelog text and its two Atom feeds, the agent documentation, ${OPERATOR.contactEmail === null ? '' : 'security.txt, '}the files for search engines and the relay script with its documented SHA-256 are there; ${OPERATOR.texts ? "the operator's texts are shown" : "the operator's texts are left out"}, ${OPERATOR.statusPageUrl === null ? 'no status page' : 'a status page'} and ${OPERATOR.contactEmail === null ? 'no contact address' : 'a contact address'} are named`,
     );
   }
 }

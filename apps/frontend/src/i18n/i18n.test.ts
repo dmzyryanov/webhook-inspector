@@ -5,7 +5,7 @@ import { renderAboutBody } from '../../scripts/about.mjs';
 import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
 import { formatDetailTimestamp, formatDocumentTitle, formatTimestamp } from '../lib/format.ts';
 import { formatListCount, formatRowMeta, groupByDay } from '../lib/home-view.ts';
-import { PRIVACY_PAGE } from '../lib/legal-copy.ts';
+import { privacyPage } from '../lib/legal-copy.ts';
 import { fixedLanguage } from '../lib/not-found.ts';
 import { sessionRetentionLine } from '../lib/session-lifetime.ts';
 import { en, type Messages } from './en.ts';
@@ -21,6 +21,10 @@ import {
 } from './index.ts';
 import { LATIN_IN_RUSSIAN } from './latin.ts';
 import { ru } from './ru.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/** The Privacy Policy as production's build writes it (issue #369). */
+const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 const NBSP = '\u00a0';
 

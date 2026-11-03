@@ -1,3 +1,7 @@
+// First: production's operator settings (#369), which the suite's processes
+// and the dev server it starts read from the environment, before any module
+// of the frontend is loaded.
+import './apps/frontend/src/testing/production-operator-env.ts';
 import { defineConfig, devices } from '@playwright/test';
 import {
   BACKEND_ORIGIN_VARIABLE,

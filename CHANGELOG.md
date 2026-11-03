@@ -106,6 +106,16 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.6
+
+2026-11-03
+
+**Nothing changes on this site; a copy of the inspector built from its source
+no longer shows this site's status page, contact address or terms.** A copy
+shows a status link, a contact address, the Terms of Use and the Privacy
+Policy only when whoever builds it names their own. This site names its own
+as before, and every address answers exactly as before. (#369)
+
 ## 1.19.5
 
 2026-11-02

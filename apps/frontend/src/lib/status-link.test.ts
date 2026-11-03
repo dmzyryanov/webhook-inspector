@@ -4,26 +4,35 @@ import { describe, it } from 'node:test';
 import { pageText, readChangelog, renderChangelogBody } from '../../scripts/changelog.mjs';
 import { API_DOCS_LINK } from './api-docs-link.ts';
 import { BRAND_MARK } from './brand-mark.ts';
+import { nginxConf } from '../../scripts/nginx-conf.mjs';
 import { CHANGELOG_LINK } from './changelog-link.ts';
-import { STATUS_ACCESSIBLE_NAME, STATUS_LINK } from './status-link.ts';
+import { STATUS_ACCESSIBLE_NAME, STATUS_LINK, type StatusLink } from './status-link.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
 
 /**
  * The public status page (issue #99, D209), without a browser: the header's
  * `Status ↗` link in both places that draw the header, the Q mark below
  * 375 px, and the nginx locations that send `/status` to the page.
  * `e2e/standard-session.spec.ts` and `e2e/changelog.spec.ts` lay the header
- * out at 320, 360, 375 and 768 px.
+ * out at 320, 360, 375 and 768 px. Since issue #369 the page is the build's
+ * `STATUS_PAGE_URL`, here production's, which the suite supplies;
+ * `operator.test.ts` holds a build with none.
  */
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const STATUS_PAGE = 'https://status.qa-tools.ru/';
 
-/** One exact location block of nginx.conf, comments and blank lines removed. */
+/** The link this build draws: production's, whose settings the suite supplies. */
+const LINK: StatusLink = STATUS_LINK ?? assert.fail('the suite builds with no status page');
+
+/** The nginx configuration of production's image (`scripts/nginx-conf.mjs`, issue #369). */
+const config = () => nginxConf(read('../../nginx.conf'), PRODUCTION_OPERATOR);
+
+/** One exact location block of the image's nginx.conf, comments and blank lines removed. */
 function location(target: string): string {
-  const config = read('../../nginx.conf');
   const escaped = target.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   const block = new RegExp(`^\\s*location = ${escaped} \\{\\n([\\s\\S]*?)^\\s*\\}$`, 'm').exec(
-    config,
+    config(),
   )?.[1];
 
   assert.ok(block !== undefined, `nginx.conf has no exact location for ${target}`);
@@ -35,9 +44,9 @@ function location(target: string): string {
     .join('\n');
 }
 
-/** Every `location` line of nginx.conf, comments removed. */
+/** Every `location` line of the image's nginx.conf, comments removed. */
 function locationLines(): string[] {
-  return read('../../nginx.conf')
+  return config()
     .split('\n')
     .map((line) => line.replace(/#.*$/, '').trim())
     .filter((line) => line.startsWith('location '));
@@ -45,9 +54,9 @@ function locationLines(): string[] {
 
 describe('the Status link', () => {
   it('points at the status page, at its own host, with nothing after the slash', () => {
-    assert.equal(STATUS_LINK.href, STATUS_PAGE);
+    assert.equal(LINK.href, STATUS_PAGE);
 
-    const url = new URL(STATUS_LINK.href);
+    const url = new URL(LINK.href);
 
     assert.equal(url.protocol, 'https:');
     assert.equal(url.host, 'status.qa-tools.ru');
@@ -55,22 +64,22 @@ describe('the Status link', () => {
   });
 
   it('opens in a new tab with noopener, as API docs does', () => {
-    assert.equal(STATUS_LINK.target, '_blank');
-    assert.equal(STATUS_LINK.target, API_DOCS_LINK.target);
-    assert.match(STATUS_LINK.rel, /(?:^| )noopener(?: |$)/);
+    assert.equal(LINK.target, '_blank');
+    assert.equal(LINK.target, API_DOCS_LINK.target);
+    assert.match(LINK.rel, /(?:^| )noopener(?: |$)/);
   });
 
   /** A third party's page: a session page's address, the access key, never reaches it (D004). */
   it('sends no Referer, where same-origin API docs does not need to', () => {
-    assert.equal(STATUS_LINK.rel, 'noopener noreferrer');
+    assert.equal(LINK.rel, 'noopener noreferrer');
     assert.equal(API_DOCS_LINK.rel, 'noopener');
   });
 
   /** WCAG 2.5.3: the visible word comes first in the name; the rest says what ↗ says. */
   it('is named Status, then says it opens a new tab', () => {
-    assert.equal(STATUS_LINK.label, 'Status');
+    assert.equal(LINK.label, 'Status');
     assert.equal(STATUS_ACCESSIBLE_NAME, 'Status (opens in a new tab)');
-    assert.equal(STATUS_LINK.newTabNote, API_DOCS_LINK.newTabNote);
+    assert.equal(LINK.newTabNote, API_DOCS_LINK.newTabNote);
   });
 });
 
@@ -80,9 +89,10 @@ describe('the application header (AppHeader.tsx)', () => {
   const code = header.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
 
   it('renders the link from the shared constant, with the new-tab note for screen readers only', () => {
-    assert.ok(code.includes('href={STATUS_LINK.href}'));
-    assert.ok(code.includes('target={STATUS_LINK.target}'));
-    assert.ok(code.includes('rel={STATUS_LINK.rel}'));
+    assert.ok(code.includes('const status = statusLink(operator.statusPageUrl);'));
+    assert.ok(code.includes('href={status.href}'));
+    assert.ok(code.includes('target={status.target}'));
+    assert.ok(code.includes('rel={status.rel}'));
     // The words are the interface's language's (D222); the English ones are the constant's.
     assert.ok(code.includes('{m.header.status}'));
     assert.match(code, /<span className="sr-only">\{` \$\{m\.header\.newTab\}`\}<\/span>/);
@@ -94,7 +104,7 @@ describe('the application header (AppHeader.tsx)', () => {
     const divider = '<span aria-hidden="true" className="h-4 w-px bg-line" />';
     const changelog = code.indexOf('href={CHANGELOG_LINK.href}');
     const first = code.indexOf(divider);
-    const status = code.indexOf('href={STATUS_LINK.href}');
+    const status = code.indexOf('href={status.href}');
     const second = code.indexOf(divider, first + 1);
     const apiDocs = code.indexOf('href={API_DOCS_LINK.href}');
     // The language switch closes the links from 768 px, after a third divider;
@@ -298,7 +308,7 @@ describe('the /status locations in nginx.conf', () => {
       assert.ok(target.startsWith('https://'), target);
       // No variable: not $host, $http_host, $scheme, $request_uri or $args.
       assert.ok(!target.includes('$'), target);
-      assert.equal(target, STATUS_LINK.href);
+      assert.equal(target, LINK.href);
     }
   });
 

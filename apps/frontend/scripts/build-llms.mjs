@@ -11,8 +11,10 @@
  * Both are written for production and name the configured origins as the
  * build writes them (`site-origin.mjs`, D274): the description is the one the
  * build writes as `openapi.json` (`build-site-files.mjs`), and the agent
- * section and the index pass through `nameSite()`. Built for production, they
- * are what they were.
+ * section and the index pass through `nameSite()`. The index's line on the
+ * status page names the build's, or is left out with none (issue #369,
+ * `site-operator.mjs`), and the description is the build's for its operator
+ * too. Built for production, they are what they were.
  *
  * Runs in `npm run build`, and so in the frontend image build, which copies
  * `packages/shared` in before it builds. Nothing it writes is committed: a
@@ -28,8 +30,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
+import { OPERATOR } from '../src/lib/operator.ts';
 import { openApiText } from './build-site-files.mjs';
 import { APP_ORIGIN, nameSite, SITE_ORIGINS } from './site-origin.mjs';
+import { operatorLlmsIndex } from './site-operator.mjs';
 
 export const OPENAPI_FILE = fileURLToPath(
   new URL('../../../packages/shared/openapi.json', import.meta.url),
@@ -94,13 +98,16 @@ export function llmsFull({ openapi, agentSection, origin = APP_ORIGIN }) {
   ].join('\n');
 }
 
-/** Reads the sources from the repository and returns both files by name, under `origins`. */
-export function buildLlmsFiles(origins = SITE_ORIGINS) {
-  const openapi = JSON.parse(openApiText(origins));
+/**
+ * Reads the sources from the repository and returns both files by name,
+ * under `origins` and for `operator`.
+ */
+export function buildLlmsFiles(origins = SITE_ORIGINS, operator = OPERATOR) {
+  const openapi = JSON.parse(openApiText(origins, operator));
   const agentSection = nameSite(readFileSync(AGENT_SECTION_FILE, 'utf8'), origins);
 
   return {
-    'llms.txt': nameSite(readFileSync(LLMS_FILE, 'utf8'), origins),
+    'llms.txt': operatorLlmsIndex(nameSite(readFileSync(LLMS_FILE, 'utf8'), origins), operator),
     'llms-full.txt': llmsFull({ openapi, agentSection, origin: origins.app }),
   };
 }

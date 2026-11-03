@@ -5,7 +5,8 @@ import { homeAddress } from '../i18n/index.ts';
 import { API_DOCS_LINK } from '../lib/api-docs-link.ts';
 import { BRAND_MARK } from '../lib/brand-mark.ts';
 import { CHANGELOG_LINK } from '../lib/changelog-link.ts';
-import { STATUS_LINK } from '../lib/status-link.ts';
+import { OPERATOR, type Operator } from '../lib/operator.ts';
+import { statusLink } from '../lib/status-link.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
 import { MoveBanner } from './MoveBanner.tsx';
 
@@ -36,10 +37,16 @@ import { MoveBanner } from './MoveBanner.tsx';
  * On the inspector's old address the move banner comes first, above the
  * header, on every page that draws the header: the home page, a session's
  * and `Page not found` (issue #321, D276). Elsewhere it draws nothing.
+ *
+ * `Status ↗` leads to the build's status page (issue #369, `status-link.ts`);
+ * a build that names none draws neither it nor the divider before it, and
+ * the links read `Changelog | API docs ↗`. `operator` is the build's unless a
+ * test gives another.
  */
-export function AppHeader() {
+export function AppHeader({ operator = OPERATOR }: { operator?: Operator }) {
   const m = useMessages();
   const phone = usePhoneLayout();
+  const status = statusLink(operator.statusPageUrl);
 
   return (
     <>
@@ -83,19 +90,24 @@ export function AppHeader() {
           >
             {m.header.changelog}
           </a>
-          <span aria-hidden="true" className="h-4 w-px bg-line" />
           {/* The public status page, another site: a new tab, as API docs ↗
-            (D209). Below 1024 px its tap area is 45 px high. */}
-          <a
-            href={STATUS_LINK.href}
-            target={STATUS_LINK.target}
-            rel={STATUS_LINK.rel}
-            className="inline-flex items-center gap-1.5 rounded-[4px] text-[13px] font-medium leading-[17px] whitespace-nowrap text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-lg:relative max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-inset-y-[14px]"
-          >
-            {m.header.status}
-            <NewTabArrow />
-            <span className="sr-only">{` ${m.header.newTab}`}</span>
-          </a>
+            (D209). Below 1024 px its tap area is 45 px high. None for a
+            build that names no status page (issue #369). */}
+          {status === null ? null : (
+            <>
+              <span aria-hidden="true" className="h-4 w-px bg-line" />
+              <a
+                href={status.href}
+                target={status.target}
+                rel={status.rel}
+                className="inline-flex items-center gap-1.5 rounded-[4px] text-[13px] font-medium leading-[17px] whitespace-nowrap text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-lg:relative max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-inset-y-[14px]"
+              >
+                {m.header.status}
+                <NewTabArrow />
+                <span className="sr-only">{` ${m.header.newTab}`}</span>
+              </a>
+            </>
+          )}
           <span aria-hidden="true" className="h-4 w-px bg-line" />
           {/* Below 1024 px its tap area is 45 px high, as the wordmark's is. */}
           <a
