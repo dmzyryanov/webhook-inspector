@@ -3951,7 +3951,8 @@ entry's beside it, `ℹ tests 3407`, `ℹ pass 3407`, `ℹ fail 0`, exit 0, in
   test. `PER_WAIT_BYTES` stays 64 KiB, the issue's bound of #139 under D213,
   `WAITS` 16, and every shape and answer check stays. The cause of the
   bytes over the bound is not identified: what is measured is that they are
-  not kept by each wait. VERSION kept: the change is a test and this entry.
+  not kept by every wait every time. VERSION kept: the change is a test and
+  this entry.
 
 ### The failure
 
@@ -3998,8 +3999,11 @@ And once in the base series below, run 15 of 40, on the URL shape:
 
 ### The mechanism
 
-- **Not a retention of the head per wait.** Measured. A wait that kept
-  more would read more in every round of its shape; of the 40 base runs
+- **Not a retention every wait makes every time.** Measured. A wait that
+  kept more every time would read more in every round of its shape; a
+  retention that only some waits make, or only sometimes, is not excluded:
+  a head that arrives in several chunks, say, is never sent, since the
+  test's `rawRequest` writes it in one `socket.write`. Of the 40 base runs
   below, the shape `100 header lines of 150 bytes` read 44.1 to 44.7 KiB a
   call in the 39 whose reading was its own (run 15's counted the URL
   shape's waits, below), 19 KiB a call under the bound, and the URL shape
@@ -4075,7 +4079,7 @@ under the load of the measurement below:
 The 24 KiB mutation's lowest round, 64.5 KiB a call, is within a reading's
 spread of the bound: the least of three rounds lets through a wait that
 reads over the bound in one round and under it in another, a band of the
-size of that spread, about 2 KiB a call, where one reading held to the
+size of that spread, about 2 to 4 KiB a call, where one reading held to the
 bound would fail it more often.
 
 ### The measurement
@@ -4094,7 +4098,7 @@ run.
 | --- | --- | --- | --- | --- | --- | --- |
 | base | `7c9c5cb` | 05:08–05:15 | 1.1 at the start, rising with the loops; 10.0 to 12.9 from run 9 | 40 | 1, run 15, above | 2.5% (0.4%–12.9%) |
 | probe | below | 05:15–05:23 | 11.1 to 13.4 | 30 | 0 | 0.0% (0.0%–11.4%) |
-| fix | `4b3a199` | 05:23–05:30 | 10.0 to 12.9 | 40 | 0 | 0.0% (0.0%–8.8%) |
+| fix | `4b3a199`'s test file, run in the worktree before its commit at 05:33 | 05:23–05:30 | 10.0 to 12.9 | 40 | 0 | 0.0% (0.0%–8.8%) |
 | second probe | below | 05:33–05:41 | 10.5 to 12.5 | 80 | 0 | 0.0% (0.0%–4.6%) |
 
 The probes hold nothing to the bound: what they count is a reading over the
