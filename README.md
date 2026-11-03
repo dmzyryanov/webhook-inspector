@@ -31,7 +31,8 @@ usable on tablets and phones. It is a service of QA Tools.
 - **The changelog** — [`/changelog`](https://webhook.qa-tools.ru/changelog),
   with Atom feeds of every release and of breaking changes alone; its source is
   [`CHANGELOG.md`](CHANGELOG.md).
-- **The status page** — https://status.qa-tools.ru.
+- **The status page** — https://status.qa-tools.ru, the image's
+  `STATUS_PAGE_URL` (see below).
 
 ## Technology
 
@@ -213,7 +214,21 @@ values its operator keeps in the project's CI/CD variables.
    ```
 
    The frontend image names its address when it is built, so a copy on another
-   address builds its own.
+   address builds its own. It names its operator the same way, with three more
+   build arguments, each left out when unset — the repository falls back to
+   none of this site's:
+
+   | Build argument    | What it names                                                                                                                                                                                                | Unset                                                                                                                                                       |
+   | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `STATUS_PAGE_URL` | The status page, an http or https address with no query or fragment: the header's `Status ↗` link, the `/status` and `/status/` redirect, the status line of `llms.txt` and the API reference's sentence. | No status link and no such line; `/status` is the site's `Page not found`.                                                                                  |
+   | `CONTACT_EMAIL`   | The contact address: the footer's `Contact:`, the about pages' last paragraph, `/.well-known/security.txt` and the API description's `info.contact`.                                                        | No address anywhere, and no `security.txt` (404).                                                                                                           |
+   | `OPERATOR_TEXTS`  | `true` shows this site's own texts: the Terms of Use at `/terms`, the Privacy Policy at `/privacy`, the footer's links to them, and the about pages' lines on who runs the service and who pays for it.      | Neither page (`/terms` and `/privacy` are `Page not found`), no link to them, and the about pages describe the service alone. `true` needs the other two. |
+
+   This site's image sets all three in `.gitlab-ci.yml`. The texts behind
+   `OPERATOR_TEXTS` are this site's operator's and name its hosting; a copy
+   leaves them off. `scripts/check-deployment.mjs` below still expects this
+   site's contact address and legal pages, so a copy built without them
+   fails those of its checks.
 3. **The namespace and its Secrets.** The database password, which the chart
    reads and never holds, in the Secret `<release>-postgres`:
 

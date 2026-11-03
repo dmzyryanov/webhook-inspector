@@ -3,10 +3,22 @@ import {
   LEGAL_PAGES,
   legalLineText,
   STABILITY_POLICY_HREF,
-  TERMS_PAGE,
 } from '../apps/frontend/src/lib/legal-copy.ts';
 import { FOOTER_LINKS, PRIVACY_FOOTER_TEXT } from '../apps/frontend/src/lib/privacy-footer.ts';
 import { expectHeaderLayout, laidOutLines, watchOrigins } from './helpers.ts';
+
+/**
+ * The Terms of Use as the build writes it: the first of `LEGAL_PAGES`, which
+ * the suite's build has, its operator settings production's
+ * (`playwright.config.ts`, #369).
+ */
+const [TERMS_PAGE] = LEGAL_PAGES;
+
+if (TERMS_PAGE === undefined) {
+  throw new Error(
+    "the suite's build has no Terms of Use: its operator settings are not production's",
+  );
+}
 
 /**
  * E2E-16 — the Terms of Use at /terms and the Privacy Policy at /privacy

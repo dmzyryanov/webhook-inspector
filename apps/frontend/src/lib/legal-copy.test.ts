@@ -5,11 +5,16 @@ import {
   LEGAL_PAGES,
   type LegalPage,
   legalLineText,
-  PRIVACY_PAGE,
+  privacyPage,
   STABILITY_POLICY_HREF,
-  TERMS_PAGE,
+  termsPage,
 } from './legal-copy.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/** The two pages as production's build writes them (issue #369). */
+const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
+const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 /**
  * The texts of `/terms` and `/privacy` (issue #112, D217), exactly as the
@@ -469,7 +474,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
       for (const section of page.sections) {
         for (const line of section.lines) {
           assert.equal(
-            typeof line === 'string' && line.includes(CONTACT_ADDRESS),
+            typeof line === 'string' && line.includes(PRODUCTION_OPERATOR.contactEmail),
             false,
             legalLineText(line),
           );

@@ -25,6 +25,7 @@ import {
   mergeMove,
   moveArrivedToast,
   moveBannerShown,
+  moveNoticePieces,
   MOVE_FORMAT_VERSION,
   originHost,
   parseBuiltMove,
@@ -1102,6 +1103,100 @@ describe('the banner’s visibility by origin', () => {
     assert.equal(formatMoveDay('2027-03-09', ru), '9\u00a0мар.\u00a02027');
     assert.equal(formatMoveDay('2026-11-30', en), '30\u00a0Nov\u00a02026');
     assert.equal(formatMoveDay('no day', en), 'no day');
+  });
+
+  it('cuts the banner’s text around the host, a piece of its own, in both languages (#347)', () => {
+    const host = 'webhook.qa-tools.ru';
+
+    for (const [m, day, before, after] of [
+      [en, '9\u00a0Mar\u00a02027', 'Webhook Inspector is moving to ', ' on 9\u00a0Mar\u00a02027'],
+      [ru, '9\u00a0мар.\u00a02027', 'Webhook Inspector переезжает на ', ' 9\u00a0мар.\u00a02027'],
+    ] as const) {
+      assert.deepEqual(
+        moveNoticePieces(host, (place) => m.move.notice(place, day)),
+        [
+          { text: before, host: false },
+          { text: host, host: true },
+          { text: after, host: false },
+        ],
+        m.lang,
+      );
+    }
+  });
+
+  it('puts the host where the sentence does, whatever it holds, hostile ones at growing sizes (#347)', () => {
+    const day = '9\u00a0Mar\u00a02027';
+    const notice = (place: string) => en.move.notice(place, day);
+    const hosts = [
+      // The same letters as the words around it, which a search would find first.
+      'e',
+      'on',
+      'Webhook',
+      'is moving to',
+      '9',
+      ' ',
+      '',
+      // What a string replacement, a pattern or markup would read as its own.
+      '$&',
+      "$1$`$'",
+      '.*+?^${}()|[]\\',
+      '<b>&amp;</b>',
+      // The mark itself, which a host never holds: the host is never in the
+      // text that is cut, so it stays whole.
+      '\u0000',
+      'a\u0000\u0000b',
+      ...[100, 10_000, 1_000_000].flatMap((size) => [
+        'webhook.qa-tools.ru'.repeat(Math.ceil(size / 19)).slice(0, size),
+        '\u0000'.repeat(size),
+        'on '.repeat(Math.ceil(size / 3)).slice(0, size),
+      ]),
+    ];
+
+    for (const host of hosts) {
+      const pieces = moveNoticePieces(host, notice);
+      const label = JSON.stringify(host.slice(0, 20)) + ` (${host.length})`;
+
+      assert.deepEqual(
+        pieces.map((piece) => piece.host),
+        [false, true, false],
+        label,
+      );
+      assert.equal(pieces[0]?.text, 'Webhook Inspector is moving to ', label);
+      assert.equal(pieces[1]?.text, host, label);
+      assert.equal(pieces[2]?.text, ` on ${day}`, label);
+      assert.equal(pieces.map((piece) => piece.text).join(''), notice(host), label);
+    }
+  });
+
+  it('gives a sentence that names the host twice, first, last or never, each piece in place, no empty one (#347)', () => {
+    const host = 'webhook.qa-tools.ru';
+    const text = (words: string) => ({ text: words, host: false });
+    const named = { text: host, host: true };
+
+    assert.deepEqual(
+      moveNoticePieces(host, (place) => `${place} or ${place}`),
+      [named, text(' or '), named],
+    );
+    assert.deepEqual(
+      moveNoticePieces(host, (place) => `${place}${place}`),
+      [named, named],
+    );
+    assert.deepEqual(
+      moveNoticePieces(host, (place) => `to ${place}`),
+      [text('to '), named],
+    );
+    assert.deepEqual(
+      moveNoticePieces(host, (place) => place),
+      [named],
+    );
+    assert.deepEqual(
+      moveNoticePieces(host, () => 'no host here'),
+      [text('no host here')],
+    );
+    assert.deepEqual(
+      moveNoticePieces(host, () => ''),
+      [],
+    );
   });
 
   it('is drawn by the header every inspector page draws, above it, its link built as it is clicked', () => {

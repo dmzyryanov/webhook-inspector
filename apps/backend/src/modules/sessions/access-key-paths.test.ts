@@ -23,7 +23,9 @@
  * Requires the local database: npm run db:up && npm run db:migrate
  */
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
 import { Writable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
 import type { FastifyInstance } from 'fastify';
@@ -1054,6 +1056,195 @@ describe('the socket under the new names and the old (D279)', () => {
       }
     });
   });
+});
+
+/**
+ * Answers a handshake to `/ws/<sessionId>` written by hand with
+ * `Sec-WebSocket-Protocol: <protocols>`: its status, and the subprotocol a
+ * `101` answered. Any upgraded socket is ended at once.
+ */
+function handshake(
+  sessionId: string,
+  protocols: string,
+): Promise<{ status: number; protocol: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      host: '127.0.0.1',
+      port,
+      path: `/ws/${sessionId}`,
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
+        'Sec-WebSocket-Protocol': protocols,
+      },
+    });
+
+    request.on('upgrade', (answer, socket) => {
+      socket.destroy();
+      resolve({
+        status: answer.statusCode ?? 0,
+        protocol: answer.headers['sec-websocket-protocol'],
+      });
+    });
+    request.on('response', (answer) => {
+      answer.resume();
+      resolve({
+        status: answer.statusCode ?? 0,
+        protocol: answer.headers['sec-websocket-protocol'],
+      });
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+/**
+ * A name that starts like a key's prefix in another letter case (#356, the
+ * owner's decision of 2026-11-02): the prefixes are compared exactly (D245),
+ * so such a name carries no key, and the handshake answers it as any other
+ * name, as before 1.19.0; from 1.19.0 until this fix it answered none, and a
+ * browser failed the handshake `1006`. A name under an exact prefix is still
+ * never answered, and an empty name never reaches the choice: `ws` refuses it
+ * `400`.
+ */
+describe('the socket offering a name like a key prefix in another letter case (#356)', () => {
+  const MISTYPED = [
+    'Webhook-Inspector.Access-Key.x',
+    'QA-TOOLS.ACCESS-KEY.x',
+    `WEBHOOK-INSPECTOR.ACCESS-KEY.${KEY}`,
+    `Qa-Tools.Access-Key.${KEY}`,
+    'Webhook-Inspector.Access-Key.',
+  ];
+
+  it('opens a public session offering only such a name, answered with it', async () => {
+    const plain = await session();
+
+    for (const name of MISTYPED) {
+      const viewer = await watchUrl(`ws://127.0.0.1:${port}/ws/${plain.id}`, [name]);
+
+      assert.equal(viewer.protocol(), name);
+      assert.equal(viewer.isOpen(), true, name);
+      viewer.close();
+    }
+  });
+
+  it('opens a private session’s socket offering only such a name, answered with it, and closes it 4404 as a missing one', async () => {
+    const keyed = await session(KEY);
+    const before = await snapshot(keyed.id);
+
+    for (const name of MISTYPED) {
+      const missing = await closing(MISSING, [name]);
+      const answer = await closing(keyed.id, [name]);
+
+      assert.deepEqual(
+        missing,
+        {
+          code: WsCloseCode.SESSION_NOT_FOUND,
+          reason: 'Session not found',
+          protocol: name,
+          messages: [],
+        },
+        name,
+      );
+      assert.deepEqual(answer, missing, name);
+    }
+
+    assert.deepEqual(await snapshot(keyed.id), before);
+    assert.equal(servers.hub.countFor(keyed.id), 0);
+  });
+
+  it('opens a private session with its key under an exact prefix offered after such a name, which is answered', async () => {
+    const keyed = await session(KEY);
+
+    for (const protocols of [
+      ['QA-TOOLS.ACCESS-KEY.x', `${REALTIME_ACCESS_KEY_PROTOCOL_PREFIX}${KEY}`],
+      [`Webhook-Inspector.Access-Key.${OTHER}`, `qa-tools.access-key.${KEY}`],
+    ]) {
+      const viewer = await watchUrl(`ws://127.0.0.1:${port}/ws/${keyed.id}`, protocols);
+
+      assert.equal(viewer.protocol(), protocols[0]);
+
+      const captured = await receiver.inject({
+        method: 'POST',
+        url: `/s/${keyed.id}`,
+        payload: 'x',
+      });
+
+      assert.equal(captured.statusCode, 200);
+      assert.equal((await viewer.next()).type, 'request.received');
+      viewer.close();
+    }
+  });
+
+  it('still answers no name under an exact prefix, a key or not, which a browser fails as 1006', async () => {
+    const plain = await session();
+    const keyed = await session(KEY);
+
+    for (const sessionId of [plain.id, keyed.id, MISSING]) {
+      for (const protocols of [
+        `${REALTIME_ACCESS_KEY_PROTOCOL_PREFIX}${KEY}`,
+        `qa-tools.access-key.${KEY}`,
+        `${REALTIME_ACCESS_KEY_PROTOCOL_PREFIX}${KEY}, qa-tools.access-key.${KEY}`,
+        `${REALTIME_ACCESS_KEY_PROTOCOL_PREFIX}, qa-tools.access-key.`,
+        `${REALTIME_ACCESS_KEY_PROTOCOL_PREFIX}${OTHER}`,
+      ]) {
+        assert.deepEqual(
+          await handshake(sessionId, protocols),
+          { status: 101, protocol: undefined },
+          protocols,
+        );
+      }
+    }
+  });
+
+  it('refuses 400, before any choice, a handshake whose offer has an empty or a repeated name', async () => {
+    for (const protocols of [
+      '',
+      ',',
+      ', webhook-inspector',
+      'webhook-inspector,',
+      'webhook-inspector,,chat',
+      'Webhook-Inspector.Access-Key.x, , webhook-inspector',
+      'webhook-inspector, webhook-inspector',
+      'Webhook-Inspector.Access-Key.x,Webhook-Inspector.Access-Key.x',
+    ]) {
+      assert.deepEqual(
+        await handshake(MISSING, protocols),
+        { status: 400, protocol: undefined },
+        JSON.stringify(protocols),
+      );
+    }
+
+    assert.deepEqual(
+      await handshake(MISSING, 'Webhook-Inspector.Access-Key.x, webhook-inspector'),
+      {
+        status: 101,
+        protocol: 'Webhook-Inspector.Access-Key.x',
+      },
+    );
+  });
+
+  for (const size of [1024, 4 * 1024, 12 * 1024]) {
+    it(`answers such a name after ${size} characters of names under the exact prefixes`, async () => {
+      const keys = Array.from(
+        { length: Math.floor(size / 40) },
+        (_, n) =>
+          `${n % 2 === 0 ? REALTIME_ACCESS_KEY_PROTOCOL_PREFIX : 'qa-tools.access-key.'}${n}`,
+      );
+      const name = `WEBHOOK-INSPECTOR.ACCESS-KEY.${'a'.repeat(size / 4)}`;
+
+      assert.deepEqual(await handshake(MISSING, [...keys, name].join(', ')), {
+        status: 101,
+        protocol: name,
+      });
+      assert.deepEqual(await handshake(MISSING, keys.join(', ')), {
+        status: 101,
+        protocol: undefined,
+      });
+    });
+  }
 });
 
 describe('a keyed session storing the largest response and queue, refused (D245, criterion 8)', () => {

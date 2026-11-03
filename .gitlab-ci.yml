@@ -286,9 +286,21 @@ image:frontend:
     DOCKERFILE: apps/frontend/Dockerfile
     CONTEXT: .
     IMAGE: $CI_REGISTRY_IMAGE/frontend
-    # The image names the inspector's address (D274, D275): each argument
-    # takes the value of the variable of its name.
-    BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'
+    # What production's site says of its operator (#369): its status page,
+    # which the header links and /status redirects to; its contact address,
+    # which the footer, the about pages and security.txt give; and its own
+    # texts, the Terms of Use, the Privacy Policy and the about pages' lines
+    # on who runs the service. Unset, the image leaves each out; the
+    # repository's sources fall back to none of them
+    # (apps/frontend/src/lib/operator.ts). Job variables until #367 moves
+    # them to CI/CD variables of the project, which, of the same name,
+    # override these.
+    STATUS_PAGE_URL: 'https://status.qa-tools.ru/'
+    CONTACT_EMAIL: 'contact@qa-tools.ru'
+    OPERATOR_TEXTS: 'true'
+    # The image names the inspector's address (D274, D275) and its operator
+    # (#369): each argument takes the value of the variable of its name.
+    BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'
 
 image:postgres:
   extends: .image

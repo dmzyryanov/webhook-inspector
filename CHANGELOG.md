@@ -106,9 +106,9 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
-## 1.19.6
+## 1.19.10
 
-2026-11-02
+2026-11-03
 
 **Nothing changes on this site; the inspector's installation files no longer
 assume they are this site's.** Someone installing the inspector on a server of
@@ -116,6 +116,48 @@ their own now gives it their own addresses, and its off-server backup copy and
 its alerts are options they switch on with storage and an alerting service of
 their own; this site sets the same values it had, kept outside the code.
 Every address answers exactly as before. (#367)
+
+## 1.19.9
+
+2026-11-03
+
+**On a phone, the banner about the move to webhook.qa-tools.ru no longer
+splits the new address over two lines at its hyphen, as it did in Russian.**
+The address stays on one line at every width and in both languages; the rest
+of the banner's text wraps as before, and its words, date and action are
+unchanged. (#347)
+
+## 1.19.8
+
+2026-11-03
+
+**The realtime connection again answers a subprotocol that starts like an
+access-key prefix in another letter case, such as
+`Webhook-Inspector.Access-Key.x` or `QA-TOOLS.ACCESS-KEY.x`, as it did before
+1.19.0.** The prefixes are compared exactly, so such a name carries no key and
+is answered like any other name: a connection offering it alone opens on a
+public session, and on a private one opens and is closed `4404`, as without a
+key. From 1.19.0 it was answered with no subprotocol, which a browser fails as
+an abnormal closure, `1006`. The key under `webhook-inspector.access-key.` or
+`qa-tools.access-key.` is still never written back. (#356, D279)
+
+## 1.19.7
+
+2026-11-03
+
+**Nothing changes on this site; a few comments in the inspector's code now
+say where the files it serves come from.** Every address answers exactly as
+before. (#344)
+
+## 1.19.6
+
+2026-11-03
+
+**Nothing changes on this site; a copy of the inspector built from its source
+no longer shows this site's status page, contact address or terms.** A copy
+shows a status link, a contact address, the Terms of Use and the Privacy
+Policy only when whoever builds it names their own. This site names its own
+as before, and every address answers exactly as before. (#369)
 
 ## 1.19.5
 

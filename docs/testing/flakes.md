@@ -563,8 +563,9 @@ test. Neither has frames left to count by then.
 
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:460` at `7018965`,
   `:459` after the fix; the same `timed` bound holds every check of made-up
-  input in that file (100 ms) and in `captured.test.ts` (200 ms). Branch
-  `feat/mcp-server` (issue #116, D203); never on `main`.
+  input in that file (100 ms, 1000 ms since #363: F-24) and in
+  `captured.test.ts` (200 ms). Branch `feat/mcp-server` (issue #116, D203);
+  never on `main`.
 - **Status**: fixed in the tests, before review.
 
 ### The failure
@@ -3789,3 +3790,384 @@ series' load; none is in this file:
   1048576 bytes`, `took 153.9 ms at best in 5 runs, over the 100 ms bound`.
 
 Not this issue's; not filed by this entry.
+
+## F-24 — `survives made-up bodies of 1048576 bytes`
+
+- **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:260` at `bc8f7a8`,
+  the base of the fix, and `:267` at the fix, `c3ffb2b`. Each of its ten
+  made-up bodies is read by `parseMessage` through `timed`, `withinBound`
+  with the file's one bound, `BOUND_MS`, which every check of made-up input
+  in the file shares (F-04). Issue #363.
+- **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
+  `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
+  `testing/timing.ts` were not changed; VERSION kept.
+
+### The failure
+
+Twice, in full runs of the backend suite on the agents' server under load,
+3,407 tests each:
+
+- the tester of #345's delivery, finding 2 on MR !340, on 2026-11-02 at
+  09:30 MSK: `node scripts/db.mjs task-test 345` while the same tester's
+  81-test e2e suite ran beside it; 3,406 passed, 1 failed. The file passed
+  alone, 38 of 38, and the suite in a rerun with no other load, 3,407 of
+  3,407. As the issue quotes it:
+
+  ```text
+  test at src/modules/mcp/protocol.test.ts:260:5
+  ✖ survives made-up bodies of 1048576 bytes (796.643323ms)
+    AssertionError [ERR_ASSERTION]: took 109.0 ms at best in 5 runs, over the 100 ms bound
+        at withinBound (apps/backend/src/testing/timing.ts:38:14)
+  ```
+
+- F-23's run beside its reproduction's script, `took 153.9 ms at best in 5
+  runs, over the 100 ms bound`, left there under Watched, and left.
+
+### The mechanism
+
+A bound with little room over the check's own time. `withinBound` holds the
+fastest of up to five runs to the bound, so a stall that stops one run does
+not fail it (F-04); a machine whose CPUs are all busy slows every run, and
+the fastest with them. Of the ten bodies, the slowest, in every one of the
+180 rounds measured below, is `fill('[', size)`: each byte opens an array
+for V8's JSON.parse, which holds a level for each until the input ends and
+it throws. At 1 MiB `parseMessage` takes 67 to 80 ms on it alone, at best of
+five, against 10 to 12 ms for `{"a":` repeated and for the batch; the
+bound's comment said 30 ms, the figure of F-04's developer's machine. So the
+bound of 100 ms left this body about a quarter of its time, and a load that
+slowed it by a third failed it.
+
+Its time grows faster than its size: `parseMessage` on n bytes of `[`, the
+fastest of seven runs, took 1.0 ms at 64 KiB, 8.0 ms at 256 KiB, 74.7 ms at
+1 MiB and 433.4 ms at 4 MiB — 16, 32, 75 and 108 ms a MiB. From 1 to 4 MiB
+that is ×5.8, where n² would be ×16. That the parser's levels cost more
+once they outgrow the CPU's caches is an inference, not measured. `{"a":`
+repeated and the batch took 9 to 13 ms a MiB from 64 KiB to 1 MiB.
+
+### The measurement
+
+On 2026-11-02 on the agents' Linux host, an AMD EPYC 7763 with 8 CPUs, Node
+v24.22.2, with a script outside the tree that builds the test's ten bodies
+of 1 MiB and, each round, runs `parseMessage` on each body five times and
+keeps the slowest body's fastest run — the number `withinBound` holds to its
+bound when every run is over it. The load is the 1-minute load average at
+the start and the end of the series:
+
+| beside | load | rounds | min / median / max, ms | over 100 ms | over 500 ms | over 1000 ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.7 | 20 | 66.8 / 74.5 / 79.7 | 0 | 0 | 0 |
+| a full run of the backend suite, `node scripts/db.mjs task-test 363` | 3.3 to 7.0 | 60 | 31.9 / 79.3 / 110.8 | 1 | 0 | 0 |
+| the same run and eight busy loops, `node -e 'for(;;){}'` | 9.5 to 17.2 | 60 | 72.6 / 96.2 / 268.0 | 26 | 0 | 0 |
+| sixteen busy loops | 11.4 to 15.0 | 40 | 67.7 / 153.3 / 229.5 | 29 | 0 | 0 |
+
+The slowest body was `[` in every round. The full-run row's minimum, 31.9 ms,
+is one round of its 60, the eighth, where every other round read 63 ms or
+more, and is under the 66.8 ms of the row with nothing beside it; why is not
+known. The suite run under that load, at
+the fix's file with the bound at 500 ms, an intermediate value, gave
+`ℹ tests 3407`, `ℹ pass 3406`, `ℹ fail 1`: this file passed, the bodies case
+in 251 ms for all ten bodies, and
+`src/modules/webhook/capture-budget.test.ts:1490`, `gives a flooder of 81 KiB
+webhooks on any number of connections no more of the reserve than a light
+sender may hold, and leaves the rest to another sender`, failed with
+`weighing the flood took too long`.
+
+For the other side, the same script read `fill('[', n)` with a reader
+quadratic in n: for each `[`, the rest of the body searched for a `]`, which
+it does not hold, so each search runs to the end; one run each, at a load of
+1 to 7:
+
+| the search | 16 KiB | 32 KiB | 64 KiB | 128 KiB | 256 KiB | 512 KiB | 1 MiB |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| V8's `String.prototype.indexOf` | 2.0 ms | | 22.7 ms | 94.0 ms | 385.1 ms | 1,648.5 ms | 7,730.1 and 7,614.5 ms |
+| Node's `Buffer.prototype.indexOf` | | | | | 397.3 ms | | 7,800.1 ms |
+| a `charCodeAt` loop | 266.1 ms | 1,065.9 ms | 4,235.1 ms | 16,727.7 ms | | | not run; about 18 min by n² |
+
+Each doubling multiplies the time by about four, as n² does. The fastest
+quadratic reading of 1 MiB built here, 7.6 s, is over 1000 ms on every run,
+and a busier machine only slows it further.
+
+The script is not kept in the tree. Its reader for the `indexOf` row, given
+the body decoded as UTF-8 in `text`, was:
+
+```js
+let found = 0;
+for (let i = 0; i < text.length; i += 1) {
+  if (text.charCodeAt(i) === 0x5b && text.indexOf(']', i + 1) !== -1) found += 1;
+}
+```
+
+The `Buffer` row searched the bytes with `body.indexOf(0x5d, i + 1)` in its
+place, and the `charCodeAt` row a loop over `j` from `i + 1` to the end.
+
+### The fix
+
+`BOUND_MS` is 1000 ms, for every check of the file: 3.7 times this check's
+worst loaded reading and 12 times its time alone, and 7.6 times below the
+fastest quadratic reading. 500 ms, the bound of most of the suite's
+hostile-input files, would be 1.9 times the worst loaded reading; this check
+takes 75 ms alone, where the slowest cut of `captured.test.ts`, by its
+comment, takes about 3 ms against its 200 ms. The checks that tell a
+quadratic reading from a linear one are the 1 MiB ones, where a quadratic
+reading that searches from every byte, or every few bytes, takes seconds;
+at 64 KiB the `indexOf` reading took 23 ms, under 100 ms and 1000 ms alike.
+A quadratic reading that searches once per larger unit is not told apart at
+1000 ms: in the runs of #363's tester at 1 MiB, one search per 41-byte
+element of the batch body took 188 ms and one per 16-character `Accept`
+item 491 ms, over the old 100 ms and under 1000 ms. A bound that holds the
+loaded readings above gives those up. The names of the `Origin`, URL and `Accept` cases
+carry the bound and read `within 1000 ms`.
+
+No test holds that a quadratic reading fails the bound: one reading of 1 MiB
+takes 7.6 s, and five to fail; `testing/timing.test.ts` holds, on a made-up
+clock, that a check over the bound on every run fails.
+
+At the fix, the file alone,
+`node scripts/db.mjs task-test 363 -- src/modules/mcp/protocol.test.ts`,
+gave `ℹ tests 38`, `ℹ pass 38`, `ℹ fail 0`, the bodies case in 213 ms, and
+the full suite, `node scripts/db.mjs task-test 363`, with nothing of this
+entry's beside it, `ℹ tests 3407`, `ℹ pass 3407`, `ℹ fail 0`, exit 0, in
+112 s at a load of 2.2 to 10.0, the bodies case in 257 ms.
+
+### Watched, and left
+
+- `parseMessage` on `[` growing faster than its size up to 4 MiB, above: in
+  V8's own JSON.parse, and `/mcp` takes a body of 1 MiB at most.
+- `capture-budget.test.ts:1490` in the loaded run above; not this issue's.
+
+## F-25 — `keeps at most 64 KiB a wait: <shape>`
+
+- **Test**: `apps/backend/src/modules/limits/calls-memory.test.ts:255` at
+  `7c9c5cb`, the base of the fix, its assertion
+  `assert.ok(held <= WAITS * PER_WAIT_BYTES, report)` at `:286`; `:371` at
+  the fix, `4b3a199`, the assertion at `:386`, holding `least`, the least
+  reading of the rounds. One test for each of the four shapes of
+  `WAIT_SHAPES`, in the suite `a pending wait on the API (D213)`. Issue
+  #382.
+- **Status**: changed in the test on `chore/calls-memory-flake-382`, at
+  `4b3a199`: a shape's round over the bound is made again, up to three
+  rounds, and the least reading is held to the bound; each round ends with
+  every answer awaited, so a failed round no longer spreads into the next
+  test. `PER_WAIT_BYTES` stays 64 KiB, the issue's bound of #139 under D213,
+  `WAITS` 16, and every shape and answer check stays. The cause of the
+  bytes over the bound is not identified: what is measured is that they are
+  not kept by every wait every time. VERSION kept: the change is a test and
+  this entry.
+
+### The failure
+
+On CI once, on a branch that did not touch the backend: the delivery of
+#344, webhook-inspector MR !6, head `d3b643f`, whose backend is that of
+main `7c9c5cb` (1.19.6); MR pipeline 3020296935, job `test` 17683619935, on
+the project runner, an AMD EPYC 9655, in the image `node:24-slim`, on
+2026-11-03 at 01:12 UTC. The backend suite gave `ℹ tests 3407`,
+`ℹ pass 3406`, `ℹ fail 1` in 158 s; the same commit's suite passed 3,407
+of 3,407 twice on the agents' server. The file's four lines:
+
+```text
+✔ keeps at most 64 KiB a wait: two header lines, for reference (128.273019ms)
+ℹ 16 calls, 16 pending: 342.2 KiB more held, 21.4 KiB a call
+✔ keeps at most 64 KiB a wait: 100 header lines and a URL of 13,000 bytes (101.290155ms)
+ℹ 16 calls, 16 pending: 701.0 KiB more held, 43.8 KiB a call
+✖ keeps at most 64 KiB a wait: 100 header lines of 150 bytes, as much of 16 KiB as they fit (81.115322ms)
+ℹ 16 calls, 16 pending: 1165.8 KiB more held, 72.9 KiB a call
+✔ keeps at most 64 KiB a wait: 1,000 short header lines, which 16 KiB allows: refused 431 (66.925118ms)
+ℹ 16 calls, 16 pending: 73.3 KiB more held, 4.6 KiB a call
+```
+
+```text
+AssertionError [ERR_ASSERTION]: 16 calls, 16 pending: 1165.8 KiB more held, 72.9 KiB a call
+    at TestContext.<anonymous> (file:///builds/qa-tools-team/webhook-inspector/apps/backend/src/modules/limits/calls-memory.test.ts:286:14)
+```
+
+The refused shape's calls are answered `431` and never wait, `0 pending` in
+every run below but those after a failed test: its 16 pending were the
+failed test's (below).
+
+And once in the base series below, run 15 of 40, on the URL shape:
+
+```text
+✔ keeps at most 64 KiB a wait: two header lines, for reference (450.936714ms)
+ℹ 16 calls, 16 pending: 305.2 KiB more held, 19.1 KiB a call
+✖ keeps at most 64 KiB a wait: 100 header lines and a URL of 13,000 bytes (418.205181ms)
+ℹ 16 calls, 16 pending: 1052.8 KiB more held, 65.8 KiB a call
+✔ keeps at most 64 KiB a wait: 100 header lines of 150 bytes, as much of 16 KiB as they fit (30478.922097ms)
+ℹ 16 calls, 16 pending: -466.6 KiB more held, -29.2 KiB a call
+✔ keeps at most 64 KiB a wait: 1,000 short header lines, which 16 KiB allows: refused 431 (391.406091ms)
+ℹ 16 calls, 0 pending: 54.3 KiB more held, 3.4 KiB a call
+```
+
+### The mechanism
+
+- **Not a retention every wait makes every time.** Measured. A wait that
+  kept more every time would read more in every round of its shape; a
+  retention that only some waits make, or only sometimes, is not excluded:
+  a head that arrives in several chunks, say, is never sent, since the
+  test's `rawRequest` writes it in one `socket.write`. Of the 40 base runs
+  below, the shape `100 header lines of 150 bytes` read 44.1 to 44.7 KiB a
+  call in the 39 whose reading was its own (run 15's counted the URL
+  shape's waits, below), 19 KiB a call under the bound, and the URL shape
+  42.4 to 44.3 in all but run 15. Each head, about 15.5 KB, is in those
+  readings already: they are some 25 KiB a call above the reference shape,
+  two header lines, at about 19. The CI reading and the base's were single
+  readings, about 455 and 350 KiB above their shape's usual for the sixteen
+  calls, 28 and 22 KiB a call, on the two shapes with the least room under
+  the bound, about 20 KiB a call; the reference shape has 45 KiB a call of
+  room, and the same bytes would not have failed it.
+- **Garbage still to collect.** Not shown. In the probe series below, a
+  second reading taken right after each first one, three collections more,
+  differed from it by −33 to +72 KiB for the sixteen calls in all 480
+  readings; but none of those readings was over, so whether a further
+  collection would have freed the bytes over the bound is not measured.
+- **The load.** The base series under eight busy loops failed 1 run in 40;
+  the CI failure ran in the full backend suite, beside the suite's other
+  files. The file's rate without load was not measured here.
+- **What the bytes were.** Not identified; inferred to be the process's,
+  not the waits': something allocated once, or held for a while, besides
+  the round's calls, between a baseline and its reading. The size is that
+  of F-18's growth of 360 to 400 KiB seen early in a process and of its CI
+  readings 400 to 560 KiB over the usual, and the readings over came early
+  in their process too, the third shape on CI and the second here. A second
+  probe that took a heap snapshot of any reading 150 KiB over its shape's
+  usual, to compare with a usual one, ran 80 times under the same load and
+  caught none (below): of the 190 runs under load here, the base's, both
+  probes' and the fix's, one reading was over its shape's usual by that
+  much, 0.5% (0.1%–2.9%).
+- **The failures that spread.** Shown by the readings above and the forced
+  reproduction below. A failed test threw before it awaited its answers; a
+  clear ends its waits only once its `requests.cleared` has come back
+  through the outbox and the realtime listener (D221), after `clear` has
+  returned, so the next test began with the sixteen waits still pending,
+  and its `until(() => answered + waits.size === WAITS)` held at once. On
+  CI, the refused shape's reading was taken with the failed test's waits
+  pending. In base run 15, the next shape's reading was taken before its own
+  calls were pending, −466.6 KiB, and its clear came before them, so they
+  waited out their 30 s: the test took 30.5 s. With every wait keeping
+  24 KiB more (the mutations below), the base fails the URL shape and then
+  passes `100 header lines of 150 bytes` with −51.9 KiB a call.
+
+### The forced reproduction
+
+Not committed: `PendingWaits.add` in `modules/requests/wait.ts` made, once,
+at the 50th wait of the process, an array of 3,000 strings kept for good,
+about 820 KiB: the first round of `100 header lines of 150 bytes`, in the
+order of the file, after the warm-up's 16 waits and the two shapes' 32.
+Two runs each, under the load of the measurement below:
+
+| The file | Result |
+| --- | --- |
+| the base's, `7c9c5cb` | `ℹ tests 12`, `ℹ fail 1`, both runs: `100 header lines of 150 bytes`, `1530.4` and `1531.3 KiB more held, 95.7 KiB a call`; the refused shape after it `16 calls, 16 pending`, `-611.7` and `-618.8 KiB more held`, its count the failed test's waits, as on CI |
+| the fix's, `4b3a199` | `ℹ tests 12`, `ℹ pass 12`, both runs: that shape's round 1 `95.6` and `95.8 KiB a call`, its round 2 `44.5` and `45.1 KiB a call`; the refused shape `16 calls, 0 pending` |
+
+### The mutations
+
+Not committed, in the task's worktree, `modules/requests/wait.ts` changed and
+restored with `git checkout` after each, two runs each of
+
+```sh
+node scripts/db.mjs task-test 382 -- src/modules/limits/calls-memory.test.ts
+```
+
+under the load of the measurement below:
+
+| Mutation | At | Result |
+| --- | --- | --- |
+| Each wait keeps an extra `Buffer.alloc(64 * 1024)` from `PendingWaits.add` until its `delete` | `4b3a199` | `ℹ tests 12`, `ℹ fail 3`, both runs: the three shapes that wait, each over in all three rounds, 82.4 to 109.4 KiB a call; the refused shape passes, having no wait |
+| The same with 24 KiB | `4b3a199` | `ℹ tests 12`, `ℹ fail 2`, both runs: the URL shape and `100 header lines of 150 bytes`, over in all three rounds, 64.5 to 70.6 KiB a call; the reference shape passes at 43.4 KiB a call |
+| The same with 24 KiB, one run | `7c9c5cb` | `ℹ tests 12`, `ℹ fail 1`: the URL shape at 67.9 KiB a call; `100 header lines of 150 bytes` passes with `-831.0 KiB more held, -51.9 KiB a call` in 30.5 s, the URL shape's waits counted as its own |
+
+The 24 KiB mutation's lowest round, 64.5 KiB a call, is within a reading's
+spread of the bound: the least of three rounds lets through a wait that
+reads over the bound in one round and under it in another, a band of the
+size of that spread, about 2 to 4 KiB a call, where one reading held to the
+bound would fail it more often.
+
+### The measurement
+
+Series of one shell script from the task's worktree, on the agents' Linux
+host, an AMD EPYC 7763 with 8 CPUs, Node v24.22.2, the task's own database,
+PostgreSQL 16.15, on 2026-11-03 (UTC+3). The load: eight busy loops, one per
+CPU, `node -e` running `while (Date.now() < end) {}` until a deadline of
+their own, each PID recorded and stopped by it at the end, for every series
+and the runs above; the other tasks of the delivery cycle could run beside
+them. One fresh run per line, no retries, no run repeated, the command above
+for the file of each series. The 1-minute load average is read before each
+run.
+
+| Series | File | Time | 1-minute load average | Runs | Failed | Rate (Wilson 95%) |
+| --- | --- | --- | --- | --- | --- | --- |
+| base | `7c9c5cb` | 05:08–05:15 | 1.1 at the start, rising with the loops; 10.0 to 12.9 from run 9 | 40 | 1, run 15, above | 2.5% (0.4%–12.9%) |
+| probe | below | 05:15–05:23 | 11.1 to 13.4 | 30 | 0 | 0.0% (0.0%–11.4%) |
+| fix | `4b3a199`'s test file, run in the worktree before its commit at 05:33 | 05:23–05:30 | 10.0 to 12.9 | 40 | 0 | 0.0% (0.0%–8.8%) |
+| second probe | below | 05:33–05:41 | 10.5 to 12.5 | 80 | 0 | 0.0% (0.0%–4.6%) |
+
+The probes hold nothing to the bound: what they count is a reading over the
+bound, and for the second one a reading 150 KiB over its shape's usual.
+
+The base and the fix cannot be told apart by these rates: 1 in 40 against 0
+in 40. What shows that the fix passes a reading of that kind is the forced
+reproduction above; what shows it still fails a wait that keeps more is the
+mutations.
+
+Each run 8 to 11 s, but run 15 of the base, 39 s. The readings, KiB a call,
+least to most:
+
+| Shape | base, 40 runs | fix, 40 runs, round 1 |
+| --- | --- | --- |
+| two header lines, for reference | 18.8 to 22.0 | 19.1 to 21.1 |
+| 100 header lines and a URL of 13,000 bytes | 42.4 to 44.3, and 65.8 once | 42.5 to 44.6 |
+| 100 header lines of 150 bytes, as much of 16 KiB as they fit | 44.1 to 44.7, and −29.2 once, run 15 | 44.2 to 44.8 |
+| 1,000 short header lines, which 16 KiB allows: refused 431 | 2.5 to 3.5 | 3.0 to 3.6 |
+
+In the fix series no shape needed a second round. A fix run's lines:
+
+```text
+✔ keeps at most 64 KiB a wait: two header lines, for reference (351.80379ms)
+ℹ round 1: 16 calls, 16 pending: 308.4 KiB more held, 19.3 KiB a call; new_space -0.4 KiB, old_space +286.8 KiB, code_space +13.6 KiB, trusted_space +5.0 KiB, array buffers +0.0 KiB
+✔ keeps at most 64 KiB a wait: 100 header lines and a URL of 13,000 bytes (381.694482ms)
+ℹ round 1: 16 calls, 16 pending: 691.9 KiB more held, 43.2 KiB a call; new_space -0.4 KiB, old_space +647.2 KiB, code_space +20.1 KiB, trusted_space +22.3 KiB, array buffers +0.0 KiB
+✔ keeps at most 64 KiB a wait: 100 header lines of 150 bytes, as much of 16 KiB as they fit (331.10758ms)
+ℹ round 1: 16 calls, 16 pending: 715.4 KiB more held, 44.7 KiB a call; old_space +701.3 KiB, code_space +6.3 KiB, trusted_space +7.8 KiB, array buffers +0.0 KiB
+✔ keeps at most 64 KiB a wait: 1,000 short header lines, which 16 KiB allows: refused 431 (240.976599ms)
+ℹ round 1: 16 calls, 0 pending: 50.3 KiB more held, 3.1 KiB a call; old_space +38.6 KiB, code_space +4.3 KiB, trusted_space +3.9 KiB, array buffers +3.4 KiB
+```
+
+The probe, not committed, was the base's wait suite alone, each shape
+measured in four rounds, each round printing its growth space by space, a
+second reading right after the first, the pool's connections and the
+realtime listener's marks at the baseline and the reading, and what was left
+once the waits had ended: 480 readings, none over the bound; reference 15.0
+to 20.6 KiB a call, the URL shape 40.7 to 43.3, `100 header lines of 150
+bytes` 44.9 to 48.9, the refused shape 1.7 to 3.0. The pool held 3
+connections at every baseline and reading, and the listener marked no row
+seen at any.
+
+The second probe, not committed, was the first in the base's order, one
+round of each shape after the same warm-up, its reading compared with a
+fixed usual for each shape, 330, 700, 790 and 70 KiB; one more than 150 KiB
+over would have written a heap snapshot then, and another at a usual
+reading of the same shape in a further round, to tell by their difference
+what the bytes were. 80 runs, 05:33–05:41, the load average 10.5 to 12.5,
+each run 5 to 7 s: none caught, 0.0% (0.0%–4.6%); reference 18.1 to 23.4
+KiB a call, the URL shape 42.4 to 44.5, `100 header lines of 150 bytes`
+44.1 to 45.5, the refused shape 3.2 to 4.0.
+
+### The fix
+
+In the test only. Each shape is measured in rounds, `waitRound`: the
+session, the baseline, the sixteen calls, the reading; then, however it
+went, the clear and every answer awaited, and the answers checked as the
+shape's are. A round over the bound is made again, up to `WAIT_ROUNDS`, 3,
+and the least is held to the bound, as `withinBound` holds the fastest of
+its runs (F-04): a wait that keeps more than `PER_WAIT_BYTES` is over in
+every round, and a reading that caught the process's bytes besides the
+round's calls is not repeated in the next. The report gives every round, and
+each heap space that moved and the memory behind buffers, as in F-18, so
+that the next reading over the bound names its space. The base's
+`heldBytes` stays for the change and body tests, now through the same
+`held`.
+
+`PER_WAIT_BYTES` stays 64 KiB and `WAITS` 16; the four shapes, the check
+that each head is under 16 KiB, the `431` and `200 []` answers and the
+`waits.size === 0` at the end stay, now checked in each round. The change
+and body tests are unchanged.

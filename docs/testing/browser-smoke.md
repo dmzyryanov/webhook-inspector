@@ -1596,6 +1596,15 @@ reusing it would silently test that instead. Stopping your dev stack before
 running the suite is the shortest path; moving the suite is the other one, and is
 now safe.
 
+**The suite tests production's pages, with production's operator settings.**
+Since 1.19.6 (#369) the status link, the contact address, the Terms of Use and
+the Privacy Policy are settings of the frontend build, left out when unset
+(`apps/frontend/src/lib/operator.ts`). `playwright.config.ts` imports
+`apps/frontend/src/testing/production-operator-env.ts` before anything else,
+which puts production's `STATUS_PAGE_URL`, `CONTACT_EMAIL` and
+`OPERATOR_TEXTS` into the environment, so the suite's processes and the dev
+server they start draw the pages the journeys expect, whatever the shell sets.
+
 **Both ports come from one module and cannot be moved apart.**
 `e2e/app-address.ts` declares them, and `playwright.config.ts` takes **every**
 address from it: the port its backend is started on, that backend's readiness

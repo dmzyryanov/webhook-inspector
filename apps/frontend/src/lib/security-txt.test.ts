@@ -12,7 +12,9 @@ import {
 // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
 import { checkBuild, securityTxtProblems } from '../../scripts/check-build.mjs';
 import { CONTACT_MAILTO } from './contact.ts';
+import { mailtoOf } from './operator.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
 
 /**
  * `/.well-known/security.txt` (RFC 9116, issue #88, D177): the file the build
@@ -21,12 +23,16 @@ import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
  */
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
+/** The file as production's build writes it, naming its contact address (issue #369). */
+const productionTxt = (builtAt?: Date) =>
+  securityTxt(builtAt, mailtoOf(PRODUCTION_OPERATOR.contactEmail));
+
 const problems = (text: string, now: Date) => securityTxtProblems(text, now) as string[];
 
 describe('security.txt', () => {
   it('names the contact, an Expires 364 days after the build, the languages and its address', () => {
     assert.equal(
-      securityTxt(new Date('2026-09-29T10:11:12.345Z')),
+      productionTxt(new Date('2026-09-29T10:11:12.345Z')),
       [
         'Contact: mailto:contact@qa-tools.ru',
         'Expires: 2027-09-28T10:11:12Z',
@@ -41,20 +47,24 @@ describe('security.txt', () => {
   });
 
   it('publishes the address the footer links to', () => {
-    assert.ok(securityTxt().split('\n').includes(`Contact: ${CONTACT_MAILTO}`));
+    assert.ok(String(securityTxt()).split('\n').includes(`Contact: ${CONTACT_MAILTO}`));
+  });
+
+  it('is not written for a build that names no contact address (issue #369)', () => {
+    assert.equal(securityTxt(new Date('2026-09-29T10:11:12.345Z'), null), null);
   });
 
   it('expires less than a year after any build, leap years included', () => {
     for (const built of ['2026-09-29T00:00:00Z', '2027-03-01T00:00:00Z', '2028-02-29T23:59:59Z']) {
       const now = new Date(built);
 
-      assert.deepEqual(problems(securityTxt(now), now), [], built);
+      assert.deepEqual(problems(productionTxt(now), now), [], built);
     }
   });
 
   it('is refused by the build check without its Contact, or with another one', () => {
     const now = new Date('2026-09-29T00:00:00Z');
-    const text = securityTxt(now);
+    const text = productionTxt(now);
 
     for (const broken of [
       text.replace(/^Contact: .*\n/m, ''),
@@ -71,7 +81,7 @@ describe('security.txt', () => {
   it('is refused once expired, a year or more ahead, malformed, or without one Expires', () => {
     const now = new Date('2026-09-29T00:00:00Z');
     const withExpires = (value: string) =>
-      securityTxt(now).replace(/^Expires: .*$/m, `Expires: ${value}`);
+      productionTxt(now).replace(/^Expires: .*$/m, `Expires: ${value}`);
 
     assert.deepEqual(problems(withExpires('2026-09-28T23:59:59Z'), now), [
       '.well-known/security.txt expired at 2026-09-28T23:59:59Z',
@@ -86,10 +96,10 @@ describe('security.txt', () => {
     assert.deepEqual(problems(withExpires('next year'), now), [
       '.well-known/security.txt has Expires "next year", not an RFC 3339 UTC time',
     ]);
-    assert.deepEqual(problems(securityTxt(now).replace(/^Expires: .*\n/m, ''), now), [
+    assert.deepEqual(problems(productionTxt(now).replace(/^Expires: .*\n/m, ''), now), [
       '.well-known/security.txt has 0 Expires fields, not one',
     ]);
-    assert.deepEqual(problems(`${securityTxt(now)}Expires: 2027-01-01T00:00:00Z\n`, now), [
+    assert.deepEqual(problems(`${productionTxt(now)}Expires: 2027-01-01T00:00:00Z\n`, now), [
       '.well-known/security.txt has 2 Expires fields, not one',
     ]);
   });

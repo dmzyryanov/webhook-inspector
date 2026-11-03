@@ -10,7 +10,9 @@ import {
   RELAY_SCRIPT_NAME,
   sha256Hex,
 } from './relay-script.mjs';
+import { OPERATOR } from '../src/lib/operator.ts';
 import { nameSite, SITE_ORIGINS } from './site-origin.mjs';
+import { operatorOpenApi, operatorSitemap } from './site-operator.mjs';
 
 /**
  * The files the build writes into `dist/` under the configured origins
@@ -25,6 +27,11 @@ import { nameSite, SITE_ORIGINS } from './site-origin.mjs';
  * - `openapi.json`, from `packages/shared/openapi.json` (D154): its `servers`,
  *   its examples and its prose name the hosts, and its relay section gives
  *   the script's SHA-256, which is the built script's.
+ *
+ * Since issue #369 the sitemap and the description also name the build's
+ * operator (`site-operator.mjs`): the sitemap lists `/terms` and `/privacy`
+ * only for a build with the operator's texts, and the description gives the
+ * operator's contact address and status page, or leaves them out.
  *
  * Built for production, each is its source byte for byte, and the old name
  * the script's source. nginx serves them all from the image's copy of
@@ -56,12 +63,13 @@ export function relayScriptText(origins = SITE_ORIGINS) {
 }
 
 /**
- * The OpenAPI description as the build writes it: named, and with the
- * SHA-256 of the script written for production replaced by the built one's,
- * which differs whenever the script names another origin.
+ * The OpenAPI description as the build writes it: named, with the
+ * operator's details (`operatorOpenApi`), and with the SHA-256 of the script
+ * written for production replaced by the built one's, which differs
+ * whenever the script names another origin.
  */
-export function openApiText(origins = SITE_ORIGINS) {
-  const named = nameSite(readFileSync(OPENAPI_SOURCE, 'utf8'), origins);
+export function openApiText(origins = SITE_ORIGINS, operator = OPERATOR) {
+  const named = operatorOpenApi(nameSite(readFileSync(OPENAPI_SOURCE, 'utf8'), origins), operator);
   const sourceHash = sha256Hex(productionRelayScriptText());
   const builtHash = sha256Hex(relayScriptText(origins));
 
@@ -69,13 +77,16 @@ export function openApiText(origins = SITE_ORIGINS) {
 }
 
 /** Every file this module writes, by its name in `dist/`. */
-export function siteFiles(origins = SITE_ORIGINS) {
+export function siteFiles(origins = SITE_ORIGINS, operator = OPERATOR) {
   return {
     'robots.txt': nameSite(readFileSync(publicFile('robots.txt'), 'utf8'), origins),
-    'sitemap.xml': nameSite(readFileSync(publicFile('sitemap.xml'), 'utf8'), origins),
+    'sitemap.xml': operatorSitemap(
+      nameSite(readFileSync(publicFile('sitemap.xml'), 'utf8'), origins),
+      operator,
+    ),
     [RELAY_SCRIPT_NAME]: relayScriptText(origins),
     [OLD_RELAY_SCRIPT_NAME]: relayScriptText(origins),
-    'openapi.json': openApiText(origins),
+    'openapi.json': openApiText(origins, operator),
   };
 }
 
