@@ -273,7 +273,11 @@ longer taken, the relay script is served only as `webhook-inspector-relay.mjs`
 and reads only `WEBHOOK_INSPECTOR_ACCESS_KEY`, and the default answer's
 `message` reads `Captured by Webhook Inspector`. The relay script sends the
 User-Agent `webhook-inspector-relay` from this release, where it sent the
-User-Agent `qa-tools-relay`: nothing in the service reads it. (#334, D279)
+User-Agent `qa-tools-relay`: nothing in the service reads it. Under either
+name, the script's messages that named it start with the same new name,
+`webhook-inspector-relay:` before an error in its arguments or key and
+`webhook-inspector-relay stopped:` before a failure that stops it, where they
+started with the old one. (#334, #357, D279)
 
 ## 1.18.2
 
