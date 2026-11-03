@@ -83,6 +83,26 @@ describe('the move banner, rendered in a bundle built with the move', () => {
     );
   });
 
+  it('keeps the host one piece, which no line breaks at its hyphen or its dots, in both languages (#347)', () => {
+    for (const [language, before, after] of [
+      ['en', 'Webhook Inspector is moving to ', ' on 9\u00a0Mar\u00a02027'],
+      ['ru', 'Webhook Inspector переезжает на ', ' 9\u00a0мар.\u00a02027'],
+    ] as const) {
+      const banner = bannerAt('https://qa-tools.ru', language);
+
+      // The host alone is in a span that does not wrap; the words around it
+      // wrap as the browser wraps them, and the text reads as one sentence.
+      assert.ok(
+        banner.includes(
+          `<p class="text-brand">${before}<span class="whitespace-nowrap">webhook.qa-tools.ru</span>${after}</p>`,
+        ),
+        language,
+      );
+      assert.equal(banner.match(/whitespace-nowrap/g)?.length, 1, language);
+      assert.doesNotMatch(banner, /aria-hidden="true">webhook|role=|aria-label=/, language);
+    }
+  });
+
   it('draws nothing on the new origin', () => {
     assert.equal(bannerAt('https://webhook.qa-tools.ru'), '');
     assert.equal(bannerAt('https://webhook.qa-tools.ru', 'ru'), '');

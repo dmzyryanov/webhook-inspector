@@ -106,6 +106,16 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.9
+
+2026-11-03
+
+**On a phone, the banner about the move to webhook.qa-tools.ru no longer
+splits the new address over two lines at its hyphen, as it did in Russian.**
+The address stays on one line at every width and in both languages; the rest
+of the banner's text wraps as before, and its words, date and action are
+unchanged. (#347)
+
 ## 1.19.8
 
 2026-11-03

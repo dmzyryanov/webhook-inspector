@@ -184,6 +184,49 @@ export function formatMoveDay(day: string, m: Pick<Messages, 'months'>): string 
     : `${Number(date)}\u00a0${m.months[Number(month) - 1] ?? ''}\u00a0${Number(year)}`;
 }
 
+/** A piece of the banner's text: words of the sentence, or the new host. */
+export interface MoveNoticePiece {
+  readonly text: string;
+  readonly host: boolean;
+}
+
+/**
+ * Where the sentence puts the host while it is cut into pieces: U+0000,
+ * which no text of the dictionaries and no day (`DAY`, digits) holds.
+ */
+const HOST_MARK = '\u0000';
+
+/**
+ * The banner's text in pieces, the new host a piece of its own (issue #347),
+ * so the page keeps the host on one line: `webhook.qa-tools.ru` otherwise
+ * breaks after its hyphen where the line ends there, as the Russian text did
+ * at 375 px. `notice` writes the sentence around the host it is given; it is
+ * written once with `HOST_MARK` in the host's place and cut there, so the
+ * host goes where the sentence puts it and is never searched for in the
+ * words, which may hold the same letters. Read in order, the pieces are the
+ * sentence `notice(host)` writes; no piece of words is empty.
+ */
+export function moveNoticePieces(
+  host: string,
+  notice: (host: string) => string,
+): MoveNoticePiece[] {
+  const pieces: MoveNoticePiece[] = [];
+
+  notice(HOST_MARK)
+    .split(HOST_MARK)
+    .forEach((text, index) => {
+      if (index > 0) {
+        pieces.push({ text: host, host: true });
+      }
+
+      if (text !== '') {
+        pieces.push({ text, host: false });
+      }
+    });
+
+  return pieces;
+}
+
 /** A stored section state, or `null` for none, for anything else and for storage that throws. */
 function readSection(storage: MoveStorage, key: string): boolean | null {
   try {
