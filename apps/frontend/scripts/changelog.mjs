@@ -17,7 +17,10 @@
  * writers' rules and is never published. Issue and decision references, which
  * the source keeps only as a trailing parenthesis such as `(#69, D183)`, are
  * removed from everything published. A version with no date line, or whose
- * entry does not open with a bold headline, stops the build.
+ * entry does not open with a bold headline, stops the build. The source is
+ * written for production: a build for another address names its own origins
+ * in every output, and one with no second origin leaves out of all of them
+ * the notices that name production's (`siteEntries()`, #343).
  *
  * Nothing it writes is committed. `scripts/build-changelog.mjs` writes
  * `changelog.md` and the two feeds into the build; `check-build.mjs` checks
@@ -27,7 +30,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { CHANGELOG_LINK } from '../src/lib/changelog-link.ts';
 import { escapeHtml, siteFooter, siteHeader } from './site-chrome.mjs';
-import { APP_ORIGIN, nameSite } from './site-origin.mjs';
+import {
+  APP_ORIGIN,
+  isProduction,
+  nameSite,
+  namesSecondOrigin,
+  SITE_ORIGINS,
+} from './site-origin.mjs';
 
 export { escapeHtml };
 
@@ -127,6 +136,18 @@ function validDay(text) {
 }
 
 /**
+ * An entry's three marks: whether one of its `paragraphs` is a Breaking, a
+ * Deprecated or a Notice paragraph.
+ */
+function noticeMarks(paragraphs) {
+  return {
+    breaking: paragraphs.some((paragraph) => paragraph.startsWith(BREAKING_PREFIX)),
+    deprecated: paragraphs.some((paragraph) => paragraph.startsWith(DEPRECATED_PREFIX)),
+    notice: paragraphs.some((paragraph) => paragraph.startsWith(NOTICE_PREFIX)),
+  };
+}
+
+/**
  * Reads the source into entries, newest first as written:
  * `{ version, date, headline, lead, paragraphs, breaking, deprecated, notice }`.
  * `headline` is the bold sentence without its asterisks, `lead` the rest of
@@ -191,9 +212,7 @@ export function parseChangelog(source) {
       headline: opening[1].trim(),
       lead: stripReferences(first).slice(opening[0].length).trim(),
       paragraphs,
-      breaking: paragraphs.some((paragraph) => paragraph.startsWith(BREAKING_PREFIX)),
-      deprecated: paragraphs.some((paragraph) => paragraph.startsWith(DEPRECATED_PREFIX)),
-      notice: paragraphs.some((paragraph) => paragraph.startsWith(NOTICE_PREFIX)),
+      ...noticeMarks(paragraphs),
     };
   });
 
@@ -610,11 +629,52 @@ export function renderChangelogBody(entries) {
 }
 
 /**
- * Reads `CHANGELOG.md` and returns its entries. The text is written for
- * production; the addresses it names are this build's (`nameSite()`, D274).
+ * `entries`, read from the source as written, for production, as a build for
+ * `origins` publishes them: every text naming the configured origins in
+ * place of production's (`nameSite()`, D274), and, in a build with no second
+ * origin, without the Breaking, Deprecated and Notice paragraphs that name
+ * production's second origin, `webhook.qa-tools.ru` (#343). Such a build
+ * names the site's own origin in that one's place (D275), so 1.16.0's notice
+ * of the move would say that the site's addresses stop answering on its
+ * origin and redirect to the same one: the move is production's, and a build
+ * with no second origin has none, as it has no move banner (D276). An entry
+ * left with none of the three paragraphs is no longer marked, so the page's
+ * `Breaking only` and the breaking feed leave it out. Day X's site, whose
+ * second origin is its own (#324), is such a build too. Production's origins
+ * give `entries` back as they are.
  */
-export function readChangelog(file = CHANGELOG_SOURCE) {
-  return parseChangelog(nameSite(readFileSync(file, 'utf8')));
+export function siteEntries(entries, origins = SITE_ORIGINS) {
+  if (isProduction(origins)) {
+    return entries;
+  }
+
+  const hasMove = (origins.alias ?? null) !== null;
+  const published = (paragraph) =>
+    hasMove || !isNoticeParagraph(paragraph) || !namesSecondOrigin(paragraph);
+
+  return entries.map((entry) => {
+    const paragraphs = entry.paragraphs
+      .filter(published)
+      .map((paragraph) => nameSite(paragraph, origins));
+
+    return {
+      ...entry,
+      headline: nameSite(entry.headline, origins),
+      lead: nameSite(entry.lead, origins),
+      paragraphs,
+      ...noticeMarks(paragraphs),
+    };
+  });
+}
+
+/**
+ * Reads `CHANGELOG.md` and returns its entries as a build for `origins`
+ * publishes them, this build's unless a test gives its own. The text is
+ * written for production; the addresses it names are the build's
+ * (`siteEntries()`).
+ */
+export function readChangelog(file = CHANGELOG_SOURCE, origins = SITE_ORIGINS) {
+  return siteEntries(parseChangelog(readFileSync(file, 'utf8')), origins);
 }
 
 /** The page's template with its body in place. */

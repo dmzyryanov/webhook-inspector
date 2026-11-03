@@ -1,4 +1,4 @@
-import { DEPRECATED_PREFIX, readChangelog } from './changelog.mjs';
+import { CHANGELOG_SOURCE, DEPRECATED_PREFIX, readChangelog } from './changelog.mjs';
 import { SITE_ORIGINS } from './site-origin.mjs';
 
 /**
@@ -20,7 +20,9 @@ import { SITE_ORIGINS } from './site-origin.mjs';
  * the Coordinator corrects that date, the banner follows with the next build.
  * A build with a move whose changelog names no such day fails, rather than
  * drawing a banner without its date. A build with no second origin needs no
- * day, and does not read the changelog for one (issue #346).
+ * day, and does not read the changelog for one (issue #346); its changelog
+ * leaves that paragraph out, which names the second origin (#343). The
+ * changelog is read as the build for `origins` publishes it.
  *
  * Read by `vite.config.ts` and its tests only: it reads `CHANGELOG.md` and
  * `process.env`, and nothing the browser loads imports it.
@@ -78,7 +80,7 @@ export function moveSetting(origins = SITE_ORIGINS, entries) {
     return null;
   }
 
-  const day = moveDay(entries ?? readChangelog());
+  const day = moveDay(entries ?? readChangelog(CHANGELOG_SOURCE, origins));
 
   if (day === null) {
     throw new Error(
