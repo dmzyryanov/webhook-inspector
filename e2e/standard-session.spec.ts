@@ -1016,7 +1016,8 @@ function expectTargetFlow(
  *
  * - it is the first item after the menu's divider, and choosing it closes the
  *   menu;
- * - the browser's download event carries `qa-tools-request-<short id>.json`,
+ * - the browser's download event carries
+ *   `webhook-inspector-request-<short id>.json` (issue #349),
  *   and the file, parsed, deep-equals the detail API's answer for the
  *   request, `response` included;
  * - choosing it sends nothing to `/api/` and shows no toast;
@@ -1033,7 +1034,7 @@ async function expectDownloadJson(
   const actions = page.getByRole('button', { name: 'Actions', exact: true });
   const menu = page.getByRole('menu', { name: 'Actions' });
   const toast = page.getByTestId('toast');
-  const fileName = `qa-tools-request-${requestId.slice(0, 7)}.json`;
+  const fileName = `webhook-inspector-request-${requestId.slice(0, 7)}.json`;
 
   const detail = await request.get(`/api/sessions/${sessionId}/requests/${requestId}`);
 

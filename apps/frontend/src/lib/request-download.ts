@@ -17,9 +17,12 @@ import { REQUEST_ID_DISPLAY_LENGTH, type RequestDetails } from '@webhook-inspect
 /** How long the object URL outlives the click (FileSaver.js uses 40 s). */
 export const REVOKE_DELAY_MS = 40_000;
 
-/** `qa-tools-request-<the list row's short id>.json`. */
+/**
+ * `webhook-inspector-request-<the list row's short id>.json`, named after the
+ * service, Webhook Inspector, since 1.19.12 (issue #349).
+ */
 export function requestDownloadFileName(requestId: string): string {
-  return `qa-tools-request-${requestId.slice(0, REQUEST_ID_DISPLAY_LENGTH)}.json`;
+  return `webhook-inspector-request-${requestId.slice(0, REQUEST_ID_DISPLAY_LENGTH)}.json`;
 }
 
 /**

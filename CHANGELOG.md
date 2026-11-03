@@ -113,6 +113,15 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.12
+
+2026-11-03
+
+**A request saved with Download JSON is now named after the service:
+`webhook-inspector-request-<short id>.json`, e.g.
+`webhook-inspector-request-2b906b8.json`.** The short id is the one its row
+in the list shows, as before, and the file's content is unchanged. (#349)
+
 ## 1.19.11
 
 2026-11-03
