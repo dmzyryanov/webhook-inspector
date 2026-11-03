@@ -335,7 +335,8 @@ repository holds an installation's values:
 
 Each variable is set with no environment scope, but those the table marks
 `production`, which only `deploy`, the one job with that environment, reads;
-protecting any of them to protected branches is fine. `DEPLOY_RUNNER_TAG`, the
+those may be protected, and none of the others should be, since a protected
+variable never reaches a merge request's pipeline. `DEPLOY_RUNNER_TAG`, the
 origins and the operator variables must not be scoped to `production`: the
 runner tag is read when the pipeline is created, and the others by the image
 build and the smoke, which have no environment. In the project's Settings →
