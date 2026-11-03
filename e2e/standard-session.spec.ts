@@ -1310,9 +1310,10 @@ async function expectPrivacyFooter(page: Page): Promise<void> {
 
   await expect(footer).toBeVisible();
   expect(await footer.evaluate((element) => element.textContent)).toBe(PRIVACY_FOOTER_TEXT);
+  // Production's address (#369), which the suite's build names.
   await expect(
-    footer.getByRole('link', { name: PRIVACY_FOOTER.address, exact: true }),
-  ).toHaveAttribute('href', PRIVACY_FOOTER.href);
+    footer.getByRole('link', { name: PRIVACY_FOOTER.address ?? '', exact: true }),
+  ).toHaveAttribute('href', PRIVACY_FOOTER.href ?? '');
 
   for (const [label, href] of [
     ['About', '/about'],

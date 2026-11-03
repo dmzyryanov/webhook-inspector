@@ -33,7 +33,7 @@ import {
   waitForCertificate,
 } from './check-deployment.mjs';
 // No imports of their own, so Node loads them as TypeScript here with nothing installed.
-import { CONTACT_MAILTO } from '../apps/frontend/src/lib/contact.ts';
+import { mailtoOf, parseContactEmail } from '../apps/frontend/src/lib/operator.ts';
 import { SESSION_ID_PATTERN } from '../packages/shared/src/index.ts';
 import {
   MAX_LIMIT_SECONDS,
@@ -1220,7 +1220,14 @@ test('the smoke expects the titles the Terms of Use and the Privacy Policy carry
 // source; this is what keeps the copy equal to the address the footer and the
 // built security.txt publish (D177).
 test('the smoke expects the contact the footer and security.txt publish', () => {
-  assert.equal(SECURITY_CONTACT, `Contact: ${CONTACT_MAILTO}`);
+  // Production's, the frontend image's CONTACT_EMAIL (#369): a build with no
+  // contact address publishes none, so the address is the pipeline's.
+  const line = /^ {4}CONTACT_EMAIL: '([^'\n]*)'$/m.exec(
+    readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8'),
+  );
+
+  assert.ok(line, '.gitlab-ci.yml sets no CONTACT_EMAIL');
+  assert.equal(SECURITY_CONTACT, `Contact: ${mailtoOf(parseContactEmail(line[1]))}`);
 });
 
 test('a current security.txt has the contact and one Expires within the coming year', () => {

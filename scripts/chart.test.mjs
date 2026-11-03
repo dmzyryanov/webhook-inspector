@@ -845,6 +845,24 @@ function addressLine(name, pipeline = readFileSync(PIPELINE, 'utf8')) {
   );
 }
 
+/**
+ * The lines of `image:frontend` that set production's operator details
+ * (#369), the three settings the frontend build reads, each once: the job is
+ * the only one that names them.
+ */
+function operatorLines(pipeline = readFileSync(PIPELINE, 'utf8')) {
+  const frontend = pipelineKey(pipeline, 'image:frontend');
+
+  return ['STATUS_PAGE_URL', 'CONTACT_EMAIL', 'OPERATOR_TEXTS'].map((name) => {
+    const line = new RegExp(`^ {4}${name}: '[^'\n]*'\n`, 'm').exec(frontend)?.[0];
+
+    assert.ok(line, `image:frontend sets no ${name}`);
+    assert.equal(pipeline.split(`${name}:`).length - 1, 1, `the pipeline sets ${name} elsewhere`);
+
+    return line;
+  });
+}
+
 /** The site's second host as the pipeline gives it to the chart (D275), `webhook.qa-tools.ru` today. */
 function pipelineAliasHost() {
   const alias = addressLine('APP_ALIAS_ORIGIN');
@@ -853,6 +871,45 @@ function pipelineAliasHost() {
 
   return new URL(alias[1]).host;
 }
+
+test("the operator's details: the frontend image's build alone sets production's, in a form the frontend build reads, until #367 moves them (#369)", async () => {
+  const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
+  const pipeline = readFileSync(PIPELINE, 'utf8');
+  const lines = operatorLines(pipeline);
+  const env = Object.fromEntries(
+    lines.map((line) => {
+      const [, name, value] = /^ {4}(\w+): '([^']*)'\n$/.exec(line) ?? [];
+
+      return [name, value];
+    }),
+  );
+
+  // Production's pages are as they were: its status page, its address and its texts.
+  assert.deepEqual(env, {
+    STATUS_PAGE_URL: 'https://status.qa-tools.ru/',
+    CONTACT_EMAIL: 'contact@qa-tools.ru',
+    OPERATOR_TEXTS: 'true',
+  });
+  assert.deepEqual(parseOperator(env), {
+    statusPageUrl: 'https://status.qa-tools.ru/',
+    contactEmail: 'contact@qa-tools.ru',
+    texts: true,
+  });
+  // Not global, and not the inspector's address: the deploy job and the smoke
+  // do not read them, and the test jobs build no image.
+  assert.doesNotMatch(
+    uncommented(pipelineKey(pipeline, 'variables')),
+    /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS/,
+  );
+  assert.doesNotMatch(
+    pipelineKey(pipeline, '.inspector-address'),
+    /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS/,
+  );
+  assert.match(
+    pipelineKey(pipeline, 'image:frontend'),
+    /#367 moves\n {4}# them to CI\/CD variables/,
+  );
+});
 
 test("the inspector's address: .gitlab-ci.yml names each origin once, and the frontend image, the chart, the environment and the smoke take them from there (#320, D274, D275)", () => {
   const pipeline = readFileSync(PIPELINE, 'utf8');
@@ -867,7 +924,11 @@ test("the inspector's address: .gitlab-ci.yml names each origin once, and the fr
   assert.ok(alias, '.inspector-address sets no APP_ALIAS_ORIGIN');
   assert.equal(deployHosts(app[1], receive[1], alias[1]).status, 0);
 
-  const rest = uncommented(pipeline)
+  // The operator's details (#369), production's in the frontend image's
+  // build alone, which name production's domain too.
+  const operator = operatorLines(pipeline);
+  const rest = operator
+    .reduce((text, line) => text.replace(line, ''), uncommented(pipeline))
     .replace(app[0], '')
     .replace(receive[0], '')
     .replace(alias[0], '');
@@ -893,7 +954,7 @@ test("the inspector's address: .gitlab-ci.yml names each origin once, and the fr
   assert.match(frontend, /^ {2}extends: \.image$/m);
   assert.match(
     frontend,
-    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'$/m,
+    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'$/m,
   );
   for (const job of ['image:backend', 'image:postgres']) {
     assert.doesNotMatch(pipelineKey(pipeline, job), /BUILD_ARGS/, job);
@@ -902,7 +963,14 @@ test("the inspector's address: .gitlab-ci.yml names each origin once, and the fr
   const dockerfile = readFileSync(new URL('../apps/frontend/Dockerfile', import.meta.url), 'utf8');
   const build = dockerfile.indexOf('RUN npm run build');
 
-  for (const argument of ['ARG APP_ORIGIN\n', 'ARG RECEIVE_ORIGIN\n', 'ARG APP_ALIAS_ORIGIN\n']) {
+  for (const argument of [
+    'ARG APP_ORIGIN\n',
+    'ARG RECEIVE_ORIGIN\n',
+    'ARG APP_ALIAS_ORIGIN\n',
+    'ARG STATUS_PAGE_URL\n',
+    'ARG CONTACT_EMAIL\n',
+    'ARG OPERATOR_TEXTS\n',
+  ]) {
     const at = dockerfile.indexOf(`\n${argument}`);
 
     assert.ok(at > dockerfile.indexOf('RUN npm ci') && at < build, argument);

@@ -17,6 +17,7 @@ import { legalPagesPlugin } from './scripts/legal.mjs';
 import { moveSetting } from './scripts/move-setting.mjs';
 import { OLD_RELAY_SCRIPT_NAME } from './scripts/relay-script.mjs';
 import { isProduction, SITE_ORIGINS, siteOriginPlugin } from './scripts/site-origin.mjs';
+import { OPERATOR } from './src/lib/operator.ts';
 
 /*
  * The dev server's two addresses, from the environment with today's values as
@@ -74,7 +75,9 @@ const port = Number(process.env.WEBHOOK_INSPECTOR_FRONTEND_PORT ?? 5173);
  * - `/terms`, `/terms/`, `/privacy` and `/privacy/` answer the Terms of Use,
  *   `terms/index.html`, and the Privacy Policy, `privacy/index.html`, whose
  *   bodies `legalPagesPlugin()` writes from `src/lib/legal-copy.ts`, with
- *   `Cache-Control: no-cache` (D217), as the build writes them.
+ *   `Cache-Control: no-cache` (D217), as the build writes them, when the
+ *   build shows the operator's texts (issue #369); otherwise they are left to
+ *   the application, which answers `Page not found`.
  * - `/ru` and `/ru/` answer the Russian home page, `ru/index.html`, the
  *   application with a Russian head, with `Cache-Control: no-cache` (D226).
  *   Left alone, Vite answers `/ru/` with it too but `/ru` with the English
@@ -133,14 +136,14 @@ function apiReferencePages(): Plugin {
           return;
         }
 
-        if (path === '/terms' || path === '/terms/') {
+        if (OPERATOR.texts && (path === '/terms' || path === '/terms/')) {
           req.url = '/terms/index.html';
           res.setHeader('Cache-Control', 'no-cache');
           next();
           return;
         }
 
-        if (path === '/privacy' || path === '/privacy/') {
+        if (OPERATOR.texts && (path === '/privacy' || path === '/privacy/')) {
           req.url = '/privacy/index.html';
           res.setHeader('Cache-Control', 'no-cache');
           next();
@@ -220,8 +223,14 @@ export default defineConfig({
   // old origin, the new one and day X from CHANGELOG.md, or null for a build
   // with no second origin. `src/lib/move-link.ts` reads it; the banner shows
   // on the old origin only.
+  //
+  // The operator's details (issue #369): the status page, the contact address
+  // and whether the operator's texts are shown, as `src/lib/operator.ts` reads
+  // them from the build's environment, each `null` or `false` when unset. The
+  // header and the footer read them there.
   define: {
     __WEBHOOK_INSPECTOR_MOVE__: JSON.stringify(moveSetting()),
+    __WEBHOOK_INSPECTOR_OPERATOR__: JSON.stringify(OPERATOR),
   },
   build: {
     // Two pages of one application (D226): the English home page and every

@@ -15,7 +15,12 @@ import {
 } from '@webhook-inspector/shared';
 import { readChangelog } from '../../scripts/changelog.mjs';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
-import { type LegalPage, legalLineText, PRIVACY_PAGE, TERMS_PAGE } from './legal-copy.ts';
+import { type LegalPage, legalLineText, privacyPage, termsPage } from './legal-copy.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/** The two pages as production's build writes them (issue #369). */
+const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
+const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 /**
  * Every number the Terms of Use and the Privacy Policy state, held to the

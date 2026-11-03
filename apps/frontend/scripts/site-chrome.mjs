@@ -12,7 +12,9 @@
  * the current page. The
  * footer is the privacy line, `About · Terms · Privacy` and the contact
  * address; on `/about`, `/terms` and `/privacy` that page's link is the
- * current page.
+ * current page. `Status ↗`, `Terms`, `Privacy` and the contact are the
+ * operator's details, there when the build names them (issue #369,
+ * `src/lib/operator.ts`), as in the application.
  *
  * Both are drawn in a language, English unless a page asks for Russian
  * (issue #170, D255): `/ru/about` draws the words the application draws in
@@ -28,8 +30,9 @@ import { ru } from '../src/i18n/ru.ts';
 import { API_DOCS_LINK } from '../src/lib/api-docs-link.ts';
 import { BRAND_MARK } from '../src/lib/brand-mark.ts';
 import { CHANGELOG_LINK } from '../src/lib/changelog-link.ts';
-import { FOOTER_SEPARATOR, footerLinks, PRIVACY_FOOTER } from '../src/lib/privacy-footer.ts';
-import { STATUS_LINK } from '../src/lib/status-link.ts';
+import { mailtoOf, OPERATOR } from '../src/lib/operator.ts';
+import { FOOTER_SEPARATOR, footerLinks } from '../src/lib/privacy-footer.ts';
+import { statusLink } from '../src/lib/status-link.ts';
 
 /** The languages a static page is drawn in (D255), each with its words. */
 const MESSAGES = { en, ru };
@@ -130,12 +133,14 @@ function current(link, page) {
  * `Webhook Inspector` leads to `/ru/`, while every link keeps its address.
  * From 375 to 767 px the wordmark stands on two lines, and below 375 px the
  * Q mark is drawn in its place, its words kept for assistive technology
- * (`site-chrome.css`, D277).
+ * (`site-chrome.css`, D277). `operator` is the build's (issue #369): with no
+ * status page there is no `Status ↗` and no divider before it.
  */
-export function siteHeader(page, lang = 'en') {
+export function siteHeader(page, lang = 'en', operator = OPERATOR) {
   const m = messagesOf(lang);
   const changelog = { ...CHANGELOG_LINK, label: m.header.changelog };
-  const status = { ...STATUS_LINK, label: m.header.status, newTabNote: m.header.newTab };
+  const link = statusLink(operator.statusPageUrl);
+  const status = link && { ...link, label: m.header.status, newTabNote: m.header.newTab };
   const apiDocs = { ...API_DOCS_LINK, label: m.header.apiDocs, newTabNote: m.header.newTab };
 
   return [
@@ -143,8 +148,12 @@ export function siteHeader(page, lang = 'en') {
     `  <a class="brand" href="${HOME_ADDRESSES[lang]}"><span class="brand-name">Webhook Inspector</span><img class="brand-mark" src="${BRAND_MARK.src}" alt="" width="${BRAND_MARK.size}" height="${BRAND_MARK.size}" /></a>`,
     '  <div class="header-links">',
     `    <a class="header-link" href="${changelog.href}"${current(changelog, page)}>${escapeText(changelog.label)}</a>`,
-    '    <span class="header-divider" aria-hidden="true"></span>',
-    `    ${newTabLink(status)}`,
+    ...(status === null
+      ? []
+      : [
+          '    <span class="header-divider" aria-hidden="true"></span>',
+          `    ${newTabLink(status)}`,
+        ]),
     '    <span class="header-divider" aria-hidden="true"></span>',
     `    ${newTabLink(apiDocs)}`,
     '  </div>',
@@ -165,20 +174,33 @@ export function siteHeader(page, lang = 'en') {
  * path of the page drawn, so that its own link is its current page, and
  * `lang` its language (D255): in Russian the line, the links and `Почта:` are
  * the application's Russian band's, `О сервисе` leading to `/ru/about`
- * (`footerLinks` in `privacy-footer.ts`).
+ * (`footerLinks` in `privacy-footer.ts`). `operator` is the build's (issue
+ * #369): without the operator's texts the links are `About` alone, and with
+ * no contact address there is no `Contact:`, the last link then with no dot
+ * after it.
  */
-export function siteFooter(page, lang = 'en') {
+export function siteFooter(page, lang = 'en', operator = OPERATOR) {
   const m = messagesOf(lang);
-  const links = footerLinks(m)
-    .map(
-      (link) =>
-        `<span class="footer-item"><a class="footer-link" href="${escapeHtml(link.href)}"${current(link, page)}>${escapeText(link.label)}</a><span class="footer-separator" aria-hidden="true">${FOOTER_SEPARATOR}</span></span><wbr />`,
-    )
+  const contact = operator.contactEmail;
+  const items = footerLinks(m, operator);
+  const links = items
+    .map((link, index) => {
+      const separator =
+        index < items.length - 1 || contact !== null
+          ? `<span class="footer-separator" aria-hidden="true">${FOOTER_SEPARATOR}</span></span><wbr />`
+          : '</span>';
+
+      return `<span class="footer-item"><a class="footer-link" href="${escapeHtml(link.href)}"${current(link, page)}>${escapeText(link.label)}</a>${separator}`;
+    })
     .join('');
+  const address =
+    contact === null
+      ? ''
+      : `<span class="contact">${escapeText(m.footer.contact)}\u00a0<a href="${escapeHtml(mailtoOf(contact))}">${escapeText(contact)}</a></span>`;
 
   return [
     '<footer class="site-footer">',
-    `  <p><span>${escapeText(m.footer.line)}</span> <span class="footer-end">${links}<span class="contact">${escapeText(m.footer.contact)}\u00a0<a href="${escapeHtml(PRIVACY_FOOTER.href)}">${escapeText(PRIVACY_FOOTER.address)}</a></span></span></p>`,
+    `  <p><span>${escapeText(m.footer.line)}</span> <span class="footer-end">${links}${address}</span></p>`,
     '</footer>',
   ].join('\n');
 }

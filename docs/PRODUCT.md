@@ -63,6 +63,15 @@ every page links to it, `https://qa-tools.ru/status` redirects to it with a
 There is no footer link to it and no status dot or colour on our pages: the
 link does not know the status.
 
+Since 1.19.6 (issue #369) the status page, the contact address, the Terms of
+Use with the Privacy Policy and the about pages' lines on who runs the service
+are settings of the frontend build — `STATUS_PAGE_URL`, `CONTACT_EMAIL` and
+`OPERATOR_TEXTS` (README, Installing on k3s with the chart). This site's
+build sets all three, so everything this document says of them holds here. A
+copy of the inspector built without them shows none of them: no `Status ↗`,
+no `Contact:` and no `Terms` or `Privacy` in the footer, no `security.txt`,
+and `/status`, `/terms` and `/privacy` are `Page not found`.
+
 ## Footer
 
 Every page that carries the header closes with a footer band that says what

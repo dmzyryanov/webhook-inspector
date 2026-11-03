@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { SESSION_IDLE_DAYS } from '@webhook-inspector/shared';
 import { renderAboutBody } from '../../scripts/about.mjs';
 import { readChangelog, renderChangelogBody } from '../../scripts/changelog.mjs';
-import { PRIVACY_PAGE, renderLegalBody, TERMS_PAGE } from '../../scripts/legal.mjs';
+import { renderLegalBody } from '../../scripts/legal.mjs';
 import { siteFooter } from '../../scripts/site-chrome.mjs';
 import { en } from '../i18n/en.ts';
 import { ru } from '../i18n/ru.ts';
@@ -12,6 +12,7 @@ import { ABOUT_RU } from './about-copy-ru.ts';
 import { ABOUT_LINK } from './about-link.ts';
 import { CHANGELOG_LINK } from './changelog-link.ts';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
+import { privacyPage, termsPage } from './legal-copy.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
 import {
   FOOTER_LINKS,
@@ -20,6 +21,11 @@ import {
   PRIVACY_FOOTER,
   PRIVACY_FOOTER_TEXT,
 } from './privacy-footer.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/** The two pages as production's build writes them (issue #369). */
+const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
+const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 /**
  * The footer every page carries (issue #88, D177), with `About` before
@@ -168,10 +174,10 @@ describe('the privacy footer', () => {
     assert.equal(PRIVACY_FOOTER.line, en.footer.line);
     assert.equal(PRIVACY_FOOTER.contactLabel, en.footer.contact);
     assert.ok(footer.includes("{'\\u00a0'}"), 'Contact: is not joined to the address');
-    assert.match(
-      footer,
-      /<a\n\s*href=\{PRIVACY_FOOTER\.href\}\n[^>]*>\n\s*\{PRIVACY_FOOTER\.address\}\n\s*<\/a>/,
-    );
+    // The build's address (issue #369), the one `PRIVACY_FOOTER` holds.
+    assert.ok(footer.includes('const contact = operator.contactEmail;'));
+    assert.ok(footer.includes('operator = OPERATOR,'));
+    assert.match(footer, /<a\n\s*href=\{mailtoOf\(contact\)\}\n[^>]*>\n\s*\{contact\}\n\s*<\/a>/);
     // The address breaks at its hyphen, and the links would part from
     // Contact:, unless they are kept whole: on the right, 16 px apart, from
     // 1024 px; below it one inline block at the end of the paragraph, whole
@@ -188,8 +194,10 @@ describe('the privacy footer', () => {
 
   it('renders the links before Contact:, in ink, each with a dot after it and a break after that below 1024 px only (D211, D217)', () => {
     const footer = read('../components/AppFooter.tsx');
-    // Amended by D255: the links are the language's, `footerLinks(m)`.
-    const about = footer.indexOf('{footerLinks(m).map(');
+    // Amended by D255: the links are the language's, `footerLinks(m)`, and by
+    // issue #369 the build's operator's.
+    assert.ok(footer.includes('const links = footerLinks(m, operator);'));
+    const about = footer.indexOf('{links.map(');
     const contact = footer.indexOf('{m.footer.contact}');
 
     assert.ok(about > footer.indexOf('<span>{m.footer.line}</span>'));
@@ -208,7 +216,7 @@ describe('the privacy footer', () => {
     // where the `<wbr>` is, below 1024 px only (D217).
     assert.match(
       footer,
-      /<Fragment key=\{link\.href\}>\n\s*<span className="whitespace-nowrap">\n[\s\S]*?\{FOOTER_SEPARATOR\}\n\s*<\/span>\n\s*<\/span>\n(?:\s*\{\/\*[\s\S]*?\*\/\}\n)?\s*<wbr className="hidden max-lg:inline" \/>\n\s*<\/Fragment>/,
+      /<Fragment key=\{link\.href\}>\n\s*<span className="whitespace-nowrap">\n[\s\S]*?\{FOOTER_SEPARATOR\}\n\s*<\/span>\n(?:\s*\) : null\}\n)?\s*<\/span>\n(?:\s*\{\/\*[\s\S]*?\*\/\}\n)?\s*<wbr className="hidden max-lg:inline" \/>\n\s*<\/Fragment>/,
     );
   });
 

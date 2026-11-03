@@ -2,6 +2,7 @@ import { en, type Messages } from '../i18n/en.ts';
 import { ABOUT_LINK, aboutAddress } from './about-link.ts';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
+import { OPERATOR, type Operator } from './operator.ts';
 
 /**
  * The footer every page of the application carries (issue #88, D177): what the
@@ -32,6 +33,10 @@ import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
  * These are the English words, which the English static pages draw
  * (`scripts/site-chrome.mjs`); the application's band and `/ru/about`'s draw
  * their language's, the dictionary's `footer` (D222, D255).
+ *
+ * The address is the build's `CONTACT_EMAIL` (issue #369, `contact.ts`). A
+ * build that names none has no `Contact:` at all: `address` and `href` are
+ * `null`, and the band ends with its last link, with no dot after it.
  */
 export const PRIVACY_FOOTER = {
   line: en.footer.line,
@@ -49,8 +54,13 @@ export const PRIVACY_FOOTER = {
  * is kept whole where it fits and breaks only after a dot where it does not,
  * no link ever on a line of its own. They are drawn in ink, Medium: links to
  * pages of this site, where the address in the link blue is mail.
+ *
+ * `Terms` and `Privacy` are the operator's texts (issue #369): a build that
+ * does not show them (`OPERATOR_TEXTS`, `operator.ts`) links `About` alone.
  */
-export const FOOTER_LINKS = [ABOUT_LINK, TERMS_LINK, PRIVACY_LINK] as const;
+export const FOOTER_LINKS: readonly FooterLink[] = OPERATOR.texts
+  ? [ABOUT_LINK, TERMS_LINK, PRIVACY_LINK]
+  : [ABOUT_LINK];
 
 /** A footer link as drawn: where it leads and its words. */
 export interface FooterLink {
@@ -65,13 +75,21 @@ export interface FooterLink {
  * `Terms` and `Privacy` keep `/terms` and `/privacy`, English pages, until
  * their Russian versions are delivered (#237). In English they are
  * `FOOTER_LINKS` themselves. The application's band (`AppFooter.tsx`) and the
- * static pages' (`scripts/site-chrome.mjs`) both draw these.
+ * static pages' (`scripts/site-chrome.mjs`) both draw these. `operator` is
+ * the build's (issue #369): without its texts, `About` alone.
  */
-export function footerLinks(m: Messages = en): readonly FooterLink[] {
+export function footerLinks(
+  m: Messages = en,
+  operator: Operator = OPERATOR,
+): readonly FooterLink[] {
   return [
     { href: aboutAddress(m.lang), label: m.footer.about },
-    { href: TERMS_LINK.href, label: m.footer.terms },
-    { href: PRIVACY_LINK.href, label: m.footer.privacy },
+    ...(operator.texts
+      ? [
+          { href: TERMS_LINK.href, label: m.footer.terms },
+          { href: PRIVACY_LINK.href, label: m.footer.privacy },
+        ]
+      : []),
   ];
 }
 
@@ -79,10 +97,20 @@ export function footerLinks(m: Messages = en): readonly FooterLink[] {
 export const FOOTER_SEPARATOR = ' \u00b7 ';
 
 /**
- * The whole footer as one paragraph, the way it reads below 1024 px: the line,
- * then `About · Terms · Privacy · Contact: contact@qa-tools.ru`. Its
- * `textContent` is this from every width from 768 px, since the separator is
- * only hidden from 1024 px, and on every static page; below 768 px the
- * application's band carries `EN | RU` before the contact as well (D222).
+ * The whole footer as one paragraph, the way it reads below 1024 px, in a
+ * language, `m` its words: the line, then `About · Terms · Privacy · Contact:
+ * contact@qa-tools.ru`, the parts `operator`'s build has, a dot between each
+ * two (issue #369). Its `textContent` is this from every width from 768 px,
+ * since the separator is only hidden from 1024 px, and on every static page;
+ * below 768 px the application's band carries `EN | RU` before the contact as
+ * well (D222).
  */
-export const PRIVACY_FOOTER_TEXT = `${PRIVACY_FOOTER.line} ${FOOTER_LINKS.map((link) => `${link.label}${FOOTER_SEPARATOR}`).join('')}${PRIVACY_FOOTER.contactLabel}\u00a0${PRIVACY_FOOTER.address}`;
+export function footerText(m: Messages = en, operator: Operator = OPERATOR): string {
+  const contact =
+    operator.contactEmail === null ? [] : [`${m.footer.contact}\u00a0${operator.contactEmail}`];
+
+  return `${m.footer.line} ${[...footerLinks(m, operator).map((link) => link.label), ...contact].join(FOOTER_SEPARATOR)}`;
+}
+
+/** The English footer of this build as one paragraph (`footerText`). */
+export const PRIVACY_FOOTER_TEXT = footerText();

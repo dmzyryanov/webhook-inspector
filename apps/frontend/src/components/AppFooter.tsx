@@ -2,7 +2,8 @@ import { Fragment } from 'react';
 import { usePhoneLayout } from '../hooks/useDesktopLayout.ts';
 import { useMessages } from '../i18n/LanguageProvider.tsx';
 import { cn } from '../lib/cn.ts';
-import { FOOTER_SEPARATOR, footerLinks, PRIVACY_FOOTER } from '../lib/privacy-footer.ts';
+import { mailtoOf, OPERATOR, type Operator } from '../lib/operator.ts';
+import { FOOTER_SEPARATOR, footerLinks } from '../lib/privacy-footer.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
 
 /**
@@ -44,10 +45,23 @@ import { LanguageSwitch } from './LanguageSwitch.tsx';
  * Почта:` in Russian, `О сервисе` leading to the Russian about page,
  * `/ru/about`, and `Условия` and `Конфиденциальность` to the English pages
  * until their Russian versions are delivered (issue #170, D255).
+ *
+ * What the band holds is the build's (issue #369, `operator.ts`): without the
+ * operator's texts `Terms` and `Privacy` are not there, and without a contact
+ * address neither is `Contact:`; a dot then follows every part but the last.
+ * `operator` is the build's unless a test gives another.
  */
-export function AppFooter({ className }: { className?: string }) {
+export function AppFooter({
+  className,
+  operator = OPERATOR,
+}: {
+  className?: string;
+  operator?: Operator;
+}) {
   const m = useMessages();
   const phone = usePhoneLayout();
+  const links = footerLinks(m, operator);
+  const contact = operator.contactEmail;
 
   return (
     <footer
@@ -59,7 +73,7 @@ export function AppFooter({ className }: { className?: string }) {
       <p className="flex items-center justify-between gap-6 text-[12px] leading-[17px] text-ink-muted max-lg:block">
         <span>{m.footer.line}</span>{' '}
         <span className="flex shrink-0 items-center gap-4 whitespace-nowrap max-lg:inline-block max-lg:whitespace-normal">
-          {footerLinks(m).map((link) => (
+          {links.map((link, index) => (
             <Fragment key={link.href}>
               <span className="whitespace-nowrap">
                 {/* Below 1024 px its tap area reaches the band's edges, drawn
@@ -70,9 +84,11 @@ export function AppFooter({ className }: { className?: string }) {
                 >
                   {link.label}
                 </a>
-                <span aria-hidden="true" className="hidden max-lg:inline">
-                  {FOOTER_SEPARATOR}
-                </span>
+                {index < links.length - 1 || phone || contact !== null ? (
+                  <span aria-hidden="true" className="hidden max-lg:inline">
+                    {FOOTER_SEPARATOR}
+                  </span>
+                ) : null}
               </span>
               {/* Where a line may end below 1024 px, after the dot: a space
                   inside the item, which does not wrap, is no place for a
@@ -86,23 +102,25 @@ export function AppFooter({ className }: { className?: string }) {
             <>
               <span className="whitespace-nowrap md:hidden">
                 <LanguageSwitch place="footer" />
-                <span aria-hidden="true">{FOOTER_SEPARATOR}</span>
+                {contact === null ? null : <span aria-hidden="true">{FOOTER_SEPARATOR}</span>}
               </span>
               <wbr />
             </>
           ) : null}
-          <span className="whitespace-nowrap">
-            {m.footer.contact}
-            {'\u00a0'}
-            {/* Below 1024 px its tap area reaches the band's edges, drawn no
-                differently, as the header's links do (D157). */}
-            <a
-              href={PRIVACY_FOOTER.href}
-              className="rounded-[4px] font-medium text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-lg:relative max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-inset-y-2"
-            >
-              {PRIVACY_FOOTER.address}
-            </a>
-          </span>
+          {contact === null ? null : (
+            <span className="whitespace-nowrap">
+              {m.footer.contact}
+              {'\u00a0'}
+              {/* Below 1024 px its tap area reaches the band's edges, drawn no
+                  differently, as the header's links do (D157). */}
+              <a
+                href={mailtoOf(contact)}
+                className="rounded-[4px] font-medium text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-lg:relative max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-inset-y-2"
+              >
+                {contact}
+              </a>
+            </span>
+          )}
         </span>
       </p>
     </footer>

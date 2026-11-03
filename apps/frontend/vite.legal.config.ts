@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { legalPagesPlugin } from './scripts/legal.mjs';
+import { LEGAL_PAGES, legalPagesPlugin } from './scripts/legal.mjs';
 import { siteOriginPlugin } from './scripts/site-origin.mjs';
 
 /*
@@ -17,6 +17,13 @@ import { siteOriginPlugin } from './scripts/site-origin.mjs';
  * a year; `terms/index.html` and `privacy/index.html` are the pages nginx
  * serves at /terms and /privacy with `Cache-Control: no-cache`. The dev server
  * serves them from the source tree through the same plugin (`vite.config.ts`).
+ *
+ * Both pages are the operator's texts (issue #369): a build that does not
+ * show them (`OPERATOR_TEXTS`, `src/lib/operator.ts`) has no page in
+ * `LEGAL_PAGES`, and this build then writes nothing, neither the pages nor
+ * their stylesheet, so `/terms` and `/privacy` answer the application's 404
+ * (`nginx.conf`). It still runs, on the same inputs, so that the build's
+ * steps are the same either way.
  */
 export default defineConfig({
   // The page names this build's origins (D274).
@@ -26,6 +33,7 @@ export default defineConfig({
   build: {
     // The application's build ran first and owns dist/.
     emptyOutDir: false,
+    write: LEGAL_PAGES.length > 0,
     rolldownOptions: {
       input: {
         terms: fileURLToPath(new URL('terms/index.html', import.meta.url)),

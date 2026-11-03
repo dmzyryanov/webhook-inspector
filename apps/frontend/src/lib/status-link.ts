@@ -1,13 +1,15 @@
 import { en } from '../i18n/en.ts';
+import { OPERATOR } from './operator.ts';
 
 /**
  * The header's link to the public status page (issue #99, D209).
  *
- * `https://status.qa-tools.ru/` is a Statuser page of its own, not part of
- * this site: whether the site, the API and webhook receiving are up, each
- * checked every minute from outside, with its uptime history and reports of
- * outages. `https://qa-tools.ru/status` redirects to the same address
- * (`nginx.conf`).
+ * The page is the build's `STATUS_PAGE_URL` since issue #369 (`operator.ts`):
+ * a page of its own, not part of this site, saying whether the site, the API
+ * and webhook receiving are up, as production's Statuser page does at
+ * `https://status.qa-tools.ru/`. `/status` redirects to the same address
+ * (`scripts/nginx-conf.mjs`). A build that names no status page draws no
+ * link, and the header reads `Changelog | API docs ↗`.
  *
  * Built like the link to the API reference (`api-docs-link.ts`): a plain
  * `<a>` that opens in a new tab, so a session page stays where it was, with
@@ -21,17 +23,33 @@ import { en } from '../i18n/en.ts';
  * browser's default referrer policy is. `/docs` is the site's own page, so
  * that link needs no such care.
  */
-export const STATUS_LINK = {
-  href: 'https://status.qa-tools.ru/',
+export interface StatusLink {
+  readonly href: string;
   /**
    * The English words, which the English static pages draw; `/ru/about` and the
    * application draw their language's (D222, D255).
    */
-  label: en.header.status,
-  newTabNote: en.header.newTab,
-  target: '_blank',
-  rel: 'noopener noreferrer',
-} as const;
+  readonly label: string;
+  readonly newTabNote: string;
+  readonly target: '_blank';
+  readonly rel: 'noopener noreferrer';
+}
+
+/** The link to the status page at `href`, or `null` for a build with none. */
+export function statusLink(href: string | null): StatusLink | null {
+  return href === null
+    ? null
+    : {
+        href,
+        label: en.header.status,
+        newTabNote: en.header.newTab,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      };
+}
+
+/** The link this build draws, or `null` when it names no status page. */
+export const STATUS_LINK: StatusLink | null = statusLink(OPERATOR.statusPageUrl);
 
 /** What assistive technology reads for the link: `Status (opens in a new tab)`. */
-export const STATUS_ACCESSIBLE_NAME = `${STATUS_LINK.label} ${STATUS_LINK.newTabNote}`;
+export const STATUS_ACCESSIBLE_NAME = `${en.header.status} ${en.header.newTab}`;
