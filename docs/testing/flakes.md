@@ -4348,7 +4348,10 @@ load of 2.1 to 20.7; and four at `9bef555`, at 3000 ms, at 6.8 to 19.0;
 each `ℹ tests 2461`, in 47 to 57 s. In the last ten the 2 MiB nesting test,
 two parses, took 435 to 1330 ms in `access-keys.test.ts` and 487 to
 1347 ms in `session-list.test.ts`; the sibling, the building of its values
-in the test's time though not in its bound's, 828 to 2261 ms.
+in the test's time though not in its bound's, 828 to 2261 ms. So 0 of 26
+failed, Wilson 95% 0%–12.9%. No series was run before the fix: the six
+failures above were observed in whole runs, not counted against a number of
+runs, and this entry's one run at the base failed both files.
 
 Against `9bef555`, at 3000 ms, the four quadratic forms fail the same
 tests as at `33c7c8c`, at a load of 1.4 to 2.2, 49 of 51 and 56 of 57
@@ -4371,7 +4374,7 @@ and its text form with `7836.5 ms for 2097152 characters`.
   loaded runs at the fix, `request-filter.test.ts:307`, `costs the list
   nothing: a megabyte of one word over 1000 rows`, failed in four, `1096.0`,
   `1100.0`, `1045.0` and `1222.1 ms for 1048576 characters`; and
-  `response-template.test.ts:413`, `loses nothing of the line, and stands
+  `response-template.test.ts:412`, `loses nothing of the line, and stands
   hostile lines at growing sizes in one pass`, in two, `1048576:
   1182.378455 ms` and `1048576: 1114.422662 ms for "{{{{{{{{{{{{"`.
 - The backend suite beside them, 13 runs, failed
