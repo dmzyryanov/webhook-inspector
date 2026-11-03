@@ -848,31 +848,34 @@ function pipelineKey(text, name) {
   return end < 0 ? rest : rest.slice(0, end + 1);
 }
 
-/** The deploy job's first script item, the checks and `helm upgrade`, as the runner's shell runs it. */
-const DEPLOY_SCRIPT = (() => {
-  const deploy = pipelineKey(readFileSync(PIPELINE, 'utf8'), 'deploy');
-  const block = /\n( +)script:\n\1 {2}- \|\n((?:(?:\1 {4}[^\n]*)?\n)+)/.exec(deploy);
+/** A job's first script item, a `- |` block holding `marker`, as the runner's shell runs it. */
+function firstScript(job, marker) {
+  const text = pipelineKey(readFileSync(PIPELINE, 'utf8'), job);
+  const block = /\n( +)script:\n\1 {2}- \|\n((?:(?:\1 {4}[^\n]*)?\n)+)/.exec(text);
 
-  assert.ok(
-    block?.[2].includes('helm upgrade --install'),
-    "the deploy job's first item runs no helm upgrade",
-  );
+  assert.ok(block?.[2].includes(marker), `${job}'s first script item runs no ${marker}`);
 
   return block[2]
     .split('\n')
     .map((line) => line.slice(block[1].length + 4))
     .join('\n');
-})();
+}
+
+/** The deploy job's first script item, the checks and `helm upgrade`. */
+const DEPLOY_SCRIPT = firstScript('deploy', 'helm upgrade --install');
 
 /**
- * Production's CI/CD variables as recorded on 2026-11-02 (#367; qa-tools'
- * docs/RESOURCES.md is their record), the runner's own and the recipient key
- * given as a stand-in's file: with these the deploy job gives the chart
- * production's values.
+ * Production's CI/CD variables as set and read back on 2026-11-03 (#367;
+ * qa-tools' docs/RESOURCES.md is their record), the runner's own and the
+ * recipient key given as a stand-in's file: with these the deploy job gives
+ * the chart production's values, the frontend image names production's
+ * operator, and the jobs land on production's runners.
  */
 const PRODUCTION = Object.freeze({
   CI_REGISTRY_IMAGE: 'registry.gitlab.com/qa-tools-team/webhook-inspector',
   CI_COMMIT_SHA: 'a'.repeat(40),
+  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci',
+  DEPLOY_RUNNER_TAG: 'qa-tools-vps',
   DEPLOY_APP_ORIGIN: 'https://qa-tools.ru',
   DEPLOY_RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
   DEPLOY_APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
@@ -888,20 +891,26 @@ const PRODUCTION = Object.freeze({
   DEPLOY_BACKUP_RECIPIENT_KEY: RECIPIENT_PATH,
   DEPLOY_HEARTBEAT_URL: 'https://hb.statuser.cloud',
   DEPLOY_HEARTBEAT_SECRET: 'qa-tools-statuser',
+  DEPLOY_STATUS_PAGE_URL: 'https://status.qa-tools.ru/',
+  DEPLOY_CONTACT_EMAIL: 'contact@qa-tools.ru',
+  DEPLOY_OPERATOR_TEXTS: 'true',
 });
 
-/** The variables an unset one stops the deploy job for, whatever the others hold. */
-const ALWAYS_NEEDED = [
+/** The variables an unset or empty one stops the deploy job for, whatever the others hold: what every installation needs. */
+const VALUE_NEEDED = [
   'DEPLOY_APP_ORIGIN',
   'DEPLOY_RECEIVE_ORIGIN',
-  'DEPLOY_APP_ALIAS_ORIGIN',
   'DEPLOY_RECEIVE_TLS_SECRET',
   'DEPLOY_POSTGRES_USER',
   'DEPLOY_POSTGRES_DATABASE',
   'DEPLOY_BACKUP_HOST_PATH',
-  'DEPLOY_BACKUP_BUCKET',
-  'DEPLOY_HEARTBEAT_URL',
 ];
+
+/** The options: an unset one stops the deploy job, an empty one is off. */
+const OPTIONS = ['DEPLOY_APP_ALIAS_ORIGIN', 'DEPLOY_BACKUP_BUCKET', 'DEPLOY_HEARTBEAT_URL'];
+
+/** The variables an unset one stops the deploy job for, whatever the others hold, in the order it names them. */
+const ALWAYS_NEEDED = [...VALUE_NEEDED, ...OPTIONS];
 
 // A stand-in helm that records its arguments, NUL-separated, and does nothing else.
 const STAND_INS = mkdtempSync(join(tmpdir(), 'chart-test-helm-'));
@@ -1091,14 +1100,16 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
   );
 });
 
+/** The deploy job's answer when the variables `names` are missing: exit 1, their names, helm not run. */
+const stopped = (names) => ({
+  status: 1,
+  output: `Not deployed: the project CI/CD variables ${names.join(' ')} are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)\n`,
+  helm: null,
+});
+
 test('the deploy job stops before helm upgrade, naming the variable, when one it needs is not set, under sh and bash (#367, criterion 4)', () => {
   const without = (...names) =>
     Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
-  const stopped = (names) => ({
-    status: 1,
-    output: `Not deployed: the project CI/CD variables ${names.join(' ')} are not set (README.md, Deploying from GitLab CI)\n`,
-    helm: null,
-  });
 
   for (const shell of ['sh', 'bash']) {
     for (const name of [
@@ -1153,6 +1164,37 @@ test('the deploy job stops before helm upgrade, naming the variable, when one it
   assert.equal(find(documents, 'CronJob', 'qa-tools-monitor'), undefined);
   assert.equal(podOf(find(documents, 'CronJob', 'qa-tools-db-backup')).initContainers, undefined);
   assert.equal(find(documents, 'Ingress', 'qa-tools-alias'), undefined);
+});
+
+// Set empty, a name every installation needs would leave the chart's
+// default: the database role and database `inspector`, the backup directory
+// /var/backups/webhook-inspector and a receive certificate Secret named after
+// the release, under a running installation. So empty stops the job as unset
+// does; only the options may be empty.
+for (const name of VALUE_NEEDED) {
+  test(`the deploy job stops before helm upgrade, naming ${name}, when it is set empty, under sh and bash (#367, criterion 4)`, () => {
+    for (const shell of ['sh', 'bash']) {
+      assert.deepEqual(deployJob({ ...PRODUCTION, [name]: '' }, shell), stopped([name]), shell);
+    }
+  });
+}
+
+test('the deploy job takes an empty option as off and stops for every needed name set empty at once (#367, criterion 4)', () => {
+  for (const shell of ['sh', 'bash']) {
+    // Each option alone set empty: deployed, that option off.
+    for (const name of OPTIONS) {
+      const run = deployJob({ ...PRODUCTION, [name]: '' }, shell);
+
+      assert.equal(run.status, 0, `${shell} ${name}: ${run.output}`);
+    }
+    // Every needed name empty and every option unset: all named, in order.
+    const empty = Object.fromEntries(VALUE_NEEDED.map((name) => [name, '']));
+    const rest = Object.fromEntries(
+      Object.entries(PRODUCTION).filter(([name]) => !OPTIONS.includes(name)),
+    );
+
+    assert.deepEqual(deployJob({ ...rest, ...empty }, shell), stopped(ALWAYS_NEEDED), shell);
+  }
 });
 
 test('the deploy job refuses a value helm would split or a shell would read, and a recipient key that is not a public key alone, naming the variable and printing no value (#367)', () => {
@@ -1279,8 +1321,17 @@ test("the deploy job's check of the two origins passes production's and refuses 
     hosts: 'inspector.example hook.inspector.example',
   });
 
+  // Empty, either is missing, as unset (#367, criterion 4).
+  assert.deepEqual(deployHosts('', 'https://hook.qa-tools.ru'), {
+    status: 1,
+    output: stopped(['DEPLOY_APP_ORIGIN']).output,
+  });
+  assert.deepEqual(deployHosts('https://qa-tools.ru', ''), {
+    status: 1,
+    output: stopped(['DEPLOY_RECEIVE_ORIGIN']).output,
+  });
+
   for (const origin of [
-    '',
     'qa-tools.ru',
     'http://qa-tools.ru',
     'https://',
@@ -1562,7 +1613,7 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
   assert.match(pipelineKey(pipeline, '.image'), /^ {2}extends: \.inspector-address$/m);
   assert.match(
     pipelineKey(pipeline, 'image:frontend'),
-    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN'$/m,
+    /^ {4}BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'$/m,
   );
 
   const smoke = pipelineKey(pipeline, 'deployment-smoke');
@@ -1585,6 +1636,319 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
     DEPLOY_SCRIPT.indexOf('Not deployed:') < DEPLOY_SCRIPT.indexOf('helm upgrade --install'),
   );
   assert.match(validate, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'$/m);
+});
+
+/* ------------------------------------------------------------------------ */
+/* The frontend image's operator (#369), from the project's CI/CD variables  */
+/* (#367).                                                                   */
+/* ------------------------------------------------------------------------ */
+
+/** The `.image` template's script, the check and the builds, as the runner's shell runs it. */
+const IMAGE_SCRIPT = firstScript('.image', 'docker build');
+
+/** The operator's three settings: the project's CI/CD variable and the name the frontend build reads. */
+const OPERATOR_VARIABLES = [
+  ['DEPLOY_STATUS_PAGE_URL', 'STATUS_PAGE_URL'],
+  ['DEPLOY_CONTACT_EMAIL', 'CONTACT_EMAIL'],
+  ['DEPLOY_OPERATOR_TEXTS', 'OPERATOR_TEXTS'],
+];
+
+// A stand-in docker: `manifest inspect` finds nothing, so a build on main
+// builds and pushes; each other call is recorded with the operator's settings
+// as the build sees them, `-` for one not in its environment.
+writeFileSync(
+  join(STAND_INS, 'docker'),
+  [
+    '#!/bin/sh',
+    'if [ "$1" = manifest ]; then echo "manifest unknown" >&2; exit 1; fi',
+    'printf \'%s|%s|%s|%s\\n\' "$*" "${STATUS_PAGE_URL--}" "${CONTACT_EMAIL--}" "${OPERATOR_TEXTS--}" >> "$DOCKER_CALLS"',
+    '',
+  ].join('\n'),
+  { mode: 0o755 },
+);
+
+/**
+ * A job's variables as GitLab gives them, its templates' first: each
+ * `NAME: value` under `variables:` of `jobs`, in order, a later one winning,
+ * its `$NAME` references expanded against `project`, one not set expanded
+ * to nothing; the project's own variables outrank them all.
+ */
+function jobVariables(jobs, project) {
+  const pipeline = readFileSync(PIPELINE, 'utf8');
+  const own = {};
+
+  for (const job of jobs) {
+    const variables = /\n {2}variables:\n((?: {4}[^\n]*\n| *#[^\n]*\n)+)/.exec(
+      pipelineKey(pipeline, job),
+    );
+
+    for (const [, name, value] of variables?.[1].matchAll(/^ {4}([A-Z_][A-Z0-9_]*): (.*)$/gm) ??
+      []) {
+      own[name] = value
+        .replace(/^'(.*)'$/, '$1')
+        .replace(/\$([A-Z_][A-Z0-9_]*)/g, (whole, ref) => project[ref] ?? '');
+    }
+  }
+
+  return { ...own, ...project };
+}
+
+/**
+ * The `.image` script of `image:frontend` with the project's CI/CD variables
+ * `project`, in a pipeline on main or in a merge request: its status, its
+ * output and docker's calls.
+ */
+function frontendBuild(
+  project,
+  { main = true, shell = 'sh', jobs = ['.inspector-address', '.image', 'image:frontend'] } = {},
+) {
+  const record = join(STAND_INS, `docker-${(runs += 1)}`);
+  const predefined = {
+    CI_DEFAULT_BRANCH: 'main',
+    CI_COMMIT_SHA: 'a'.repeat(40),
+    CI_REGISTRY_IMAGE: 'registry.example/inspector',
+    ...(main ? { CI_COMMIT_BRANCH: 'main' } : {}),
+  };
+  const run = spawnSync(shell, ['-c', IMAGE_SCRIPT], {
+    cwd: STAND_INS,
+    env: {
+      PATH: `${STAND_INS}:${process.env.PATH}`,
+      DOCKER_CALLS: record,
+      ...jobVariables(jobs, { ...predefined, ...project }),
+    },
+    encoding: 'utf8',
+  });
+  let docker = [];
+
+  try {
+    docker = readFileSync(record, 'utf8').split('\n').slice(0, -1);
+    rmSync(record);
+  } catch {
+    // docker was not run.
+  }
+
+  return { status: run.status, output: `${run.stdout}${run.stderr}`, docker };
+}
+
+/** The frontend image's build and push, as recorded, with the operator's settings the build saw. */
+const builtWith = (settings, image = `${PRODUCTION.CI_REGISTRY_IMAGE}/frontend`) => [
+  `build --pull --build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS -f apps/frontend/Dockerfile -t ${image}:${'a'.repeat(40)} .|${settings.join('|')}`,
+  `push ${image}:${'a'.repeat(40)}|${settings.join('|')}`,
+];
+
+/** The build's refusal when the variables `names` are not set. */
+const notBuilt = (names) => ({
+  status: 1,
+  output: `Not built: the project CI/CD variables ${names.join(' ')} are not set; set empty, each is left out (README.md, Deploying from GitLab CI)\n`,
+  docker: [],
+});
+
+test("the operator's details: the frontend image's build takes production's from the project's CI/CD variables, which the pipeline does not name, under the names the build reads (#369, #367)", async () => {
+  const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
+  const pipeline = readFileSync(PIPELINE, 'utf8');
+  const frontend = pipelineKey(pipeline, 'image:frontend');
+
+  for (const [variable, name] of OPERATOR_VARIABLES) {
+    assert.match(frontend, new RegExp(`^ {4}${name}: \\$${variable}$`, 'm'), name);
+    assert.equal(pipeline.split(`${name}:`).length - 1, 1, `the pipeline sets ${name} elsewhere`);
+  }
+  assert.match(
+    frontend,
+    /^ {4}BUILD_VARIABLES: 'DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'$/m,
+  );
+  // Not global, not the inspector's address, not the other images': the
+  // deploy job and the smoke do not read them, and the test jobs build no
+  // image.
+  assert.doesNotMatch(
+    uncommented(pipelineKey(pipeline, 'variables')),
+    /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES/,
+  );
+  for (const job of [
+    '.inspector-address',
+    'image:backend',
+    'image:postgres',
+    'deploy',
+    'deployment-smoke',
+  ]) {
+    assert.doesNotMatch(
+      uncommented(pipelineKey(pipeline, job)),
+      /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_ARGS/,
+      job,
+    );
+  }
+
+  // The check comes before either build, and the image builds twice at
+  // most: once in a merge request, once on main.
+  assert.equal(IMAGE_SCRIPT.split('docker build --pull $BUILD_ARGS -f ').length - 1, 2);
+  assert.equal(IMAGE_SCRIPT.split('docker build').length - 1, 2);
+  for (const call of ['docker build', 'registry_has "$IMAGE']) {
+    assert.ok(IMAGE_SCRIPT.indexOf('Not built:') < IMAGE_SCRIPT.indexOf(call), call);
+  }
+
+  // The Dockerfile takes each argument before the build that reads it.
+  const dockerfile = readFileSync(new URL('../apps/frontend/Dockerfile', import.meta.url), 'utf8');
+  const build = dockerfile.indexOf('RUN npm run build');
+
+  for (const name of [
+    'APP_ORIGIN',
+    'RECEIVE_ORIGIN',
+    'APP_ALIAS_ORIGIN',
+    ...OPERATOR_VARIABLES.map(([, each]) => each),
+  ]) {
+    const at = dockerfile.indexOf(`\nARG ${name}\n`);
+
+    assert.ok(at > dockerfile.indexOf('RUN npm ci') && at < build, name);
+  }
+
+  // Production's variables: the image is built and pushed naming
+  // production's status page, address and texts, as before #367.
+  const production = frontendBuild(PRODUCTION);
+  const settings = ['https://status.qa-tools.ru/', 'contact@qa-tools.ru', 'true'];
+
+  assert.deepEqual(production, { status: 0, output: '', docker: builtWith(settings) });
+  assert.deepEqual(
+    parseOperator(
+      Object.fromEntries(OPERATOR_VARIABLES.map(([, name], at) => [name, settings[at]])),
+    ),
+    {
+      statusPageUrl: 'https://status.qa-tools.ru/',
+      contactEmail: 'contact@qa-tools.ru',
+      texts: true,
+    },
+  );
+});
+
+test("on main the frontend image's build stops before docker build, naming the variable, when an operator's variable is not set; set empty, the detail is left out; a merge request builds either way (#367)", async () => {
+  const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
+  const without = (...names) =>
+    Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
+  const names = OPERATOR_VARIABLES.map(([variable]) => variable);
+  const settings = ['https://status.qa-tools.ru/', 'contact@qa-tools.ru', 'true'];
+
+  for (const shell of ['sh', 'bash']) {
+    for (const name of names) {
+      assert.deepEqual(
+        frontendBuild(without(name), { shell }),
+        notBuilt([name]),
+        `${shell} ${name}`,
+      );
+    }
+    assert.deepEqual(frontendBuild(without(...names), { shell }), notBuilt(names), shell);
+
+    // Set empty, each is left out of the build, and the others kept; with
+    // the texts off, the status page and the address may go too.
+    for (const [at, name] of names.entries()) {
+      if (name !== 'DEPLOY_OPERATOR_TEXTS') {
+        const run = frontendBuild(
+          { ...PRODUCTION, DEPLOY_OPERATOR_TEXTS: '', [name]: '' },
+          { shell },
+        );
+        const seen = settings.map((value, index) => (index === at || index === 2 ? '' : value));
+
+        assert.deepEqual(
+          run,
+          { status: 0, output: '', docker: builtWith(seen) },
+          `${shell} ${name}`,
+        );
+      }
+    }
+
+    const none = frontendBuild(
+      { ...PRODUCTION, ...Object.fromEntries(names.map((name) => [name, ''])) },
+      { shell },
+    );
+
+    assert.deepEqual(none, { status: 0, output: '', docker: builtWith(['', '', '']) }, shell);
+    assert.deepEqual(
+      parseOperator({ STATUS_PAGE_URL: '', CONTACT_EMAIL: '', OPERATOR_TEXTS: '' }),
+      {
+        statusPageUrl: null,
+        contactEmail: null,
+        texts: false,
+      },
+    );
+
+    // A merge request builds what is set and pushes nothing.
+    const request = frontendBuild(without(...names), { main: false, shell });
+
+    assert.equal(request.status, 0, request.output);
+    assert.deepEqual(request.docker, [builtWith(['', '', ''])[0]]);
+
+    // The other images read none: with no variable of the project at all,
+    // the backend's builds on main.
+    const backend = spawnSync(shell, ['-c', IMAGE_SCRIPT], {
+      cwd: STAND_INS,
+      env: {
+        PATH: `${STAND_INS}:${process.env.PATH}`,
+        DOCKER_CALLS: join(STAND_INS, `docker-${(runs += 1)}`),
+        ...jobVariables(['.inspector-address', '.image', 'image:backend'], {
+          CI_DEFAULT_BRANCH: 'main',
+          CI_COMMIT_BRANCH: 'main',
+          CI_COMMIT_SHA: 'a'.repeat(40),
+          CI_REGISTRY_IMAGE: 'registry.example/inspector',
+        }),
+      },
+      encoding: 'utf8',
+    });
+
+    assert.equal(backend.status, 0, `${backend.stdout}${backend.stderr}`);
+  }
+});
+
+test('the image build reads BUILD_VARIABLES as variable names alone, never running or expanding what else it holds, at growing sizes (#367)', () => {
+  const marker = join(STAND_INS, 'ran');
+  const refused = {
+    status: 1,
+    output: 'BUILD_VARIABLES holds something other than variable names\n',
+    docker: [],
+  };
+
+  for (const shell of ['sh', 'bash']) {
+    for (const value of [
+      `$(touch ${marker})`,
+      `\`touch ${marker}\``,
+      `A;touch ${marker}`,
+      `A}; touch ${marker}; {`,
+      'A-B',
+      'a',
+      '1A',
+      'A.B',
+      '*',
+      '${PATH}',
+    ]) {
+      assert.deepEqual(
+        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: value }, { shell }),
+        refused,
+        `${shell} ${JSON.stringify(value)}`,
+      );
+      assert.throws(() => readFileSync(marker), /ENOENT/, `${shell} ${JSON.stringify(value)}`);
+    }
+
+    // Names: words split at white space, each checked; one not set is named.
+    assert.deepEqual(
+      frontendBuild(
+        { ...PRODUCTION, BUILD_VARIABLES: ' DEPLOY_CONTACT_EMAIL\n\tNOT_SET_X ' },
+        { shell },
+      ),
+      notBuilt(['NOT_SET_X']),
+      shell,
+    );
+
+    for (const size of [10, 1000, 100_000]) {
+      const long = `N${'A'.repeat(size)}`;
+
+      assert.deepEqual(
+        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: long }, { shell }),
+        notBuilt([long]),
+        `${shell} ${size}`,
+      );
+      assert.deepEqual(
+        frontendBuild({ ...PRODUCTION, BUILD_VARIABLES: `${long}-` }, { shell }),
+        refused,
+        `${shell} ${size}`,
+      );
+    }
+  }
 });
 
 /* ------------------------------------------------------------------------ */

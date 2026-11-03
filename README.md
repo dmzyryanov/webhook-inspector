@@ -224,7 +224,8 @@ values its operator keeps in the project's CI/CD variables.
    | `CONTACT_EMAIL`   | The contact address: the footer's `Contact:`, the about pages' last paragraph, `/.well-known/security.txt` and the API description's `info.contact`.                                                        | No address anywhere, and no `security.txt` (404).                                                                                                           |
    | `OPERATOR_TEXTS`  | `true` shows this site's own texts: the Terms of Use at `/terms`, the Privacy Policy at `/privacy`, the footer's links to them, and the about pages' lines on who runs the service and who pays for it.      | Neither page (`/terms` and `/privacy` are `Page not found`), no link to them, and the about pages describe the service alone. `true` needs the other two. |
 
-   This site's image sets all three in `.gitlab-ci.yml`. The texts behind
+   This site's image sets all three from CI/CD variables of the project
+   (Deploying from GitLab CI, below). The texts behind
    `OPERATOR_TEXTS` are this site's operator's and name its hosting; a copy
    leaves them off. `scripts/check-deployment.mjs` below still expects this
    site's contact address and legal pages, so a copy built without them
@@ -316,6 +317,9 @@ repository holds an installation's values:
 | `DEPLOY_APP_ORIGIN` | The site's origin, `https://<host>` | frontend image, `deploy`, `deployment-smoke` |
 | `DEPLOY_RECEIVE_ORIGIN` | The receive host's origin | frontend image, `deploy`, `deployment-smoke` |
 | `DEPLOY_APP_ALIAS_ORIGIN` | The site's second origin; empty for none | frontend image, `deploy`, `deployment-smoke` |
+| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image |
+| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image |
+| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image |
 | `DEPLOY_ALIAS_TLS_SECRET` | The second host's certificate Secret; with a second origin | `deploy` |
 | `DEPLOY_RECEIVE_TLS_SECRET` | The receive host's certificate Secret | `deploy` |
 | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_DATABASE` | The database role and database | `deploy` |
@@ -325,19 +329,24 @@ repository holds an installation's values:
 | `DEPLOY_BACKUP_RECIPIENT_KEY` | Type File: the public key the copies are encrypted to; with a bucket | `deploy` |
 | `DEPLOY_HEARTBEAT_URL` | The heartbeat endpoint; empty for no monitor | `deploy` |
 | `DEPLOY_HEARTBEAT_SECRET` | The Secret holding the heartbeat tokens; with a heartbeat URL | `deploy` |
-| `DEPLOY_RUNNER_TAG` | The tag of the runner inside the server | `deploy`'s `tags:` |
+| `DEPLOY_RUNNER_TAG` | The tag of the runner inside the server: letters, digits, `.`, `_` and `-` | `deploy`'s `tags:`, the rules of `deploy`, `deployment-smoke` and `deploy-runner-tag` |
 | `QA_TOOLS_RUNNER_TAG` | The tag of the runner for every other job but the smoke; unset, GitLab's shared runners | every job's `tags:` but those two |
 | `KUBECONFIG_DEPLOYER` | Type File, protected, environment `production`: the kubeconfig of `gitlab-deployer.yaml`'s ServiceAccount | `deploy` |
 
 The deploy job stops before `helm upgrade` and names every variable it reads
 that is not set, so an unset one cannot switch the backup's off-server copy or
-the monitor off; set empty, a variable takes the chart's default, which for
-the second origin, the bucket and the heartbeat URL is none. It refuses a
-value holding anything but letters, digits and `.`, `_`, `:`, `/` and `-`,
-naming the variable and never printing the value. With
-`DEPLOY_RUNNER_TAG` unset the deploy job waits for a runner tagged with the
-variable's literal name, which none is, and deploys nothing. The pipeline
-installs the release `qa-tools` into the namespace `qa-tools`.
+the monitor off. It stops the same way for one set empty, but for the three
+options: an empty second origin, bucket or heartbeat URL is none, and its
+companions are then not needed. It refuses a value holding anything but
+letters, digits and `.`, `_`, `:`, `/` and `-`, naming the variable and never
+printing the value. On `main` the frontend image's build likewise stops before
+building, naming each of its three operator variables that is not set; set
+empty, the image leaves that detail out. With `DEPLOY_RUNNER_TAG` not set, or
+holding anything but one runner tag, neither `deploy` nor `deployment-smoke`
+is created, so the job holding the cluster's credential never runs untagged on
+a shared runner, and the job `deploy-runner-tag` fails the pipeline before
+anything is built, naming the variable. The pipeline installs the release
+`qa-tools` into the namespace `qa-tools`.
 
 ## License
 

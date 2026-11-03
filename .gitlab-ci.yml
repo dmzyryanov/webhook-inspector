@@ -12,7 +12,8 @@
 # - the deploy runs on the runner tagged with $DEPLOY_RUNNER_TAG, a runner
 #   inside the server the chart is installed on: the cluster API port need not
 #   be published to the internet, so nothing outside the server can reach it
-#   (D082, D092);
+#   (D082, D092); with that variable not set or holding no runner tag, the
+#   deploy is not created and `deploy-runner-tag` fails the pipeline (#367);
 # - the smoke after a deployment runs on GitLab's shared runners.
 #
 # What an installation is - its addresses, its runners, its backup's storage,
@@ -210,8 +211,34 @@ main-validation:
       }
 
       # BUILD_ARGS, unquoted on purpose, is the image's build arguments, word
-      # by word: the frontend's names the inspector's address (D274); the
-      # other images take none.
+      # by word: the frontend's names the inspector's address (D274) and its
+      # operator (#369); the other images take none.
+
+      # BUILD_VARIABLES names the project CI/CD variables an image's build
+      # reads that may be empty but must be set (#367): the frontend's
+      # operator. On main, where the image is published and deployed, one not
+      # set stops the job here, before anything is built, naming it, so an
+      # unset variable cannot leave a detail out of production's site; set
+      # empty, the detail is left out. A merge request builds with what is
+      # set and throws the image away. The names are checked before `eval`
+      # reads them, and no value is printed.
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        missing=''
+        for name in $BUILD_VARIABLES; do
+          case "$name" in
+            [!A-Z_]* | *[!A-Z0-9_]*)
+              echo "BUILD_VARIABLES holds something other than variable names"
+              exit 1
+              ;;
+          esac
+          eval "given=\${$name+set}"
+          if [ -z "$given" ]; then missing="$missing $name"; fi
+        done
+        if [ -n "$missing" ]; then
+          echo "Not built: the project CI/CD variables$missing are not set; set empty, each is left out (README.md, Deploying from GitLab CI)"
+          exit 1
+        fi
+      fi
 
       # A merge request builds to prove the image still builds, and pushes
       # nothing: only main produces artifacts (D094).
@@ -286,18 +313,21 @@ image:frontend:
     DOCKERFILE: apps/frontend/Dockerfile
     CONTEXT: .
     IMAGE: $CI_REGISTRY_IMAGE/frontend
-    # What production's site says of its operator (#369): its status page,
-    # which the header links and /status redirects to; its contact address,
-    # which the footer, the about pages and security.txt give; and its own
-    # texts, the Terms of Use, the Privacy Policy and the about pages' lines
-    # on who runs the service. Unset, the image leaves each out; the
-    # repository's sources fall back to none of them
-    # (apps/frontend/src/lib/operator.ts). Job variables until #367 moves
-    # them to CI/CD variables of the project, which, of the same name,
-    # override these.
-    STATUS_PAGE_URL: 'https://status.qa-tools.ru/'
-    CONTACT_EMAIL: 'contact@qa-tools.ru'
-    OPERATOR_TEXTS: 'true'
+    # What the site says of its operator (#369): its status page, which the
+    # header links and /status redirects to; its contact address, which the
+    # footer, the about pages and security.txt give; and its own texts, the
+    # Terms of Use, the Privacy Policy and the about pages' lines on who runs
+    # the service. They come from the project's CI/CD variables
+    # DEPLOY_STATUS_PAGE_URL, DEPLOY_CONTACT_EMAIL and DEPLOY_OPERATOR_TEXTS
+    # (#367), which the installation sets; none is named in this file. Set
+    # empty, the image leaves the detail out, the repository's sources falling
+    # back to none of them (apps/frontend/src/lib/operator.ts); not set, the
+    # build on main stops before `docker build`, naming it (BUILD_VARIABLES,
+    # .image). The names here are the ones the frontend build reads.
+    STATUS_PAGE_URL: $DEPLOY_STATUS_PAGE_URL
+    CONTACT_EMAIL: $DEPLOY_CONTACT_EMAIL
+    OPERATOR_TEXTS: $DEPLOY_OPERATOR_TEXTS
+    BUILD_VARIABLES: 'DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'
     # The image names the inspector's address (D274, D275) and its operator
     # (#369): each argument takes the value of the variable of its name.
     BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'
@@ -321,14 +351,39 @@ image:postgres:
       changes:
         - deploy/postgres/**/*
 
+# The deploy job holds the protected KUBECONFIG_DEPLOYER, so it runs only on
+# the runner the project CI/CD variable DEPLOY_RUNNER_TAG names (#367). A tag
+# that expands to nothing is dropped, and an untagged job may go to GitLab's
+# shared runners, credential and all; one whose variable is not set waits for
+# a runner tagged with the literal name. So `deploy`, and the smoke after it,
+# are created only when DEPLOY_RUNNER_TAG holds a runner tag - letters,
+# digits, `.`, `_` and `-`, starting with a letter or digit - and otherwise
+# this job fails the pipeline on main, before anything is built, naming the
+# variable. The three rules hold the same pattern; scripts/ci-runners.test.mjs
+# checks that they do, and that no value of the variable creates `deploy`
+# without its runner's tag. This job has no environment, so it is given no
+# KUBECONFIG_DEPLOYER, and reads nothing.
+deploy-runner-tag:
+  stage: .pre
+  image: $NODE_IMAGE
+  cache: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      echo "Not deployed: the project CI/CD variable DEPLOY_RUNNER_TAG is not set or holds no runner tag, so the deploy job, which would hold the cluster's credential, is not created (README.md, Deploying from GitLab CI)"
+      exit 1
+
 deploy:
   stage: deploy
   # The runner inside the server the chart is installed on, named by the
-  # project CI/CD variable DEPLOY_RUNNER_TAG (#367). It should accept only jobs
+  # project CI/CD variable DEPLOY_RUNNER_TAG (#367), and created only when that
+  # names one (`deploy-runner-tag`, above). The runner should accept only jobs
   # carrying its tag, so nothing else in the pipeline can land on that host.
-  # Unset, the tag stays its literal name, which no runner carries, and the
-  # job waits, deploying nothing. The only job with an environment, so the
-  # only one given KUBECONFIG_DEPLOYER, scoped to `production` (D258).
+  # The only job with an environment, so the only one given
+  # KUBECONFIG_DEPLOYER, scoped to `production` (D258).
   tags:
     - $DEPLOY_RUNNER_TAG
   cache: []
@@ -346,7 +401,7 @@ deploy:
     name: production
     url: $DEPLOY_APP_ORIGIN
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
   variables:
     # A protected, namespace-scoped kubeconfig; the pipeline never holds
     # administrative credentials (D093).
@@ -355,11 +410,16 @@ deploy:
   # README.md "Deploying from GitLab CI"); scripts/chart.test.mjs runs this
   # script. First, every variable the job reads must be set: one that is not
   # stops the job here, before `helm upgrade`, naming it, so an unset variable
-  # cannot switch the backup's off-server copy or the monitor off. Set empty,
-  # DEPLOY_APP_ALIAS_ORIGIN means no second host, DEPLOY_BACKUP_BUCKET no
-  # off-server copy and DEPLOY_HEARTBEAT_URL no monitor, and any other the
-  # chart's own default; with a bucket, the copy's endpoint, region, Secret
-  # and key must be given, and with a heartbeat URL its Secret.
+  # cannot switch the backup's off-server copy or the monitor off. What every
+  # installation needs - the two origins, the receive host's certificate
+  # Secret, the database role and database, the backup directory - must hold
+  # a value too: set empty, it stops the job the same way, rather than let the
+  # chart's default rename the database, the backup directory or the
+  # certificate under a running installation. Only the options may be empty:
+  # DEPLOY_APP_ALIAS_ORIGIN for no second host, DEPLOY_BACKUP_BUCKET for no
+  # off-server copy and DEPLOY_HEARTBEAT_URL for no monitor; with a second
+  # host its certificate Secret must be given, with a bucket the copy's
+  # endpoint, region, Secret and key, and with a heartbeat URL its Secret.
   #
   # Then each value: the chart takes the hosts and builds https:// origins of
   # them (D274), so each origin must be https:// and a host name alone; the
@@ -379,9 +439,12 @@ deploy:
   script:
     - |
       missing=''
-      for name in DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN DEPLOY_APP_ALIAS_ORIGIN \
-        DEPLOY_RECEIVE_TLS_SECRET DEPLOY_POSTGRES_USER DEPLOY_POSTGRES_DATABASE \
-        DEPLOY_BACKUP_HOST_PATH DEPLOY_BACKUP_BUCKET DEPLOY_HEARTBEAT_URL; do
+      for name in DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN DEPLOY_RECEIVE_TLS_SECRET \
+        DEPLOY_POSTGRES_USER DEPLOY_POSTGRES_DATABASE DEPLOY_BACKUP_HOST_PATH; do
+        eval "given=\${$name:-}"
+        if [ -z "$given" ]; then missing="$missing $name"; fi
+      done
+      for name in DEPLOY_APP_ALIAS_ORIGIN DEPLOY_BACKUP_BUCKET DEPLOY_HEARTBEAT_URL; do
         eval "given=\${$name+set}"
         if [ -z "$given" ]; then missing="$missing $name"; fi
       done
@@ -396,7 +459,7 @@ deploy:
         if [ -z "$given" ]; then missing="$missing $name"; fi
       done
       if [ -n "$missing" ]; then
-        echo "Not deployed: the project CI/CD variables$missing are not set (README.md, Deploying from GitLab CI)"
+        echo "Not deployed: the project CI/CD variables$missing are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)"
         exit 1
       fi
 
@@ -447,7 +510,8 @@ deploy:
       fi
 
       # The chart's values: the hosts, and each other variable that is not
-      # empty; an empty one leaves the chart's default.
+      # empty, which, past the checks above, leaves out only an option that
+      # is off and its companions.
       upgrade_release() {
         set -- \
           --set-string images.registry="${CI_REGISTRY_IMAGE:?CI_REGISTRY_IMAGE must be set}" \
@@ -495,8 +559,10 @@ deployment-smoke:
   # (scripts/check-deployment.mjs, CERTIFICATE_WAIT, D275); the checks
   # themselves take seconds.
   timeout: 10m
+  # After a deployment only: not created when `deploy` is not
+  # (`deploy-runner-tag`).
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
   script:
     # The site, and the receive host where webhooks are received since 0.36.0
     # (D187), through its own TCP route; then the site's second host, when

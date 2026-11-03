@@ -587,7 +587,7 @@ The inspector's address is two settings, the site's origin `APP_ORIGIN` and
 the receive host's `RECEIVE_ORIGIN` (D274), the names the backend reads for
 the same values (D187, D203), and since 1.16.0 a third, `APP_ALIAS_ORIGIN`,
 the site's second origin, the host the same site also answers on and moves
-to on day X (D275). Since 1.19.6 (#367) they are the project's CI/CD
+to on day X (D275). Since 1.19.10 (#367) they are the project's CI/CD
 variables `DEPLOY_APP_ORIGIN`, `DEPLOY_RECEIVE_ORIGIN` and
 `DEPLOY_APP_ALIAS_ORIGIN`, which no file of the repository names; the hidden
 job `.inspector-address` of `.gitlab-ci.yml` gives them the three names above
@@ -627,13 +627,19 @@ three origins and the pipeline files and `deploy/` to naming none of them.
 `values.yaml` names no host: the chart refuses to render without the two.
 
 What else makes an installation is in the project's CI/CD variables too,
-since 1.19.6 (#367): the runners (`QA_TOOLS_RUNNER_TAG`, `DEPLOY_RUNNER_TAG`),
+since 1.19.10 (#367): the runners (`QA_TOOLS_RUNNER_TAG`, `DEPLOY_RUNNER_TAG`),
 the certificates' and the database's names, the backup directory, the
-off-server copy's bucket, storage, Secret and recipient key, and the heartbeat
-URL and Secret, each listed in README.md, "Deploying from GitLab CI". The
-deploy job stops before `helm upgrade`, naming every one it reads that is not
-set, so an unset variable cannot switch the off-server copy or the monitor
-off, and gives the chart each that is not empty. The chart's own defaults name
+off-server copy's bucket, storage, Secret and recipient key, the heartbeat
+URL and Secret, and the operator's details the frontend image names
+(`DEPLOY_STATUS_PAGE_URL`, `DEPLOY_CONTACT_EMAIL`, `DEPLOY_OPERATOR_TEXTS`,
+below), each listed in README.md, "Deploying from GitLab CI". The deploy job
+stops before `helm upgrade`, naming every one it reads that is not set, so an
+unset variable cannot switch the off-server copy or the monitor off; it stops
+the same way for one set empty, but for the three options, the second origin,
+the bucket and the heartbeat URL, which empty are off, so an empty variable
+cannot let the chart's default rename the database, the backup directory or
+the receive host's certificate under a running installation. It gives the
+chart each value that is not empty. The chart's own defaults name
 nothing of production's: no host, registry, bucket, storage, heartbeat
 service or key, TLS and database Secrets named after the release, the backup
 directory `/var/backups/webhook-inspector`, and the off-server copy and the
@@ -688,10 +694,14 @@ contact address; and `OPERATOR_TEXTS`, `true` or `false`, the operator's own
 texts. Unlike the origins, an unset or empty one has no default: the detail
 is left out, and nothing in the sources falls back to production's. A value
 of the wrong form fails the build, never quoted, and so does
-`OPERATOR_TEXTS=true` without the other two, which the texts name. The
-image's `.gitlab-ci.yml` job `image:frontend` sets production's as job
-variables beside its `BUILD_ARGS` until #367 moves them to CI/CD variables,
-which of the same name override them.
+`OPERATOR_TEXTS=true` without the other two, which the texts name. Since
+1.19.10 (#367) production's come from the project's CI/CD variables
+`DEPLOY_STATUS_PAGE_URL`, `DEPLOY_CONTACT_EMAIL` and `DEPLOY_OPERATOR_TEXTS`,
+which the `.gitlab-ci.yml` job `image:frontend` gives the three names above
+beside its `BUILD_ARGS`, as `.inspector-address` does the origins; no file of
+the repository names their values. On `main` the build stops before building,
+naming each of the three that is not set, so an unset variable cannot leave a
+detail out of production's site; set empty, the image leaves it out.
 
 - The status page: `Status ↗` in the application's header (`AppHeader`) and
   the static pages' (`siteHeader`), with the divider before it, comes from
@@ -1067,12 +1077,19 @@ the same commits twice.
 `validate` runs lint and formatting, type checking, the backend and frontend
 suites against a PostgreSQL service built from the same image production runs
 (D073, D084), the `check:native-ts` resolution check on a deliberately clean
-install (D051), the `e2e` browser smoke suite, `helm lint`, and the delivery
+install (D051), the `e2e` browser smoke suite, the chart's checks with the real
+helm, and the delivery
 checks: `check-version`, `check-api-breaking` and the quick script tests in
 `delivery-checks`, and the slow script tests in `operations-tests`. A merge
 request pipeline runs that group only when the merge request changes a path
 its rule lists, what its tests read, which the job checks by recording it
-(D241). The `helm lint` job also fails if the database
+(D241). The `chart` job runs `helm lint` and, since 1.19.10 (#367), renders
+the chart with the real helm as an installer with none of production's values
+would: with made-up hosts and registry alone the render must name nothing of
+production's or its services and hold neither the monitor, the backup's
+notifier nor its off-server uploader; without the hosts helm must refuse,
+naming them; and with a bucket and a heartbeat URL the three must render. It
+also fails if the database
 image tag in the pipeline and in the chart have drifted apart, because the
 suite would otherwise prove `pg_cron` against an image production does not use.
 
@@ -1121,9 +1138,9 @@ time rather than quietly replacing them.
 `deploy` runs `helm upgrade --install` with that same SHA and explicitly sets
 `images.registry` from `CI_REGISTRY_IMAGE`, the same project registry used by the
 build jobs. This works in both the personal and group namespace; the command
-fails before invoking Helm if that variable is empty or unset. The chart default
-is retained for the current namespace, so manual upgrades after a transfer must
-pass the new registry path too. Registry contents, pull access and existing Helm
+fails before invoking Helm if that variable is empty or unset. The chart has
+no registry default since 1.19.10 (#367): a manual upgrade passes
+`images.registry` too, and the render is refused without it. Registry contents, pull access and existing Helm
 revisions require the separate transfer procedure, kept with the operations outside this repository.
 The deploy job is the only job that
 runs on the runner inside the production server, because the cluster API is not
@@ -1143,11 +1160,17 @@ pipeline files fails when
 stage, the gate on `main`, the proof job and the image builds run on the
 project's own CI runner, on a server of its own that holds nothing else: every
 one takes its runner tag from `QA_TOOLS_RUNNER_TAG`, GitLab's shared runners
-by default since 1.19.6 (#367), which production's project CI/CD variable of
+by default since 1.19.10 (#367), which production's project CI/CD variable of
 that name points at its own runner and can point back at the shared runners
 as the fallback, the child pipeline on `main` included, since the trigger job
 does not pass that variable on (D258). The deploy job's runner is the project
-variable `DEPLOY_RUNNER_TAG`. The
+variable `DEPLOY_RUNNER_TAG`. A tag that expands to nothing is dropped, and an
+untagged job may go to GitLab's shared runners, so `deploy` and the smoke after
+it are created only when the variable holds one runner tag, letters, digits,
+`.`, `_` and `-`; otherwise the job `deploy-runner-tag` fails the `main`
+pipeline in `.pre`, before anything is built, naming the variable, and
+`scripts/ci-runners.test.mjs` holds that no value creates `deploy` without its
+runner's tag (#367). The
 validate stage's two heavy jobs, `test` and `e2e`, take turns through a
 resource group of their own, `heavy-tests-$QA_TOOLS_RUNNER_TAG`, across every
 pipeline of the project, so the two never share that server's CPU and the
