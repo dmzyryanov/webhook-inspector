@@ -106,6 +106,14 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.7
+
+2026-11-03
+
+**Nothing changes on this site; a few comments in the inspector's code now
+say where the files it serves come from.** Every address answers exactly as
+before. (#344)
+
 ## 1.19.6
 
 2026-11-03

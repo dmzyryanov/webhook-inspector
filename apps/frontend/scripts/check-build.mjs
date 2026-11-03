@@ -56,11 +56,14 @@
  *   nor names one but the law that governs the terms (D224). They are the
  *   operator's texts (issue #369): a build that does not show them has
  *   neither page, and its sitemap lists neither address.
- * - The files for search engines and link previews (D183), copied from
- *   `public/`, are there: `robots.txt`; `sitemap.xml`, which lists every page
- *   the site offers search engines and no session page or address
- *   `robots.txt` closes; `favicon.ico`, holding 16, 32 and
- *   48 px; and the two PNG logo images at their sizes.
+ * - The files for search engines and link previews (D183) are there:
+ *   `robots.txt`; `sitemap.xml`, which lists every page the site offers
+ *   search engines and no session page or address `robots.txt` closes;
+ *   `favicon.ico`, holding 16, 32 and 48 px; and the two PNG logo images at
+ *   their sizes. `scripts/build-site-files.mjs` writes `robots.txt` and
+ *   `sitemap.xml` from `public/` under the build's origins, byte for byte as
+ *   built for production (D274); the favicon and the two logo images are
+ *   copied from `public/` as they are.
  * - The relay script (D202) under its name, `webhook-inspector-relay.mjs`
  *   (D275), written from `public/`, is there, and its SHA-256 is the one
  *   `/docs` gives for it, the only one the relay section of the built
@@ -521,7 +524,13 @@ export function legalPageProblems(page, html) {
   return problems;
 }
 
-/** Copied from `public/` and served as files, for search engines and link previews (D183). */
+/**
+ * Served as files, for search engines and link previews (D183):
+ * `robots.txt` and `sitemap.xml`, which `build-site-files.mjs` writes from
+ * `public/` under the build's origins, byte for byte as built for production
+ * (D274); `favicon.ico` and the two logo images, copied from `public/` as
+ * they are.
+ */
 export const SEARCH_FILES = [
   'robots.txt',
   'sitemap.xml',
