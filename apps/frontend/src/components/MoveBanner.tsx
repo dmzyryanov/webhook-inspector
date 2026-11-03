@@ -6,6 +6,7 @@ import {
   collectMove,
   formatMoveDay,
   moveBannerShown,
+  moveNoticePieces,
   originHost,
 } from '../lib/move-link.ts';
 import { browserStorage } from '../lib/read-state.ts';
@@ -23,7 +24,10 @@ import { browserStorage } from '../lib/read-state.ts';
  * build's (`BUILT_MOVE`), the day written with the interface's months. One
  * centred line from 768 px, 9 px above and below, the bar 35 px with its 1 px
  * line; below 768 px the text and the action are centred lines of their own,
- * 4 px apart, 10 px above and below.
+ * 4 px apart, 10 px above and below. The host is one piece that never breaks
+ * across lines, at its hyphen or its dots, as the frames draw it (issue #347,
+ * `moveNoticePieces`); the rest of the text wraps where the browser wraps it,
+ * and it reads as the one sentence it is.
  *
  * The `→` is the system font's: the Inter subsets the page loads have no
  * U+2192, which unlike `↗` (D158) has no emoji form, and as text it is
@@ -45,6 +49,8 @@ export function MoveBanner() {
   }
 
   const to = move.to;
+  const day = formatMoveDay(move.day, m);
+  const notice = moveNoticePieces(originHost(to), (host) => m.move.notice(host, day));
 
   function follow(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -56,7 +62,17 @@ export function MoveBanner() {
       data-testid="move-banner"
       className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-move-line bg-row-selected px-7 py-[9px] text-center text-[13px] leading-4 max-md:flex-col max-md:gap-1 max-md:px-4 max-md:py-[10px] md:max-lg:px-6"
     >
-      <p className="text-brand">{m.move.notice(originHost(move.to), formatMoveDay(move.day, m))}</p>
+      <p className="text-brand">
+        {notice.map((piece, index) =>
+          piece.host ? (
+            <span key={index} className="whitespace-nowrap">
+              {piece.text}
+            </span>
+          ) : (
+            piece.text
+          ),
+        )}
+      </p>
       {/* Below 1024 px its tap area is 44 px high, drawn no differently (D157). */}
       <a
         href={`${to}/`}
