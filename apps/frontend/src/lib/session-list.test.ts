@@ -660,11 +660,11 @@ describe('parseSessionList: hostile values at growing sizes', () => {
   const NESTING_MAX = 2 * 1024 * 1024;
   const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
   /**
-   * Generous: a parse took 0.75 s at most in a loaded suite (#355), while a
-   * quadratic one takes 7.6 s on 2 MiB of nesting and over 70 s on 5 MiB of
-   * entries.
+   * Generous: in a loaded suite a parse took 0.75 s at most, and the two of
+   * the 2 MiB nesting test 1.3 s together (#355), while a quadratic parse
+   * takes 7.6 s on 2 MiB of nesting and over 70 s on 5 MiB of entries.
    */
-  const LIMIT_MS = 2500;
+  const LIMIT_MS = 3000;
 
   function timed(raw: string): ListedSession[] {
     const started = performance.now();

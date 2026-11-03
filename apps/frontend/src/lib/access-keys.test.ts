@@ -608,10 +608,11 @@ describe('parseAccessKeys: hostile values at growing sizes', () => {
   /** Nesting stops at 2 MiB, not 5 (`NESTING_MAX`). */
   const NESTING_SIZES = [1024, 64 * 1024, 1024 * 1024, NESTING_MAX];
   /**
-   * Generous: a parse took 0.5 s at most in a loaded suite (#355), while a
-   * quadratic one takes 8 s on 2 MiB of nesting and 38 s on 5 MiB of entries.
+   * Generous: in a loaded suite a parse took 0.5 s at most, and the two of the
+   * 2 MiB nesting test 1.3 s together (#355), while a quadratic parse takes
+   * 8 s on 2 MiB of nesting and 38 s on 5 MiB of entries.
    */
-  const LIMIT_MS = 2500;
+  const LIMIT_MS = 3000;
 
   function timed(raw: string): Map<string, string> {
     const started = performance.now();
