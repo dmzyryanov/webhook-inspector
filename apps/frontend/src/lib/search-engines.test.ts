@@ -814,31 +814,34 @@ function pathsOf(documents: string[]) {
   );
 }
 
-/** The Ingresses of the host `value` names, `ingress.host` or `ingress.aliasHost`. */
+/**
+ * The Ingresses of the host `value` gives, the site's through the chart's
+ * helper that refuses a render without it (#367), or `ingress.aliasHost`.
+ */
 const ingressesOf = (value: string) =>
-  INGRESS_DOCUMENTS.filter((document) =>
-    document.includes(`- host: {{ .Values.ingress.${value} }}`),
-  );
+  INGRESS_DOCUMENTS.filter((document) => document.includes(`- host: {{ ${value} }}`));
+const SITE_HOST = 'include "qa-tools.host" .';
+const SECOND_HOST = '.Values.ingress.aliasHost';
 
 /**
  * The paths of the chart's two Ingresses for the site's host, each with its
  * type and the Service it reaches: the API's, which carries the edge rate
  * limit (D264), then the site's. Traefik ranks the routers of both together.
  */
-const ingress = pathsOf(ingressesOf('host'));
+const ingress = pathsOf(ingressesOf(SITE_HOST));
 
 /**
  * The same for the site's second host (#319, D275), whose two Ingresses of
  * their own carry the noindex middleware: their routers are ranked among
  * themselves, a request for one host never matching the other's.
  */
-const aliasIngress = pathsOf(ingressesOf('aliasHost'));
+const aliasIngress = pathsOf(ingressesOf(SECOND_HOST));
 
 describe('routing by path segment (D183)', () => {
   it('gives each Ingress one host, the site’s for two and its second’s for two (D275)', () => {
     assert.equal(INGRESS_DOCUMENTS.length, 4);
-    assert.equal(ingressesOf('host').length, 2);
-    assert.equal(ingressesOf('aliasHost').length, 2);
+    assert.equal(ingressesOf(SITE_HOST).length, 2);
+    assert.equal(ingressesOf(SECOND_HOST).length, 2);
     for (const document of INGRESS_DOCUMENTS) {
       assert.equal([...document.matchAll(/^\s*- host: /gm)].length, 1);
     }
@@ -877,19 +880,15 @@ describe('routing by path segment (D183)', () => {
   });
 });
 
-/** The chart's `ingress.host`: the host of every rule of the site's two Ingresses. */
-const INGRESS_HOST = /^ingress:\n\s+host: (\S+)$/m.exec(
-  read('../../../../deploy/helm/qa-tools/values.yaml'),
-)?.[1];
-
 /**
- * Production's second host, which the deploy job gives the chart as
- * `ingress.aliasHost` from `APP_ALIAS_ORIGIN` in `.gitlab-ci.yml` (D275);
- * values.yaml gives none.
+ * Production's `ingress.host`, the host of every rule of the site's two
+ * Ingresses, and its second host, `ingress.aliasHost` (D275). Since #367 the
+ * deploy job gives the chart both from the project's CI/CD variables, and
+ * neither values.yaml nor the pipeline names them; scripts/chart.test.mjs
+ * holds the deploy job to these two.
  */
-const ALIAS_HOST = /^ {4}APP_ALIAS_ORIGIN: 'https:\/\/([a-z0-9.-]+)'$/m.exec(
-  read('../../../../.gitlab-ci.yml'),
-)?.[1];
+const INGRESS_HOST = 'qa-tools.ru';
+const ALIAS_HOST = 'webhook.qa-tools.ru';
 
 interface TraefikRouter {
   path: string;

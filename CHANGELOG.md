@@ -106,6 +106,20 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.10
+
+2026-11-03
+
+**Nothing changes on this site; the inspector's installation files no longer
+assume they are this site's.** Someone installing the inspector on a server of
+their own now gives it their own addresses, and its off-server backup copy and
+its alerts are options they switch on with storage and an alerting service of
+their own; this site sets the same values it had, kept outside the code.
+The automated build of the site now stops, naming the setting, when the site's
+or the receive host's address, or one of the operator's details, has not been
+given, rather than build a copy that names this site's addresses or leaves its
+details out. Every address answers exactly as before. (#367)
+
 ## 1.19.9
 
 2026-11-03

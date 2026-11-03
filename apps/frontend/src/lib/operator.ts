@@ -3,7 +3,9 @@
  * contact address, and whether the operator's own texts are shown. Each is
  * a setting of the frontend build, passed like `APP_ORIGIN` (D274): a build
  * argument of `apps/frontend/Dockerfile`, which `.gitlab-ci.yml` sets for
- * production's image. Unset or empty, the detail is left out; nothing here
+ * production's image from the project's CI/CD variables
+ * `DEPLOY_STATUS_PAGE_URL`, `DEPLOY_CONTACT_EMAIL` and `DEPLOY_OPERATOR_TEXTS`
+ * (#367). Unset or empty, the detail is left out; nothing here
  * falls back to production's values, so a copy built from the repository
  * names nobody's status page, address or terms unless it gives its own.
  *

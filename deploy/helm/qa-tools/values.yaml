@@ -1,18 +1,24 @@
-# Values for the QA Tools chart.
-#
-# Install into its own namespace:
-#   helm upgrade --install qa-tools deploy/helm/qa-tools \
-#     --namespace qa-tools --create-namespace \
+# Values for the Webhook Inspector chart. They name no installation: the
+# hosts and the registry are the installer's, and the backup's off-server copy
+# and the monitor are off until configured (#367). README.md, "Installing on
+# k3s with the chart", lists what to set. Install into its own namespace:
+#   helm upgrade --install inspector deploy/helm/qa-tools \
+#     --namespace inspector --create-namespace \
 #     --set-string images.registry=<registry-host/namespace/project> \
-#     --set images.tag=<commit-sha>
+#     --set-string images.tag=<commit-sha> \
+#     --set-string ingress.host=<the site's host> \
+#     --set-string receive.host=<the receive host>
+#
+# The project's own production is one such installation: its deploy job in
+# .gitlab-ci.yml passes its values from the project's CI/CD variables, which
+# its operator keeps outside this repository.
 
 images:
-  # Default for manual use: the registry of this project, where its images
-  # are built since it moved out of qa-tools (#326). CI passes
-  # CI_REGISTRY_IMAGE explicitly, so builds and deployment always follow the
-  # project path of the moment; a later transfer or rename must update this
-  # default in the same change.
-  registry: registry.gitlab.com/qa-tools-team/webhook-inspector
+  # The registry and path holding the backend, frontend and postgres images,
+  # which the installer builds and pushes (README.md). No default: the chart
+  # refuses to render without it. CI passes CI_REGISTRY_IMAGE, the project's
+  # own registry.
+  registry: ''
   # Applied to the frontend and backend images, and set by CI to the commit SHA
   # so a release names exactly the code it deploys (D022). There is no default:
   # a missing tag must fail the install rather than silently deploy something
@@ -24,26 +30,26 @@ images:
   # token with read_registry scope, of the project or of its group.
   pullSecret: gitlab-registry
 
-# ingress.host is the site's host. The deploy job sets it from APP_ORIGIN in
-# .gitlab-ci.yml, as it does receive.host and alerts.siteUrl (D274); the value
-# here is for a render of the chart on its own.
+# ingress.host is the site's host, and receive.host below the receive host's:
+# no defaults, and the chart refuses to render without both, naming them. The
+# deploy job sets them from its origins (D274, #367).
 ingress:
-  host: qa-tools.ru
+  host: ''
   # The site's second host (#319, D275): the same site, API, WebSocket and MCP
   # server on two Ingresses of their own, templates/ingress.yaml, every answer
-  # carrying X-Robots-Tag: noindex. The deploy job sets it from
-  # APP_ALIAS_ORIGIN in .gitlab-ci.yml, webhook.qa-tools.ru in production.
-  # Empty, the default, there is none: a render of the chart on its own, or a
-  # copy installed with its own hosts, asks no certificate for a host of
-  # production's.
+  # carrying X-Robots-Tag: noindex. Empty, the default, there is none, and no
+  # certificate is asked for one.
   aliasHost: ''
   className: traefik
   tls:
     enabled: true
-    secretName: qa-tools-tls
+    # The site's certificate, a Secret cert-manager keeps; empty is
+    # <release>-tls.
+    secretName: ''
     # The second host's certificate, a Secret of its own that cert-manager
-    # issues for that host alone, so qa-tools-tls is not reissued for it.
-    aliasSecretName: webhook-qa-tools-tls
+    # issues for that host alone, so the first host's is not reissued for it;
+    # empty is <release>-alias-tls.
+    aliasSecretName: ''
     # letsencrypt-staging exists for proving a change to the challenge path
     # without spending the production allowance; production was reached only
     # after staging issued a certificate for this host
@@ -81,11 +87,11 @@ ingress:
 # to the backend's receive listener unchanged, behind a PROXY protocol v2
 # header carrying the sender's address. Traefik's HTTP layer, which rewrote
 # header names, order and paths (D091, D144, D173), is not on this path.
-# The host's DNS record, A hook.qa-tools.ru -> the server, is at FirstVDS.
-# The deploy job sets receive.host from RECEIVE_ORIGIN in .gitlab-ci.yml
-# (D274).
+# The host needs a DNS record of its own pointing at the server, as the
+# site's does. No default; the deploy job sets it from its receive origin
+# (D274, #367).
 receive:
-  host: hook.qa-tools.ru
+  host: ''
   # The backend's second listener, and the Service port of the same name.
   port: 3001
   # v2: Traefik's transport sends a PROXY protocol v2 header in front of every
@@ -95,10 +101,9 @@ receive:
   # pod's address as its sender: a fallback, never a configuration (runbook
   # section 7).
   proxyProtocol: v2
-  # The certificate cert-manager keeps for the host; the first one was issued
-  # into it during #90's Step 0 (2026-10-01), so the first deploy serves a
-  # valid certificate at once.
-  tlsSecretName: hook-qa-tools-tls
+  # The Secret cert-manager keeps the host's certificate in, through the
+  # chart's Certificate (templates/receive.yaml); empty is <release>-receive-tls.
+  tlsSecretName: ''
   # At most this many connections open at once from one sender address to the
   # receive host (D227, issue #145), counted by the backend's PROXY protocol
   # layer from the address the header carries - an IPv6 address by its /64 -
@@ -186,16 +191,18 @@ postgres:
   # deploy/postgres/Dockerfile changes. Tagging the database with every commit
   # SHA would restart it on every deployment.
   tag: '16-pgcron-1'
-  user: qa_tools
-  database: qa_tools
+  # The role and the database, created when the volume is first initialised;
+  # changing them later does not rename an existing database.
+  user: inspector
+  database: inspector
   port: 5432
   # The password is not held in this file or in the release. Create the secret
-  # once, before the first install:
-  #   kubectl -n qa-tools create secret generic qa-tools-postgres \
+  # once, before the first install; empty is <release>-postgres:
+  #   kubectl -n <namespace> create secret generic <release>-postgres \
   #     --from-literal=password="$(openssl rand -hex 24)"
   # Hex keeps it free of characters that would need escaping inside the
   # connection URL the backend receives.
-  existingSecret: qa-tools-postgres
+  existingSecret: ''
   secretKey: password
   storage:
     size: 20Gi
@@ -212,18 +219,18 @@ postgres:
 # Nightly database backup (D176; the backup and restore runbook is the
 # operator's, kept outside this repository): a CronJob that dumps
 # postgres.database into a directory on the node, checks that each dump
-# restores, and keeps the newest few.
+# restores, and keeps the newest few. Always on; the off-server copy below is
+# an option.
 backup:
   # 03:00 in Moscow, between the night deliveries at 02:00 and 04:00, neither of
   # which restarts PostgreSQL.
   schedule: '0 3 * * *'
   timeZone: Europe/Moscow
   # A directory on the node, outside the namespace, so it survives the
-  # namespace's removal. The owner creates it before the first install,
-  # owned by 999:999 with mode 0700; the pod fails to start if it is missing.
-  # Only this directory is mounted, so the #54 dump in its parent is out of
-  # reach.
-  hostPath: /var/backups/qa-tools/nightly
+  # namespace's removal. It must exist before the install, owned by 999:999
+  # with mode 0700 (README.md); the pod fails to start if it is missing. Only
+  # this directory is mounted, so whatever its parent holds is out of reach.
+  hostPath: /var/backups/webhook-inspector
   # Dumps kept, counted rather than aged: while runs keep failing, the last good
   # dumps stay until the failure is fixed (D176).
   keep: 3
@@ -242,25 +249,31 @@ backup:
     limits:
       cpu: 500m
       memory: 512Mi
-  # The off-server copy (D190, the backup and restore runbook): each
-  # run encrypts the dump it has saved and checked to the public key in
-  # files/db-backup-recipient.asc, whose private half only the owner holds, and
+  # The off-server copy (D190, the backup and restore runbook), off unless a
+  # bucket is set: each run encrypts the dump it has saved and checked to the
+  # public key in recipientKey, whose private half only its holder has, and
   # an uploader beside the backup in its pod puts that copy into the bucket and
   # prunes the bucket to `keep` copies, as the directory on the node.
   offsite:
-    # An empty bucket turns the off-server copy off: the pod has no uploader,
-    # nothing is encrypted, and the backup runs as it did before (local
-    # development, a manual install).
-    bucket: qa-tools-backups
-    # Yandex Object Storage, in Russia; any S3-compatible storage that takes
-    # path-style requests signed with Signature Version 4 would do.
-    endpoint: https://storage.yandexcloud.net
-    region: ru-central1
+    # Empty, the default, turns the off-server copy off: the pod has no
+    # uploader, nothing is encrypted, and the backup runs on its own. Set, the
+    # endpoint, the region and recipientKey must be set too, or the chart
+    # refuses to render, naming the one missing.
+    bucket: ''
+    # Any S3-compatible storage that takes path-style requests signed with
+    # Signature Version 4: its https:// endpoint and its region.
+    endpoint: ''
+    region: ''
+    # The OpenPGP public key, ASCII-armored, the copies are encrypted to, given
+    # with --set-file backup.offsite.recipientKey=<file>. Not a secret; the
+    # private key never comes near the cluster.
+    recipientKey: ''
     # The static access key is not held in this file or in the release. The
-    # owner creates the Secret, keys access-key-id and secret-access-key; it is
-    # never printed (the backup and restore runbook, section 9). With
-    # the bucket set and the Secret missing, the run fails and says so.
-    existingSecret: qa-tools-offsite-backup
+    # installer creates the Secret, keys access-key-id and secret-access-key,
+    # before the first run; it is never printed. Empty is
+    # <release>-offsite-backup. With the bucket set and the Secret missing, the
+    # run fails and says so.
+    existingSecret: ''
     # Each run reads the bucket's versioning and uploads nothing while it is
     # enabled, because a delete would then leave the old versions in place.
     # false only for a key that is refused that read; the owner then checks the
@@ -268,28 +281,30 @@ backup:
     checkVersioning: true
 
 # Alerts (D181; the alerts runbook is the operator's, kept outside this
-# repository): Statuser.cloud messages the owner in Telegram when a heartbeat
-# reports a failure or stops coming. The monitor CronJob sends `site` and
-# `disk` every 5 minutes, and a notifier in the backup pod sends `backup`
-# after each backup. The monitors, their intervals and grace times live in the
-# Statuser account, not here.
+# repository), off unless a heartbeat URL is set: a heartbeat service alerts
+# its owner when a heartbeat reports a failure or stops coming. The monitor
+# CronJob sends `site` and `disk` every 5 minutes, and a notifier in the
+# backup pod sends `backup` after each backup. The monitors, their intervals
+# and grace times live in that service, not here.
 alerts:
-  # Statuser's heartbeat endpoint: a POST to <heartbeatUrl>/<token> reports a
-  # success, and to <heartbeatUrl>/<token>/fail a failure.
-  heartbeatUrl: https://hb.statuser.cloud
-  # The tokens are not held in this file or in the release. The owner creates
-  # the Secret, keys site, disk and backup, one token each; the token is the
-  # credential and is never printed (the alerts runbook).
-  existingSecret: qa-tools-statuser
+  # The heartbeat endpoint: a POST to <heartbeatUrl>/<token> reports a
+  # success, and to <heartbeatUrl>/<token>/fail a failure; any service taking
+  # those two does. Empty, the default, renders neither the monitor nor the
+  # backup's notifier.
+  heartbeatUrl: ''
+  # The tokens are not held in this file or in the release. The installer
+  # creates the Secret, keys site, disk and backup, one token each; the token
+  # is the credential and is never printed. Empty is <release>-heartbeat.
+  existingSecret: ''
   # Probed by its public name, so the check passes through DNS, Traefik, TLS,
   # the frontend, the backend and the database, as a visitor's request does.
-  # Set by the deploy job from APP_ORIGIN in .gitlab-ci.yml (D274).
-  siteUrl: https://qa-tools.ru
+  # Empty is https://<ingress.host>.
+  siteUrl: ''
   # The receive host is probed too, by its public name and through its own TCP
   # route, so that capture never leaves the monitored path (D187). Its origin
   # is composed from receive.host.
-  # Every 5 minutes; Statuser expects one every 10 with 5 minutes' grace, so
-  # one missed run is tolerated and silence alerts after about 15 minutes.
+  # Every 5 minutes; a heartbeat expected every 10 with 5 minutes' grace
+  # tolerates one missed run and alerts on silence after about 15 minutes.
   schedule: '*/5 * * * *'
   # The node's local-path directory, which holds the database volume (D085).
   # Its filesystem's usage is what is checked; it is mounted read-only.

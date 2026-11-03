@@ -64,7 +64,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.postgres.existingSecret }}
+                  name: {{ include "qa-tools.postgresSecret" . }}
                   key: {{ .Values.postgres.secretKey }}
             # initdb refuses a directory that is not empty, and a freshly
             # mounted volume contains lost+found.

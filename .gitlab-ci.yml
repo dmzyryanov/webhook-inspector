@@ -4,15 +4,24 @@
 # them to the project's registry and deploys them (D022). Three runners take
 # its jobs (D258):
 # - the validate stage, the gate on main and the image builds run on the
-#   runner tagged with $QA_TOOLS_RUNNER_TAG: the project's own CI runner,
-#   `qa-tools-ci`, unless the project CI/CD variable of that name sends them
-#   to GitLab's shared runners as the fallback; of its jobs, `test` and `e2e`
-#   run one at a time across every pipeline, through a resource group of their
-#   own, and the rest take the runner's second place (#266);
-# - the deploy runs on a runner inside the production server: the cluster API
-#   port is not published to the internet, so nothing outside the server can
-#   reach it (D082, D092);
+#   runner tagged with $QA_TOOLS_RUNNER_TAG: GitLab's shared runners, unless
+#   the project CI/CD variable of that name names a runner of the project's
+#   own (#367); of its jobs, `test` and `e2e` run one at a time across every
+#   pipeline, through a resource group of their own, and the rest take the
+#   runner's second place (#266);
+# - the deploy runs on the runner tagged with $DEPLOY_RUNNER_TAG, a runner
+#   inside the server the chart is installed on: the cluster API port need not
+#   be published to the internet, so nothing outside the server can reach it
+#   (D082, D092); with that variable not set or holding no runner tag, the
+#   deploy is not created and `deploy-runner-tag` fails the pipeline (#367);
 # - the smoke after a deployment runs on GitLab's shared runners.
+#
+# What an installation is - its addresses, its runners, its backup's storage,
+# its heartbeat service - is in the project's CI/CD variables, never in this
+# file (#367): the deploy job names each it reads, and stops before
+# `helm upgrade` when one is not set. README.md, "Deploying from GitLab CI",
+# lists them; the project's own production keeps its values with its
+# operator, outside this repository.
 #
 # The validate stage's jobs live in .gitlab/ci/validate.yml. A merge request
 # pipeline includes that file. A pipeline on main validates a commit once at
@@ -50,36 +59,36 @@ variables:
   POSTGRES_IMAGE_TAG: '16-pgcron-1'
   # The runner tag of every job but `deploy` and `deployment-smoke`, through
   # `default:` below and in .gitlab/ci/validate.yml, which holds the same
-  # default for the child pipeline on main (D258). A project CI/CD variable of
-  # this name outranks this line, so setting it to `saas-linux-small-amd64`
-  # moves those jobs to GitLab's shared runners and deleting it brings them
-  # back, with no change here. Never leave it empty: an empty tag is dropped,
-  # and an untagged job goes to the shared runners without saying so.
-  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci'
+  # default for the child pipeline on main (D258): GitLab's shared runners. A
+  # project CI/CD variable of this name outranks this line, so setting it to a
+  # runner of the project's own moves those jobs there, and setting it back
+  # to `saas-linux-small-amd64`, or deleting it, moves them to the shared
+  # runners, with no change here (#367). Never leave it empty: an empty tag is
+  # dropped, and an untagged job goes to the shared runners without saying so.
+  QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'
 
-# The inspector's address (D274): the site's origin and the receive host's,
-# named here once. The frontend image is built for them, the chart is
-# installed with them and the smoke checks them; changing the two values is
-# the whole of a change of address in this repository. They are the names the
-# backend reads for the same values, which the chart sets from the hosts the
-# deploy job gives it. Only the jobs that extend this read them, the image
-# builds through .image: as global variables they would reach the test jobs
-# too, whose backend expects them unset. A copy elsewhere sets its own.
+# The inspector's address (D274, #367): the site's origin, the receive host's
+# and the site's second origin, from the project's CI/CD variables
+# DEPLOY_APP_ORIGIN, DEPLOY_RECEIVE_ORIGIN and DEPLOY_APP_ALIAS_ORIGIN, which
+# the installation sets; none is named in this file. The frontend image is
+# built for them and the smoke checks them, under the names the backend reads
+# for the same values; the deploy job reads the project variables themselves
+# and gives the chart their hosts. Only the jobs that extend this read them,
+# the image builds through .image; the project variables have names of their
+# own because a project variable reaches every job, and the test jobs'
+# backend expects these three unset.
 #
 # APP_ALIAS_ORIGIN (#319, D275) is the site's second origin, where it moves on
 # day X: the same release answers there too, closed to search, the chart
 # giving it Ingresses and a certificate of its own, the backend letting its
 # Origin call /mcp, the renamed relay script reading it by default, and the
-# smoke checking it. Links keep naming APP_ORIGIN. A copy with no second
-# address sets it empty. Emptied here while APP_ORIGIN is production's, the
-# chart would serve no second host while the frontend build, which takes
-# production's second origin for production's site, still named it: the way
-# back is reverting the change that brought it.
+# smoke checking it. Links keep naming APP_ORIGIN. An installation with no
+# second address sets its variable empty.
 .inspector-address:
   variables:
-    APP_ORIGIN: 'https://qa-tools.ru'
-    RECEIVE_ORIGIN: 'https://hook.qa-tools.ru'
-    APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru'
+    APP_ORIGIN: $DEPLOY_APP_ORIGIN
+    RECEIVE_ORIGIN: $DEPLOY_RECEIVE_ORIGIN
+    APP_ALIAS_ORIGIN: $DEPLOY_APP_ALIAS_ORIGIN
 
 default:
   interruptible: true
@@ -202,8 +211,45 @@ main-validation:
       }
 
       # BUILD_ARGS, unquoted on purpose, is the image's build arguments, word
-      # by word: the frontend's names the inspector's address (D274); the
-      # other images take none.
+      # by word: the frontend's names the inspector's address (D274) and its
+      # operator (#369); the other images take none.
+
+      # BUILD_VALUES and BUILD_VARIABLES name the project CI/CD variables an
+      # image's build reads (#367): those that need a value - the frontend's
+      # site and receive origins - and those that may be empty but must be
+      # set - its second origin, empty for none, and its operator, empty for
+      # a detail left out. On main the image is published once per commit and
+      # every rerun reuses it (below), so one not set, or empty where a value
+      # is needed, stops the job here, before anything is built, naming it:
+      # an image built from a fallback, production's origins or no operator,
+      # would stay that commit's image. A merge request builds with what is
+      # set and throws the image away. Each name is checked, with no glob
+      # read, before `eval` reads it, and no value is printed.
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        set -f
+        for name in $BUILD_VALUES $BUILD_VARIABLES; do
+          case "$name" in
+            [!A-Z_]* | *[!A-Z0-9_]*)
+              echo "BUILD_VALUES or BUILD_VARIABLES holds something other than variable names"
+              exit 1
+              ;;
+          esac
+        done
+        missing=''
+        for name in $BUILD_VALUES; do
+          eval "given=\${$name:-}"
+          if [ -z "$given" ]; then missing="$missing $name"; fi
+        done
+        for name in $BUILD_VARIABLES; do
+          eval "given=\${$name+set}"
+          if [ -z "$given" ]; then missing="$missing $name"; fi
+        done
+        set +f
+        if [ -n "$missing" ]; then
+          echo "Not built: the project CI/CD variables$missing are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)"
+          exit 1
+        fi
+      fi
 
       # A merge request builds to prove the image still builds, and pushes
       # nothing: only main produces artifacts (D094).
@@ -278,18 +324,25 @@ image:frontend:
     DOCKERFILE: apps/frontend/Dockerfile
     CONTEXT: .
     IMAGE: $CI_REGISTRY_IMAGE/frontend
-    # What production's site says of its operator (#369): its status page,
-    # which the header links and /status redirects to; its contact address,
-    # which the footer, the about pages and security.txt give; and its own
-    # texts, the Terms of Use, the Privacy Policy and the about pages' lines
-    # on who runs the service. Unset, the image leaves each out; the
-    # repository's sources fall back to none of them
-    # (apps/frontend/src/lib/operator.ts). Job variables until #367 moves
-    # them to CI/CD variables of the project, which, of the same name,
-    # override these.
-    STATUS_PAGE_URL: 'https://status.qa-tools.ru/'
-    CONTACT_EMAIL: 'contact@qa-tools.ru'
-    OPERATOR_TEXTS: 'true'
+    # What the site says of its operator (#369): its status page, which the
+    # header links and /status redirects to; its contact address, which the
+    # footer, the about pages and security.txt give; and its own texts, the
+    # Terms of Use, the Privacy Policy and the about pages' lines on who runs
+    # the service. They come from the project's CI/CD variables
+    # DEPLOY_STATUS_PAGE_URL, DEPLOY_CONTACT_EMAIL and DEPLOY_OPERATOR_TEXTS
+    # (#367), which the installation sets; none is named in this file. Set
+    # empty, the image leaves the detail out, the repository's sources falling
+    # back to none of them (apps/frontend/src/lib/operator.ts). The names here
+    # are the ones the frontend build reads.
+    STATUS_PAGE_URL: $DEPLOY_STATUS_PAGE_URL
+    CONTACT_EMAIL: $DEPLOY_CONTACT_EMAIL
+    OPERATOR_TEXTS: $DEPLOY_OPERATOR_TEXTS
+    # On main the build stops before `docker build`, naming it, when one of
+    # the image's project variables is not set, or the site's or the receive
+    # host's origin is empty (.image): built from the fallbacks, the image
+    # would name production's origins or no operator, and stay that commit's.
+    BUILD_VALUES: 'DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN'
+    BUILD_VARIABLES: 'DEPLOY_APP_ALIAS_ORIGIN DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'
     # The image names the inspector's address (D274, D275) and its operator
     # (#369): each argument takes the value of the variable of its name.
     BUILD_ARGS: '--build-arg APP_ORIGIN --build-arg RECEIVE_ORIGIN --build-arg APP_ALIAS_ORIGIN --build-arg STATUS_PAGE_URL --build-arg CONTACT_EMAIL --build-arg OPERATOR_TEXTS'
@@ -313,16 +366,41 @@ image:postgres:
       changes:
         - deploy/postgres/**/*
 
+# The deploy job holds the protected KUBECONFIG_DEPLOYER, so it runs only on
+# the runner the project CI/CD variable DEPLOY_RUNNER_TAG names (#367). A tag
+# that expands to nothing is dropped, and an untagged job may go to GitLab's
+# shared runners, credential and all; one whose variable is not set waits for
+# a runner tagged with the literal name. So `deploy`, and the smoke after it,
+# are created only when DEPLOY_RUNNER_TAG holds a runner tag - letters,
+# digits, `.`, `_` and `-`, starting with a letter or digit - and otherwise
+# this job fails the pipeline on main, before anything is built, naming the
+# variable. The three rules hold the same pattern; scripts/ci-runners.test.mjs
+# checks that they do, and that no value of the variable creates `deploy`
+# without its runner's tag. This job has no environment, so it is given no
+# KUBECONFIG_DEPLOYER, and reads nothing.
+deploy-runner-tag:
+  stage: .pre
+  image: $NODE_IMAGE
+  cache: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      echo "Not deployed: the project CI/CD variable DEPLOY_RUNNER_TAG is not set or holds no runner tag, so the deploy job, which would hold the cluster's credential, is not created (README.md, Deploying from GitLab CI)"
+      exit 1
+
 deploy:
   stage: deploy
-  # The inspector's address (D274): the chart's hosts and the environment's URL.
-  extends: .inspector-address
-  # The runner inside the production server. It accepts only jobs carrying this
-  # tag, so nothing else in the pipeline can land on the production host. The
-  # only job with an environment, so the only one given KUBECONFIG_DEPLOYER,
-  # which is scoped to `production` since 2026-10-22 (D258).
+  # The runner inside the server the chart is installed on, named by the
+  # project CI/CD variable DEPLOY_RUNNER_TAG (#367), and created only when that
+  # names one (`deploy-runner-tag`, above). The runner should accept only jobs
+  # carrying its tag, so nothing else in the pipeline can land on that host.
+  # The only job with an environment, so the only one given
+  # KUBECONFIG_DEPLOYER, scoped to `production` (D258).
   tags:
-    - qa-tools-vps
+    - $DEPLOY_RUNNER_TAG
   cache: []
   # One deployment at a time: two overlapping helm upgrades would race for the
   # same release.
@@ -336,38 +414,81 @@ deploy:
   interruptible: false
   environment:
     name: production
-    url: $APP_ORIGIN
+    url: $DEPLOY_APP_ORIGIN
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
   variables:
     # A protected, namespace-scoped kubeconfig; the pipeline never holds
     # administrative credentials (D093).
     KUBECONFIG: $KUBECONFIG_DEPLOYER
-  # The chart takes the hosts and builds https:// origins of them (D274), so
-  # the script first checks that each origin is https:// and a host name
-  # alone; the second site origin may be empty, for none, and must otherwise
-  # name a host of its own (D275). A host name is dot-separated labels of
-  # lowercase letters, digits and hyphens, each 1 to 63 characters, neither
-  # starting nor ending with a hyphen, with no empty label and no trailing dot
-  # (#340), the rule apps/frontend/scripts/site-origin.mjs applies to the same
-  # values: a host that starts or ends with a dot or a hyphen, holds two dots
-  # in a row or a dot beside a hyphen, or 64 characters with no dot among them
-  # is refused here rather than by Kubernetes after the image build. A refusal
-  # names the variable and never its value, which an unmasked CI variable set
-  # over it could hold credentials in.
+  # The installation's values, from the project's CI/CD variables (#367,
+  # README.md "Deploying from GitLab CI"); scripts/chart.test.mjs runs this
+  # script. First, every variable the job reads must be set: one that is not
+  # stops the job here, before `helm upgrade`, naming it, so an unset variable
+  # cannot switch the backup's off-server copy or the monitor off. What every
+  # installation needs - the two origins, the receive host's certificate
+  # Secret, the database role and database, the backup directory - must hold
+  # a value too: set empty, it stops the job the same way, rather than let the
+  # chart's default rename the database, the backup directory or the
+  # certificate under a running installation. Only the options may be empty:
+  # DEPLOY_APP_ALIAS_ORIGIN for no second host, DEPLOY_BACKUP_BUCKET for no
+  # off-server copy and DEPLOY_HEARTBEAT_URL for no monitor; with a second
+  # host its certificate Secret must be given, with a bucket the copy's
+  # endpoint, region, Secret and key, and with a heartbeat URL its Secret.
+  #
+  # Then each value: the chart takes the hosts and builds https:// origins of
+  # them (D274), so each origin must be https:// and a host name alone; the
+  # second site origin may be empty, for none, and must otherwise name a host
+  # of its own (D275). A host name is dot-separated labels of lowercase
+  # letters, digits and hyphens, each 1 to 63 characters, neither starting nor
+  # ending with a hyphen, with no empty label and no trailing dot (#340), the
+  # rule apps/frontend/scripts/site-origin.mjs applies to the same values: a
+  # host that starts or ends with a dot or a hyphen, holds two dots in a row or
+  # a dot beside a hyphen, or 64 characters with no dot among them is refused
+  # here rather than by Kubernetes after the image build. Every other value
+  # holds letters, digits and `.`, `_`, `:`, `/` and `-` alone, which helm's
+  # --set-string passes as they are; the recipient key is a variable of type
+  # File holding a public key and no private one. A refusal names the
+  # variable and never its value, which an unmasked CI variable set over it
+  # could hold credentials in.
   script:
     - |
+      missing=''
+      for name in DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN DEPLOY_RECEIVE_TLS_SECRET \
+        DEPLOY_POSTGRES_USER DEPLOY_POSTGRES_DATABASE DEPLOY_BACKUP_HOST_PATH; do
+        eval "given=\${$name:-}"
+        if [ -z "$given" ]; then missing="$missing $name"; fi
+      done
+      for name in DEPLOY_APP_ALIAS_ORIGIN DEPLOY_BACKUP_BUCKET DEPLOY_HEARTBEAT_URL; do
+        eval "given=\${$name+set}"
+        if [ -z "$given" ]; then missing="$missing $name"; fi
+      done
+      needed=''
+      if [ -n "${DEPLOY_APP_ALIAS_ORIGIN:-}" ]; then needed="DEPLOY_ALIAS_TLS_SECRET"; fi
+      if [ -n "${DEPLOY_BACKUP_BUCKET:-}" ]; then
+        needed="$needed DEPLOY_BACKUP_ENDPOINT DEPLOY_BACKUP_REGION DEPLOY_BACKUP_SECRET DEPLOY_BACKUP_RECIPIENT_KEY"
+      fi
+      if [ -n "${DEPLOY_HEARTBEAT_URL:-}" ]; then needed="$needed DEPLOY_HEARTBEAT_SECRET"; fi
+      for name in $needed; do
+        eval "given=\${$name:-}"
+        if [ -z "$given" ]; then missing="$missing $name"; fi
+      done
+      if [ -n "$missing" ]; then
+        echo "Not deployed: the project CI/CD variables$missing are not set, or are empty where a value is needed (README.md, Deploying from GitLab CI)"
+        exit 1
+      fi
+
       # 64 characters with no dot among them: [!.] eight times, eight times.
       label64='[!.][!.][!.][!.][!.][!.][!.][!.]'
       label64="$label64$label64$label64$label64$label64$label64$label64$label64"
-      for name in APP_ORIGIN RECEIVE_ORIGIN APP_ALIAS_ORIGIN; do
+      for name in DEPLOY_APP_ORIGIN DEPLOY_RECEIVE_ORIGIN DEPLOY_APP_ALIAS_ORIGIN; do
         case "$name" in
-          APP_ORIGIN) origin=$APP_ORIGIN ;;
-          RECEIVE_ORIGIN) origin=$RECEIVE_ORIGIN ;;
+          DEPLOY_APP_ORIGIN) origin=$DEPLOY_APP_ORIGIN ;;
+          DEPLOY_RECEIVE_ORIGIN) origin=$DEPLOY_RECEIVE_ORIGIN ;;
           *)
-            origin=$APP_ALIAS_ORIGIN
+            origin=$DEPLOY_APP_ALIAS_ORIGIN
             if [ -z "$origin" ]; then continue; fi
-            if [ "$origin" = "$APP_ORIGIN" ] || [ "$origin" = "$RECEIVE_ORIGIN" ]; then
+            if [ "$origin" = "$DEPLOY_APP_ORIGIN" ] || [ "$origin" = "$DEPLOY_RECEIVE_ORIGIN" ]; then
               echo "$name must name a host of its own; its value is not printed"
               exit 1
             fi
@@ -380,15 +501,58 @@ deploy:
             ;;
         esac
       done
-    - helm upgrade --install qa-tools deploy/helm/qa-tools
-      --namespace qa-tools
-      --set-string images.registry="${CI_REGISTRY_IMAGE:?CI_REGISTRY_IMAGE must be set}"
-      --set-string images.tag="$CI_COMMIT_SHA"
-      --set-string ingress.host="${APP_ORIGIN#https://}"
-      --set-string ingress.aliasHost="${APP_ALIAS_ORIGIN#https://}"
-      --set-string receive.host="${RECEIVE_ORIGIN#https://}"
-      --set-string alerts.siteUrl="$APP_ORIGIN"
-      --wait --timeout 10m
+
+      plain='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:/-'
+      for name in DEPLOY_ALIAS_TLS_SECRET DEPLOY_RECEIVE_TLS_SECRET DEPLOY_POSTGRES_USER \
+        DEPLOY_POSTGRES_DATABASE DEPLOY_BACKUP_HOST_PATH DEPLOY_BACKUP_BUCKET \
+        DEPLOY_BACKUP_ENDPOINT DEPLOY_BACKUP_REGION DEPLOY_BACKUP_SECRET \
+        DEPLOY_BACKUP_RECIPIENT_KEY DEPLOY_HEARTBEAT_URL DEPLOY_HEARTBEAT_SECRET; do
+        eval "value=\${$name:-}"
+        case "$value" in
+          *[!$plain]*)
+            echo "$name holds a character other than letters, digits, '.', '_', ':', '/' and '-'; its value is not printed"
+            exit 1
+            ;;
+        esac
+      done
+      if [ -n "$DEPLOY_BACKUP_BUCKET" ]; then
+        if [ ! -f "$DEPLOY_BACKUP_RECIPIENT_KEY" ] || [ ! -r "$DEPLOY_BACKUP_RECIPIENT_KEY" ] ||
+          ! grep -q -- '-----BEGIN PGP PUBLIC KEY BLOCK-----' "$DEPLOY_BACKUP_RECIPIENT_KEY" ||
+          grep -q 'PRIVATE KEY' "$DEPLOY_BACKUP_RECIPIENT_KEY"; then
+          echo "DEPLOY_BACKUP_RECIPIENT_KEY must be a variable of type File holding an armored OpenPGP public key and no private key; its value is not printed"
+          exit 1
+        fi
+      fi
+
+      # The chart's values: the hosts, and each other variable that is not
+      # empty, which, past the checks above, leaves out only an option that
+      # is off and its companions.
+      upgrade_release() {
+        set -- \
+          --set-string images.registry="${CI_REGISTRY_IMAGE:?CI_REGISTRY_IMAGE must be set}" \
+          --set-string images.tag="$CI_COMMIT_SHA" \
+          --set-string ingress.host="${DEPLOY_APP_ORIGIN#https://}" \
+          --set-string receive.host="${DEPLOY_RECEIVE_ORIGIN#https://}" \
+          --set-string alerts.siteUrl="$DEPLOY_APP_ORIGIN"
+        if [ -n "$DEPLOY_APP_ALIAS_ORIGIN" ]; then
+          set -- "$@" --set-string ingress.aliasHost="${DEPLOY_APP_ALIAS_ORIGIN#https://}"
+        fi
+        for pair in ingress.tls.aliasSecretName=DEPLOY_ALIAS_TLS_SECRET \
+          receive.tlsSecretName=DEPLOY_RECEIVE_TLS_SECRET \
+          postgres.user=DEPLOY_POSTGRES_USER postgres.database=DEPLOY_POSTGRES_DATABASE \
+          backup.hostPath=DEPLOY_BACKUP_HOST_PATH backup.offsite.bucket=DEPLOY_BACKUP_BUCKET \
+          backup.offsite.endpoint=DEPLOY_BACKUP_ENDPOINT backup.offsite.region=DEPLOY_BACKUP_REGION \
+          backup.offsite.existingSecret=DEPLOY_BACKUP_SECRET \
+          alerts.heartbeatUrl=DEPLOY_HEARTBEAT_URL alerts.existingSecret=DEPLOY_HEARTBEAT_SECRET; do
+          eval "value=\${${pair#*=}:-}"
+          if [ -n "$value" ]; then set -- "$@" --set-string "${pair%%=*}=$value"; fi
+        done
+        if [ -n "$DEPLOY_BACKUP_BUCKET" ]; then
+          set -- "$@" --set-file backup.offsite.recipientKey="$DEPLOY_BACKUP_RECIPIENT_KEY"
+        fi
+        helm upgrade --install qa-tools deploy/helm/qa-tools --namespace qa-tools "$@" --wait --timeout 10m
+      }
+      upgrade_release
     - kubectl -n qa-tools get pods
 
 # Availability after the actual main deployment, from outside the cluster.
@@ -396,7 +560,8 @@ deploy:
 # On GitLab's shared runners, whatever QA_TOOLS_RUNNER_TAG says: the check is
 # from outside, and it still runs when our runner is down (D258).
 deployment-smoke:
-  # The inspector's address (D274): the origins the smoke checks.
+  # The inspector's address (D274): the origins the smoke checks, from the
+  # project's CI/CD variables (#367).
   extends: .inspector-address
   image: $NODE_IMAGE
   stage: verify-deployment
@@ -409,8 +574,10 @@ deployment-smoke:
   # (scripts/check-deployment.mjs, CERTIFICATE_WAIT, D275); the checks
   # themselves take seconds.
   timeout: 10m
+  # After a deployment only: not created when `deploy` is not
+  # (`deploy-runner-tag`).
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_RUNNER_TAG =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/
   script:
     # The site, and the receive host where webhooks are received since 0.36.0
     # (D187), through its own TCP route; then the site's second host, when

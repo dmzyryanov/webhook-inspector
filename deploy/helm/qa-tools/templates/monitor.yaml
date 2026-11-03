@@ -1,15 +1,17 @@
 {{- /*
-Site and disk alerts (D181, issue #68). Every 5 minutes a CronJob probes the
-site by its public name and reads the usage of the disk holding the database
-volume, and reports both to Statuser.cloud as the `site` and `disk`
-heartbeats; Statuser messages the owner in Telegram when one fails, or when
-they stop coming. The script is files/monitor.mjs; the alerts runbook is the
-operator's, kept outside this repository.
+Site and disk alerts (D181, issue #68), rendered only with alerts.heartbeatUrl
+set (#367). Every 5 minutes a CronJob probes the site by its public name and
+reads the usage of the disk holding the database volume, and reports both to
+the heartbeat service as the `site` and `disk` heartbeats; the service alerts
+its owner when one fails, or when they stop coming. The script is
+files/monitor.mjs; the alerts runbook is the operator's, kept outside this
+repository.
 
 As for the backup (D176), the deploy identity may manage CronJobs but not Jobs
 (deploy/cluster/gitlab-deployer.yaml), so the chart creates only the CronJob
 and the ConfigMap it mounts: never a Job, and never a hook.
 */}}
+{{- if .Values.alerts.heartbeatUrl }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -45,8 +47,8 @@ spec:
         {{- include "qa-tools.labels" . | nindent 8 }}
         app.kubernetes.io/component: monitor
     spec:
-      # No retry: the next run is five minutes away, and Statuser tolerates
-      # one missing heartbeat.
+      # No retry: the next run is five minutes away, and a heartbeat expected
+      # every 10 minutes tolerates one missing.
       backoffLimit: 0
       # A run takes seconds, and at most about two minutes when every site
       # attempt waits for its timeout; stopped at four, before the next run.
@@ -83,10 +85,10 @@ spec:
               command: ['node', '/opt/monitor/monitor.mjs']
               env:
                 - name: MONITOR_SITE_URL
-                  value: {{ .Values.alerts.siteUrl | quote }}
+                  value: {{ include "qa-tools.siteUrl" . | quote }}
                 # The receive host, probed through its own TCP route (D187).
                 - name: MONITOR_RECEIVE_URL
-                  value: {{ printf "https://%s" .Values.receive.host | quote }}
+                  value: {{ printf "https://%s" (include "qa-tools.receiveHost" .) | quote }}
                 - name: MONITOR_HEARTBEAT_URL
                   value: {{ .Values.alerts.heartbeatUrl | quote }}
                 - name: MONITOR_DISK_PATH
@@ -100,13 +102,13 @@ spec:
                 - name: MONITOR_SITE_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Values.alerts.existingSecret }}
+                      name: {{ include "qa-tools.heartbeatSecret" . }}
                       key: site
                       optional: true
                 - name: MONITOR_DISK_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .Values.alerts.existingSecret }}
+                      name: {{ include "qa-tools.heartbeatSecret" . }}
                       key: disk
                       optional: true
               securityContext:
@@ -137,3 +139,4 @@ spec:
             - name: script
               configMap:
                 name: {{ include "qa-tools.name" . }}-monitor
+{{- end }}

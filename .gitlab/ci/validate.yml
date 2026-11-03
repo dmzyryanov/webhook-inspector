@@ -13,7 +13,8 @@
 #
 # QA_TOOLS_RUNNER_TAG is the exception (D258): the trigger job does not pass it
 # on, because a variable passed on would outrank the project CI/CD variable
-# that moves these jobs to GitLab's shared runners. Its default is held here as
+# that moves these jobs between the shared runners and the project's own. Its
+# default is held here as
 # well, the same as `.gitlab-ci.yml`'s, so the child pipeline has it below that
 # project variable, as the merge request pipeline and the parent on main do.
 #
@@ -26,12 +27,12 @@ stages:
   - validate
 
 variables:
-  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci'
+  QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'
 
 default:
   interruptible: true
-  # Every job of this file runs on the runner this tag names: our own unless
-  # the project variable says otherwise.
+  # Every job of this file runs on the runner this tag names: GitLab's shared
+  # runners unless the project variable names another (#367).
   tags:
     - $QA_TOOLS_RUNNER_TAG
 
@@ -290,8 +291,13 @@ delivery-checks:
     # strategy, preStop pause, grace period, readiness (D221), and the
     # liveness probe; and renders the Ingress template with the values,
     # pinning the edge rate limit on the API's paths alone and its numbers
-    # (D264). The monitor test runs the site monitor with this image's Node
-    # against stand-ins for the site and Statuser on the loopback interface,
+    # (D264); and renders the whole chart with scripts/chart-render.mjs: with
+    # the hosts alone it names nothing of production's and has no monitor or
+    # off-server uploader, each option renders when configured, and the
+    # deploy job's script, run against stand-ins for helm, stops naming an
+    # unset variable and gives the chart production's values (#367). The
+    # monitor test runs the site monitor with this image's Node
+    # against stand-ins for the site and the heartbeat service on the loopback interface,
     # never the internet, and reads its template (D181); it imports the shared
     # package, which many merge requests change. The main-validation test
     # runs the main pipeline's gate on throwaway repositories against a
@@ -330,14 +336,54 @@ delivery-checks:
       node scripts/check-version.mjs "$DELIVERY_BASE"
       node scripts/check-api-breaking.mjs "$DELIVERY_BASE"
 
+# The chart with the real helm (#367): linted, and rendered as an installer
+# with no value of production's would, with made-up hosts and registry, on
+# the cases scripts/chart.test.mjs renders with its own renderer. With the
+# hosts alone: nothing names production or its services, apart from the
+# chart's own name in `helm.sh/chart` and helm's `# Source:` lines (#335
+# renames it), and neither the monitor, the backup's notifier nor its
+# off-server uploader is rendered; without the hosts, the render is refused,
+# naming both; with a bucket and a heartbeat URL, all three are rendered.
 chart:
   stage: validate
   image:
     name: alpine/helm:3.21.4
     entrypoint: ['']
   cache: []
+  variables:
+    CHART_VALUES: >-
+      --set-string images.registry=registry.example/inspector
+      --set-string images.tag=validation
+      --set-string ingress.host=inspector.example
+      --set-string receive.host=hook.inspector.example
   script:
-    - helm lint deploy/helm/qa-tools --set images.tag=validation
+    - helm lint deploy/helm/qa-tools $CHART_VALUES
+    - |
+      helm template inspector deploy/helm/qa-tools --namespace inspector $CHART_VALUES > /tmp/neutral.yaml
+      if grep -n -i -E 'qa-tools|qa_tools|statuser|yandex' /tmp/neutral.yaml |
+        grep -v -E ':(# Source: qa-tools/templates/[a-z-]+\.yaml| +helm\.sh/chart: qa-tools-[0-9.]+)$'; then
+        echo "the render with the hosts alone names the lines above"
+        exit 1
+      fi
+      if grep -E -- '- name: (db-backup-notify|db-backup-offsite)$|name: inspector-monitor$' /tmp/neutral.yaml; then
+        echo "the render with the hosts alone has the parts above, which are options"
+        exit 1
+      fi
+      if helm template inspector deploy/helm/qa-tools --set-string images.registry=registry.example/inspector \
+        --set-string images.tag=validation > /dev/null 2> /tmp/refused.txt; then
+        echo "the chart rendered without the hosts"
+        exit 1
+      fi
+      grep 'ingress.host and receive.host must both be set' /tmp/refused.txt
+      printf '%s\n' '-----BEGIN PGP PUBLIC KEY BLOCK-----' 'stand-in' '-----END PGP PUBLIC KEY BLOCK-----' > /tmp/key.asc
+      helm template inspector deploy/helm/qa-tools --namespace inspector $CHART_VALUES \
+        --set-string backup.offsite.bucket=backups --set-string backup.offsite.endpoint=https://storage.example \
+        --set-string backup.offsite.region=region-1 --set-file backup.offsite.recipientKey=/tmp/key.asc \
+        --set-string alerts.heartbeatUrl=https://heartbeat.example > /tmp/configured.yaml
+      for part in '- name: db-backup-notify' '- name: db-backup-offsite' 'name: inspector-monitor'; do
+        grep -q -- "$part\$" /tmp/configured.yaml || { echo "configured, the render has no $part"; exit 1; }
+      done
+      echo "the chart renders nothing of production's with the hosts alone, refuses without them, and renders each option when configured"
     - |
       if ! grep -q "tag: '$POSTGRES_IMAGE_TAG'" deploy/helm/qa-tools/values.yaml; then
         echo "POSTGRES_IMAGE_TAG ($POSTGRES_IMAGE_TAG) does not match postgres.tag in values.yaml."
@@ -371,6 +417,7 @@ operations-tests:
       changes:
         paths:
           - deploy/helm/qa-tools/files/db-backup*
+          - scripts/fixtures/db-backup-recipient.asc
           - deploy/helm/qa-tools/templates/db-backup.yaml
           - deploy/helm/qa-tools/values.yaml
           - scripts/db.mjs
@@ -387,7 +434,7 @@ operations-tests:
     - if: $CI_PIPELINE_SOURCE != 'merge_request_event'
   before_script:
     # gpg is for the db-backup tests that encrypt with the real tool to the
-    # public key in the chart (D190).
+    # public key in scripts/fixtures (D190).
     - apt-get update
     - apt-get install -y --no-install-recommends gpg
   script:
@@ -397,7 +444,7 @@ operations-tests:
     # test runs the nightly backup script with bash against stand-ins for the
     # PostgreSQL tools and df, and reads the chart's CronJob template and
     # values (D176). The notifier test runs the backup's alert script with
-    # this image's Node against a stand-in for Statuser on the loopback
+    # this image's Node against a stand-in for the heartbeat service on the loopback
     # interface, never the internet (D181). The db-backup-offsite test runs the off-server copy's uploader the same
     # way, against a stand-in for the object storage that checks each
     # request's signature (D190).

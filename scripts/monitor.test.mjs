@@ -869,8 +869,14 @@ test('an error is described by its code or name, never by a message that could h
   );
 });
 
-// What the chart must say, as issue #68 and the owner decided it.
+// What the chart must say, as issue #68 and the owner decided it; since #367
+// only with a heartbeat URL set, which no default is.
 test('the chart runs the monitor every 5 minutes from a CronJob, as uid 1000, and never creates a Job', () => {
+  assert.match(
+    TEMPLATE,
+    /^\{\{- if \.Values\.alerts\.heartbeatUrl \}\}\napiVersion: v1\nkind: ConfigMap$/m,
+  );
+  assert.match(TEMPLATE, /\n\{\{- end \}\}\n$/);
   assert.match(TEMPLATE, /^kind: CronJob$/m);
   assert.match(TEMPLATE, /^kind: ConfigMap$/m);
   assert.doesNotMatch(TEMPLATE, /^kind: Job$/m);
@@ -901,7 +907,7 @@ test('the chart runs the monitor every 5 minutes from a CronJob, as uid 1000, an
     assert.match(
       TEMPLATE,
       new RegExp(
-        `secretKeyRef:\\n\\s+name: \\{\\{ \\.Values\\.alerts\\.existingSecret \\}\\}\\n\\s+key: ${key}\\n\\s+optional: true`,
+        `secretKeyRef:\\n\\s+name: \\{\\{ include "qa-tools\\.heartbeatSecret" \\. \\}\\}\\n\\s+key: ${key}\\n\\s+optional: true`,
       ),
     );
   }
@@ -917,15 +923,18 @@ test('the chart runs the monitor every 5 minutes from a CronJob, as uid 1000, an
   // The receive host, by its public name, from the chart's own value (D187).
   assert.match(
     TEMPLATE,
-    /- name: MONITOR_RECEIVE_URL\n\s+value: \{\{ printf "https:\/\/%s" \.Values\.receive\.host \| quote \}\}/,
+    /- name: MONITOR_RECEIVE_URL\n\s+value: \{\{ printf "https:\/\/%s" \(include "qa-tools\.receiveHost" \.\) \| quote \}\}/,
   );
   const receiveValues = /^receive:\n((?: {2}.*\n|\n)*)/m.exec(VALUES)?.[1] ?? '';
-  assert.match(receiveValues, /^ {2}host: hook\.qa-tools\.ru$/m);
+  assert.match(receiveValues, /^ {2}host: ''$/m);
 
+  // No heartbeat service, Secret or site by default: an installation sets its
+  // own, and the chart derives the Secret's name and the site from the
+  // release and the host (scripts/chart.test.mjs).
   const alerts = /^alerts:\n((?: {2}.*\n|\n)*)/m.exec(VALUES)?.[1] ?? '';
-  assert.match(alerts, /^ {2}heartbeatUrl: https:\/\/hb\.statuser\.cloud$/m);
-  assert.match(alerts, /^ {2}existingSecret: qa-tools-statuser$/m);
-  assert.match(alerts, /^ {2}siteUrl: https:\/\/qa-tools\.ru$/m);
+  assert.match(alerts, /^ {2}heartbeatUrl: ''$/m);
+  assert.match(alerts, /^ {2}existingSecret: ''$/m);
+  assert.match(alerts, /^ {2}siteUrl: ''$/m);
   assert.match(alerts, /^ {2}schedule: '\*\/5 \* \* \* \*'$/m);
   assert.match(alerts, /^ {2}diskPath: \/var\/lib\/rancher\/k3s\/storage$/m);
   assert.match(alerts, /^ {2}diskThresholdPercent: 80$/m);

@@ -1,8 +1,15 @@
-# Let's Encrypt issuers for the QA Tools cluster.
+# Let's Encrypt issuers for the cluster.
 #
-# Applied once as a cluster prerequisite:
+# Applied once as a cluster prerequisite, after replacing the placeholder
+# contact address acme-contact@example.com in both issuers with the address
+# Let's Encrypt should write to about the certificates (#367). Let's Encrypt
+# refuses example.com, so an issuer left with the placeholder never becomes
+# ready and no certificate is issued:
 #
 #   kubectl apply -f deploy/cluster/letsencrypt-issuers.yaml
+#
+# The project's own server applies its operator's copy, which holds that
+# operator's address and is kept outside this repository.
 #
 # Two issuers exist so that a certificate can be proved end to end against the
 # staging endpoint before the production one is asked for anything. Production
@@ -17,7 +24,7 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: contact@qa-tools.ru
+    email: acme-contact@example.com
     privateKeySecretRef:
       name: letsencrypt-staging-account-key
     solvers:
@@ -32,7 +39,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: contact@qa-tools.ru
+    email: acme-contact@example.com
     privateKeySecretRef:
       name: letsencrypt-production-account-key
     solvers:

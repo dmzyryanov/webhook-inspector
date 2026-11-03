@@ -87,8 +87,8 @@
 //
 // Environment:
 //   OFFSITE_DIR                the directory db-backup.sh hands the copy over in
-//   OFFSITE_ENDPOINT           the storage endpoint, https://storage.yandexcloud.net
-//   OFFSITE_REGION             its region, ru-central1
+//   OFFSITE_ENDPOINT           the storage endpoint, https://<host>
+//   OFFSITE_REGION             its region
 //   OFFSITE_BUCKET             the bucket
 //   OFFSITE_DATABASE           the database's name, the start of every copy's name
 //   OFFSITE_ACCESS_KEY_ID      the static key's id

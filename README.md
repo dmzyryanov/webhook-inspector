@@ -180,10 +180,14 @@ The script tests under `scripts/` run with `node --test`; CI runs them in the
 
 ## Installing on k3s with the chart
 
-Production runs on a single k3s server: the chart in `deploy/helm/qa-tools`
-deploys the backend, the frontend, PostgreSQL, the nightly backup and a site
-monitor into one namespace. The release, the namespace and the chart are named
-`qa-tools`, the project's earlier name.
+The chart in `deploy/helm/qa-tools` deploys the backend, the frontend,
+PostgreSQL and a nightly backup into one namespace; an off-server copy of the
+backups and a heartbeat monitor are options. Its defaults name no
+installation: an install gives its own hosts and images, and nothing else is
+needed (#367). The chart is named `qa-tools`, the project's earlier name; the
+names it gives objects are the release's. The project's own production at
+`qa-tools.ru` is one installation of it, deployed by `.gitlab-ci.yml` with
+values its operator keeps in the project's CI/CD variables.
 
 1. **The cluster.** k3s with the Traefik it packages, and cert-manager. Then,
    from this repository:
@@ -191,9 +195,11 @@ monitor into one namespace. The release, the namespace and the chart are named
      timeouts, and `externalTrafficPolicy: Local`, so the backend sees each
      sender's own address. Its header says where k3s takes it.
    - `deploy/cluster/letsencrypt-issuers.yaml` — the Let's Encrypt issuers.
-     Put your own contact e-mail in it before applying it.
-   - `deploy/cluster/gitlab-deployer.yaml` — only for deploying from CI: a
-     ServiceAccount limited to the namespace.
+     Replace the placeholder `acme-contact@example.com` with your own contact
+     address before applying it; Let's Encrypt refuses the placeholder.
+   - `deploy/cluster/gitlab-deployer.yaml` — only for deploying from GitLab CI
+     (below): a ServiceAccount limited to the namespace `qa-tools`, the one the
+     pipeline installs into.
 2. **The images.** Build and push the three images to a registry the cluster
    can pull from, under `<registry>/backend:<tag>`, `<registry>/frontend:<tag>`
    and `<registry>/postgres:16-pgcron-1`:
@@ -218,54 +224,154 @@ monitor into one namespace. The release, the namespace and the chart are named
    | `CONTACT_EMAIL`   | The contact address: the footer's `Contact:`, the about pages' last paragraph, `/.well-known/security.txt` and the API description's `info.contact`.                                                        | No address anywhere, and no `security.txt` (404).                                                                                                           |
    | `OPERATOR_TEXTS`  | `true` shows this site's own texts: the Terms of Use at `/terms`, the Privacy Policy at `/privacy`, the footer's links to them, and the about pages' lines on who runs the service and who pays for it.      | Neither page (`/terms` and `/privacy` are `Page not found`), no link to them, and the about pages describe the service alone. `true` needs the other two. |
 
-   This site's image sets all three in `.gitlab-ci.yml`. The texts behind
+   This site's image sets all three from CI/CD variables of the project
+   (Deploying from GitLab CI, below). The texts behind
    `OPERATOR_TEXTS` are this site's operator's and name its hosting; a copy
    leaves them off. `scripts/check-deployment.mjs` below still expects this
    site's contact address and legal pages, so a copy built without them
    fails those of its checks.
 3. **The namespace and its Secrets.** The database password, which the chart
-   reads and never holds:
+   reads and never holds, in the Secret `<release>-postgres`:
 
    ```bash
-   kubectl create namespace qa-tools
-   kubectl -n qa-tools create secret generic qa-tools-postgres --from-literal=password=<password>
+   kubectl create namespace inspector
+   kubectl -n inspector create secret generic inspector-postgres --from-literal=password="$(openssl rand -hex 24)"
    ```
 
-   For a private registry, a `docker-registry` Secret named `gitlab-registry`
-   (`images.pullSecret`). The alerts (`alerts`, Secret `qa-tools-statuser`)
-   and the off-server copy of the backups (`backup.offsite`, an S3-compatible
-   bucket, Secret `qa-tools-offsite-backup`) take credentials of their own:
-   the release installs and runs without them, and the site monitor and the
-   nightly backup then report the missing credential as a failure in their
-   logs. The nightly backup writes to the node's
-   `/var/backups/qa-tools/nightly` (`backup.hostPath`), which must exist.
-4. **DNS.** An `A` record for the site's host and one for the receive host,
-   both pointing at the server.
-5. **The release.** Migrations run in the backend's init container on every
-   upgrade.
+   For a private registry, a `docker-registry` Secret named `gitlab-registry`,
+   or the name you give `images.pullSecret`.
+4. **The backup directory.** The nightly backup dumps the database into a
+   directory on the node, `backup.hostPath`, by default
+   `/var/backups/webhook-inspector`. It must exist before the install, owned by
+   the PostgreSQL image's user with mode 0700, or the backup's pod does not
+   start:
 
    ```bash
-   helm upgrade --install qa-tools deploy/helm/qa-tools \
-     --namespace qa-tools \
+   sudo install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector
+   ```
+
+5. **DNS.** An `A` record for the site's host and one for the receive host,
+   both pointing at the server.
+6. **The release.** The two hosts and the images are the values every install
+   sets; without the hosts, or the registry and tag, the chart refuses to
+   render and names them. Migrations run in the backend's init container on
+   every upgrade.
+
+   ```bash
+   helm upgrade --install inspector deploy/helm/qa-tools \
+     --namespace inspector \
      --set-string images.registry=<registry> \
      --set-string images.tag=<tag> \
      --set-string ingress.host=inspector.example \
      --set-string receive.host=hook.inspector.example \
-     --set-string alerts.siteUrl=https://inspector.example \
      --wait --timeout 10m
    ```
 
-   Every value is described in `deploy/helm/qa-tools/values.yaml`.
+   Every value is described in `deploy/helm/qa-tools/values.yaml`; the TLS and
+   database Secrets are named after the release unless set.
    `node scripts/check-deployment.mjs https://inspector.example https://hook.inspector.example`
    then checks the deployed site from outside, as CI does after each
    deployment.
 
+Two options are off until configured:
+
+- **An off-server copy of each backup**, encrypted to an OpenPGP public key
+  whose private half stays with you, into a bucket of any S3-compatible
+  storage taking path-style requests signed with Signature Version 4. Create
+  the Secret with the storage's static access key, keys `access-key-id` and
+  `secret-access-key` (by default `<release>-offsite-backup`,
+  `backup.offsite.existingSecret`), then add to the install:
+
+  ```bash
+  --set-string backup.offsite.bucket=<bucket> \
+  --set-string backup.offsite.endpoint=https://<storage host> \
+  --set-string backup.offsite.region=<region> \
+  --set-file backup.offsite.recipientKey=<public key file>.asc
+  ```
+
+  With a bucket set the chart refuses to render without the endpoint, the
+  region or the key.
+- **A heartbeat monitor**: every 5 minutes a CronJob probes the site and the
+  receive host and checks the node's disk, and each backup reports its
+  outcome, to any service that takes a POST to `<url>/<token>` for a success
+  and `<url>/<token>/fail` for a failure. Create the Secret with one token
+  each under the keys `site`, `disk` and `backup` (by default
+  `<release>-heartbeat`, `alerts.existingSecret`), then add
+  `--set-string alerts.heartbeatUrl=<url>`.
+
+`helm template` with the values above shows what an install creates, and
+`scripts/chart.test.mjs` renders the chart the same way with its own renderer,
+`scripts/chart-render.mjs`.
+
+### Deploying from GitLab CI
+
 `.gitlab-ci.yml` does all of this on every merge to `main`: it validates,
-builds the images into the project's registry, deploys with the command above
-from a runner inside the server, and checks the result. A copy of the
-repository in another GitLab project runs the same pipeline with its own
-runners and the CI/CD variable `KUBECONFIG_DEPLOYER`; nothing is included
-from another project.
+builds the images into the project's registry, deploys from a runner inside
+the server, and checks the result. A copy of the repository in another GitLab
+project runs the same pipeline, nothing being included from another project,
+with its own runners and these CI/CD variables of the project; no file of the
+repository holds an installation's values:
+
+| Variable | What it is | Read by | Environment |
+| --- | --- | --- | --- |
+| `DEPLOY_APP_ORIGIN` | The site's origin, `https://<host>` | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_RECEIVE_ORIGIN` | The receive host's origin | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_APP_ALIAS_ORIGIN` | The site's second origin; empty for none (below) | frontend image, `deploy`, `deployment-smoke` | all |
+| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image | all |
+| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image | all |
+| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image | all |
+| `DEPLOY_ALIAS_TLS_SECRET` | The second host's certificate Secret; with a second origin | `deploy` | `production` |
+| `DEPLOY_RECEIVE_TLS_SECRET` | The receive host's certificate Secret | `deploy` | `production` |
+| `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_DATABASE` | The database role and database | `deploy` | `production` |
+| `DEPLOY_BACKUP_HOST_PATH` | The backup directory on the node | `deploy` | `production` |
+| `DEPLOY_BACKUP_BUCKET` | The off-server copy's bucket; empty for none | `deploy` | `production` |
+| `DEPLOY_BACKUP_ENDPOINT`, `DEPLOY_BACKUP_REGION`, `DEPLOY_BACKUP_SECRET` | Its storage and the Secret holding its key; with a bucket | `deploy` | `production` |
+| `DEPLOY_BACKUP_RECIPIENT_KEY` | Type File: the public key the copies are encrypted to; with a bucket | `deploy` | `production` |
+| `DEPLOY_HEARTBEAT_URL` | The heartbeat endpoint; empty for no monitor | `deploy` | `production` |
+| `DEPLOY_HEARTBEAT_SECRET` | The Secret holding the heartbeat tokens; with a heartbeat URL | `deploy` | `production` |
+| `DEPLOY_RUNNER_TAG` | The tag of the runner inside the server: letters, digits, `.`, `_` and `-`, starting with a letter or digit | `deploy`'s `tags:`, the rules of `deploy`, `deployment-smoke` and `deploy-runner-tag` | all |
+| `QA_TOOLS_RUNNER_TAG` | The tag of the runner for every other job but the smoke; unset, GitLab's shared runners | every job's `tags:` but those two | all |
+| `KUBECONFIG_DEPLOYER` | Type File, protected: the kubeconfig of `gitlab-deployer.yaml`'s ServiceAccount | `deploy` | `production` |
+
+Each variable is set with no environment scope, but those the table marks
+`production`, which only `deploy`, the one job with that environment, reads;
+those may be protected, and none of the others should be, since a protected
+variable never reaches a merge request's pipeline. `DEPLOY_RUNNER_TAG`, the
+origins and the operator variables must not be scoped to `production`: the
+runner tag is read when the pipeline is created, and the others by the image
+build and the smoke, which have no environment. In the project's Settings →
+CI/CD → Variables, set "Minimum role to use pipeline variables" to "No one
+allowed": a variable given to a pipeline when it is run outranks the project's
+own, and could send `deploy` to another runner or give the chart other values.
+
+The deploy job stops before `helm upgrade` and names every variable it reads
+that is not set, so an unset one cannot switch the backup's off-server copy or
+the monitor off. It stops the same way for one set empty, but for the three
+options: an empty second origin, bucket or heartbeat URL is none, and its
+companions are then not needed. It refuses a value holding anything but
+letters, digits and `.`, `_`, `:`, `/` and `-`, naming the variable and never
+printing the value. With `DEPLOY_RUNNER_TAG` not set, or holding anything but
+one runner tag, neither `deploy` nor `deployment-smoke` is created, so the job
+holding the cluster's credential never runs untagged on a shared runner, and
+the job `deploy-runner-tag` fails the pipeline before anything is built, naming
+the variable. The pipeline installs the release `qa-tools` into the namespace
+`qa-tools`.
+
+On `main` the frontend image is built once per commit and published under the
+commit's SHA; a rerun of the pipeline reuses it. It reads its variables when it
+is first built, so a change of `DEPLOY_APP_ORIGIN`, `DEPLOY_RECEIVE_ORIGIN`,
+`DEPLOY_APP_ALIAS_ORIGIN` or an operator variable reaches the image only with a
+new commit, while `deploy` and the smoke read the new value at once. For the
+same reason the build stops before building, naming the variable, when one of
+the six is not set, or the site's or the receive host's origin is empty: an
+image built from the frontend's fallbacks would stay that commit's. An empty
+second origin or operator variable is left out of the image.
+
+An empty `DEPLOY_APP_ALIAS_ORIGIN` while `DEPLOY_APP_ORIGIN` is this site's
+own, `https://qa-tools.ru`, removes the second host's Ingresses and certificate,
+while the frontend image still names `https://webhook.qa-tools.ru`, the
+build's default for this site (`apps/frontend/scripts/site-origin.mjs`); a copy
+on its own origins has no second origin by default and is unaffected.
 
 ## License
 

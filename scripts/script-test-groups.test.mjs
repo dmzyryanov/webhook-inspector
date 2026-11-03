@@ -167,11 +167,7 @@ test('the rules, on made-up merge requests: a group runs when one of its paths c
     ['a quick script test', ['scripts/chart.test.mjs', 'scripts/delivery.test.mjs'], []],
     ['a measurement harness', ['scripts/measure-connections.mjs'], []],
     ['the backup script', ['deploy/helm/qa-tools/files/db-backup.sh'], ['operations-tests']],
-    [
-      'the backup key',
-      ['deploy/helm/qa-tools/files/db-backup-recipient.asc'],
-      ['operations-tests'],
-    ],
+    ["the backup tests' key", ['scripts/fixtures/db-backup-recipient.asc'], ['operations-tests']],
     ['the chart values', ['deploy/helm/qa-tools/values.yaml'], ['operations-tests']],
     ['the local database', ['scripts/db.mjs', 'docker-compose.yml'], ['operations-tests']],
     ['the pipeline', ['.gitlab-ci.yml'], GROUPS],

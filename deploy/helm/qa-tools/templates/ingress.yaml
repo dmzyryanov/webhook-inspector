@@ -24,11 +24,11 @@ spec:
   {{- if .Values.ingress.tls.enabled }}
   tls:
     - hosts:
-        - {{ .Values.ingress.host }}
-      secretName: {{ .Values.ingress.tls.secretName }}
+        - {{ include "qa-tools.host" . }}
+      secretName: {{ include "qa-tools.tlsSecret" . }}
   {{- end }}
   rules:
-    - host: {{ .Values.ingress.host }}
+    - host: {{ include "qa-tools.host" . }}
       http:
         paths:
           - path: /api/
@@ -39,9 +39,10 @@ spec:
                 port:
                   name: http
           # The MCP endpoint for AI agents (D203). A Prefix, not Exact: an Exact
-          # /mcp is Host(`qa-tools.ru`) && Path(`/mcp`), 35 characters, which
-          # lost to the frontend's 38, so 0.45.0 answered /mcp with the
-          # frontend's 404 page; PathPrefix(`/mcp`) makes it 41. As a string
+          # /mcp is Host(`<host>`) && Path(`/mcp`), 3 characters shorter than
+          # the frontend's Host(`<host>`) && PathPrefix(`/`), so 0.45.0 answered
+          # /mcp with the frontend's 404 page; PathPrefix(`/mcp`) makes it 3
+          # longer. As a string
           # prefix it also sends /mcp/, /mcp/x and /mcpx to the backend, which
           # answers each its 404 / 1000. It is on the site's hosts alone, this
           # one and the second below; the receive host's /mcp is its
@@ -75,11 +76,11 @@ spec:
   {{- if .Values.ingress.tls.enabled }}
   tls:
     - hosts:
-        - {{ .Values.ingress.host }}
-      secretName: {{ .Values.ingress.tls.secretName }}
+        - {{ include "qa-tools.host" . }}
+      secretName: {{ include "qa-tools.tlsSecret" . }}
   {{- end }}
   rules:
-    - host: {{ .Values.ingress.host }}
+    - host: {{ include "qa-tools.host" . }}
       http:
         paths:
           # The backend owns four paths: /ws/ and /s/ here, and the API's
@@ -93,8 +94,8 @@ spec:
           # its rule, whichever Ingress it comes from, and of the rules that
           # match, the longest wins: a backend path is matched before the
           # frontend's "/" only while its rule is longer than
-          # Host(`qa-tools.ru`) && PathPrefix(`/`), 38 characters, which no
-          # Exact path here can be. apps/frontend/src/lib/search-engines.test.ts
+          # Host(`<host>`) && PathPrefix(`/`), which no Exact path here can
+          # be, whatever the host. apps/frontend/src/lib/search-engines.test.ts
           # and scripts/chart.test.mjs compute them (D203, D264).
           - path: /ws/
             pathType: Prefix
@@ -150,22 +151,21 @@ spec:
         ipv6Subnet: 64
 {{- if .Values.ingress.aliasHost }}
 ---
-# The site's second host (#319, D275), webhook.qa-tools.ru in production: the
-# same paths to the same Services as the two Ingresses above, on two
-# Ingresses of their own, so that the middleware below that closes the host
-# to search is applied to its routers alone. Traefik applies a middleware
-# annotation to every path and host of its Ingress, so a rule for this host
-# on the Ingresses above would have carried it, or the edge rate limit, to
-# qa-tools.ru as well; those two stay as they were. Same split: the API's
+# The site's second host (#319, D275), ingress.aliasHost: the same paths to
+# the same Services as the two Ingresses above, on two Ingresses of their
+# own, so that the middleware below that closes the host to search is applied
+# to its routers alone. Traefik applies a middleware annotation to every path
+# and host of its Ingress, so a rule for this host on the Ingresses above
+# would have carried it, or the edge rate limit, to the first host as well;
+# those two stay as they were. Same split: the API's
 # paths here, behind the edge rate limit (D264) as on the first host, with a
 # bucket of their own per address; /ws/, /s/ and the frontend's / on the next.
 # Its certificate is a Secret of its own, ingress.tls.aliasSecretName, which
 # cert-manager issues through the next Ingress's annotation for this host
 # alone, so the first host's is not reissued. Traefik ranks this host's
 # routers among themselves by their rules' lengths, as the first host's:
-# Host(`webhook.qa-tools.ru`) && PathPrefix(`/`) is 46 characters, every
-# backend path's rule 48 to 50 (apps/frontend/src/lib/search-engines.test.ts,
-# scripts/chart.test.mjs).
+# every backend path's rule is 2 to 4 characters longer than the frontend's /
+# (apps/frontend/src/lib/search-engines.test.ts, scripts/chart.test.mjs).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -182,7 +182,7 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.aliasHost }}
-      secretName: {{ .Values.ingress.tls.aliasSecretName }}
+      secretName: {{ include "qa-tools.aliasTlsSecret" . }}
   {{- end }}
   rules:
     - host: {{ .Values.ingress.aliasHost }}
@@ -221,7 +221,7 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.aliasHost }}
-      secretName: {{ .Values.ingress.tls.aliasSecretName }}
+      secretName: {{ include "qa-tools.aliasTlsSecret" . }}
   {{- end }}
   rules:
     - host: {{ .Values.ingress.aliasHost }}

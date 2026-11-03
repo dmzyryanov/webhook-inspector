@@ -24,6 +24,9 @@
 //   is true by default).
 // - Files merged by `include:` merge their top-level `variables:` and
 //   `default:`, the including file's key winning.
+// - A job of the pipeline on main is created as its `rules:` decide, read
+//   below with `holds` and `creates`; a pipeline here changes every path, so
+//   a rule's `changes:` always match.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -43,9 +46,14 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const CI = read('.gitlab-ci.yml');
 const VALIDATE = read('.gitlab/ci/validate.yml');
 
-const OURS = 'qa-tools-ci';
 const SHARED = 'saas-linux-small-amd64';
+// The runners are the project's CI/CD variables' since #367, not the
+// pipeline files': production's two, as recorded in qa-tools'
+// docs/RESOURCES.md, with which the jobs land as before.
+const OURS = 'qa-tools-ci';
 const DEPLOY = 'qa-tools-vps';
+const DEPLOY_TAG_VARIABLE = 'DEPLOY_RUNNER_TAG';
+const PRODUCTION = Object.freeze({ [RUNNER_TAG_VARIABLE]: OURS, [DEPLOY_TAG_VARIABLE]: DEPLOY });
 const KEYWORDS = ['stages', 'workflow', 'include', 'variables', 'default'];
 
 /** A top-level block of a YAML file, comments left out, or null. */
@@ -185,11 +193,17 @@ function placedJobs(project, { ci = CI, validate = VALIDATE } = {}) {
   }
 
   // The parent pipeline on main; `main-validation` is a trigger job, which no
-  // runner takes, and a job for merge requests alone is not created there.
+  // runner takes, a job for merge requests alone is not created there, and
+  // any other job is created as its rules decide.
   place(
     'main',
     ci,
-    jobsOf(ci).filter((job) => job !== 'main-validation' && !mergeRequestOnly(ci, job)),
+    jobsOf(ci).filter(
+      (job) =>
+        job !== 'main-validation' &&
+        !mergeRequestOnly(ci, job) &&
+        createdOnMain(ci, job, { ...ciVariables, ...project }),
+    ),
     ciVariables,
   );
 
@@ -216,8 +230,13 @@ function pipelines(project, files = {}) {
   );
 }
 
-/** What every job should get when the moved jobs go to `tag`. */
-function expected(tag) {
+/**
+ * What every job should get when the moved jobs go to `tag`, and deploy to
+ * `deploy`; with `deploy` null, as when DEPLOY_RUNNER_TAG names no runner,
+ * neither `deploy` nor the smoke is created, and `deploy-runner-tag`, on
+ * `tag`, fails the pipeline instead.
+ */
+function expected(tag, deploy = DEPLOY) {
   const moved = [
     ...jobsOf(VALIDATE).map((job) => `merge-request ${job}`),
     'merge-request image:backend',
@@ -232,18 +251,23 @@ function expected(tag) {
   ];
   return {
     ...Object.fromEntries(moved.map((job) => [job, [tag]])),
-    'main deploy': [DEPLOY],
-    'main deployment-smoke': [SHARED],
+    ...(deploy === null
+      ? { 'main deploy-runner-tag': [tag] }
+      : { 'main deploy': [deploy], 'main deployment-smoke': [SHARED] }),
   };
 }
 
-// The rules of `image:postgres` (D084), evaluated as GitLab does: in
-// order, the first rule whose `if:` holds and whose `changes:`, when it has
-// one, match a changed path decides, `when: never` leaving the job out and any
-// other rule creating it; a job no rule matches is not created. An `if:` is
-// read for `$VAR == 'text'` and `$VAR == $VAR` joined by `&&` alone, a
-// variable that is not set being null; anything else is refused rather than
-// guessed at. Paths match as rules:changes matches them (test-inputs.mjs).
+// A job's rules (D084, #367), evaluated as GitLab does: in order, the first
+// rule whose `if:` holds and whose `changes:`, when it has one, match a
+// changed path decides, `when: never` leaving the job out and any other rule
+// creating it; a job no rule matches is not created. An `if:` is read for
+// `$VAR == 'text'`, `$VAR == $VAR` and `$VAR =~ /pattern/` joined by `&&`
+// alone, a variable that is not set being null, and matched as empty text
+// (Gitlab::Ci::Pipeline::Expression::Lexeme::Matches, `text.to_s`); anything
+// else is refused rather than guessed at. A pattern is read by RE2
+// (Gitlab::UntrustedRegexp), whose `^` and `$` hold at the text's ends as
+// JavaScript's do without flags; a pattern with flags is refused. Paths match
+// as rules:changes matches them (test-inputs.mjs).
 
 /** A job's `rules:` as `{ if, when, changes }`, `changes` null when the rule has none. */
 function rulesOf(lines) {
@@ -273,24 +297,40 @@ function rulesOf(lines) {
 /** Whether an `if:` expression holds for these variables. */
 function holds(expression, variables) {
   return expression.split(' && ').every((part) => {
+    const value = (name) => variables[name] ?? null;
+    const pattern = /^\$([A-Z_][A-Z0-9_]*) =~ \/([^/]+)\/$/.exec(part);
+    if (pattern) return new RegExp(pattern[2]).test(value(pattern[1]) ?? '');
     const match = /^\$([A-Z_][A-Z0-9_]*) == (?:'([^']*)'|\$([A-Z_][A-Z0-9_]*))$/.exec(part);
     assert.ok(match, `an expression the model does not read: ${part}`);
-    const value = (name) => variables[name] ?? null;
     return value(match[1]) === (match[3] === undefined ? match[2] : value(match[3]));
   });
 }
 
-/** Whether a pipeline with these variables and changed paths creates the job. */
+/** Whether a pipeline with these variables and changed paths, `true` for every path, creates the job. */
 function creates(rules, variables, changed) {
   for (const rule of rules) {
     if (!holds(rule.if, variables)) continue;
-    if (rule.changes !== null) {
+    if (rule.changes !== null && changed !== true) {
       const patterns = compile(rule.changes);
       if (!changed.some((path) => matches(patterns, path))) continue;
     }
     return rule.when !== 'never';
   }
   return false;
+}
+
+/** The predefined variables of a pipeline on main that the rules read. */
+const MAIN = Object.freeze({
+  CI_PIPELINE_SOURCE: 'push',
+  CI_COMMIT_BRANCH: 'main',
+  CI_DEFAULT_BRANCH: 'main',
+});
+
+/** Whether a pipeline on main changing every path, with these variables, creates the job of `text`: by its rules, and with none, always. */
+function createdOnMain(text, job, variables) {
+  const lines = block(text, job) ?? [];
+  if (!lines.includes('  rules:')) return true;
+  return creates(rulesOf(lines), { ...variables, ...MAIN }, true);
 }
 
 test('image:postgres is built when deploy/postgres/ changes, in a merge request and on main (D084)', () => {
@@ -349,13 +389,15 @@ test('image:postgres is built when deploy/postgres/ changes, in a merge request 
   }
   // The model refuses what it does not read, rather than guess.
   assert.throws(() => holds("$A == 'x' || $B == 'y'", {}), /does not read/);
-  assert.throws(() => holds('$A =~ /x/', {}), /does not read/);
+  assert.throws(() => holds('$A =~ /x/i', {}), /does not read/);
+  assert.throws(() => holds("$A != 'x'", {}), /does not read/);
   assert.throws(() => rulesOf(['  rules:', '    - changes: [x]']), /does not read/);
 });
 
 test('the jobs of the pipeline are the ones this file places', () => {
   assert.deepEqual(jobsOf(CI).sort(), [
     'deploy',
+    'deploy-runner-tag',
     'deployment-smoke',
     'image:backend',
     'image:frontend',
@@ -380,17 +422,20 @@ test('the jobs of the pipeline are the ones this file places', () => {
   ]);
 });
 
-test('with no project variable every validate and build job runs on our runner, in every pipeline and the child on main', () => {
-  assert.deepEqual(pipelines({}), expected(OURS));
+test('with no project variable every validate and build job runs on the shared runners, and deploy is not created: deploy-runner-tag fails the pipeline instead (#367)', () => {
+  assert.deepEqual(pipelines({}), expected(SHARED, null));
 });
 
-test('the project variable alone moves those jobs to the shared runners, the child on main among them, and deleting it moves them back', () => {
-  assert.deepEqual(pipelines({ [RUNNER_TAG_VARIABLE]: SHARED }), expected(SHARED));
+test("production's project variables put those jobs on our runner, the child on main among them, and deploy on the production runner; the runner tag alone moves them to the shared runners and back, and deleting it leaves them there (D258, #367)", () => {
+  assert.deepEqual(pipelines(PRODUCTION), expected(OURS));
+  assert.deepEqual(pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED }), expected(SHARED));
   assert.deepEqual(
-    pipelines({ [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }),
+    pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }),
     expected('saas-linux-medium-amd64'),
   );
-  assert.deepEqual(pipelines({}), expected(OURS));
+  assert.deepEqual(pipelines(PRODUCTION), expected(OURS));
+  assert.deepEqual(pipelines({ [DEPLOY_TAG_VARIABLE]: DEPLOY }), expected(SHARED));
+  assert.deepEqual(pipelines({ [RUNNER_TAG_VARIABLE]: OURS }), expected(OURS, null));
 });
 
 test("the trigger job passes on the validate stage's variables and not the runner tag", () => {
@@ -406,21 +451,22 @@ test("the trigger job passes on the validate stage's variables and not the runne
 });
 
 test('the model sees the faults it guards against', () => {
-  // A trigger job passing every variable on: the child stays on our runner
-  // while the project variable sends everything else to the shared runners.
+  // A trigger job passing every variable on: the child stays on the file's
+  // default, the shared runners, while the project variable sends everything
+  // else to our runner.
   const passingAll = CI.replace(
     '  inherit:\n    variables:\n      - NODE_IMAGE\n      - POSTGRES_IMAGE_TAG\n',
     '',
   );
   assert.notEqual(passingAll, CI, 'the inherit list is where the test looks for it');
-  const leaked = pipelines({ [RUNNER_TAG_VARIABLE]: SHARED }, { ci: passingAll });
-  assert.deepEqual(leaked['child lint'], [OURS]);
-  assert.deepEqual(leaked[`child ${PROOF_JOB}`], [OURS]);
-  assert.deepEqual(leaked['main image:backend'], [SHARED]);
+  const leaked = pipelines(PRODUCTION, { ci: passingAll });
+  assert.deepEqual(leaked['child lint'], [SHARED]);
+  assert.deepEqual(leaked[`child ${PROOF_JOB}`], [SHARED]);
+  assert.deepEqual(leaked['main image:backend'], [OURS]);
 
   // The child without its own default: its jobs wait for a runner tagged
   // with the variable's literal name, which none is — never untagged.
-  const noDefault = VALIDATE.replace(`variables:\n  ${RUNNER_TAG_VARIABLE}: '${OURS}'\n`, '');
+  const noDefault = VALIDATE.replace(`variables:\n  ${RUNNER_TAG_VARIABLE}: '${SHARED}'\n`, '');
   assert.notEqual(noDefault, VALIDATE);
   assert.deepEqual(pipelines({}, { validate: noDefault })['child lint'], [
     `$${RUNNER_TAG_VARIABLE}`,
@@ -429,16 +475,219 @@ test('the model sees the faults it guards against', () => {
   // An empty project variable drops the tag: the jobs go untagged to the
   // shared runners, which is why the runbook says to delete it, never empty
   // it, and the check reports it.
-  const empty = pipelines({ [RUNNER_TAG_VARIABLE]: '' });
+  const empty = pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: '' });
   assert.deepEqual(empty['merge-request lint'], []);
   assert.deepEqual(empty['child e2e'], []);
   assert.deepEqual(empty['main deploy'], [DEPLOY]);
 });
 
+// The deploy job holds KUBECONFIG_DEPLOYER, and its runner is the one
+// DEPLOY_RUNNER_TAG names (#367). A value that expands to no tag leaves the
+// job untagged, and GitLab's shared runners may take it, credential and all;
+// one not set leaves it waiting for a runner tagged with the literal name,
+// and the pipeline quiet. Whatever the variable holds, a pipeline on main
+// creates either `deploy`, on the one tag that is the variable's whole value,
+// with the smoke after it, or neither, and `deploy-runner-tag`, which fails.
+
+/** DEPLOY_RUNNER_TAG's values the check runs through, `undefined` for not set. */
+const DEPLOY_TAGS = [
+  undefined,
+  '',
+  ' ',
+  '\t',
+  '\n',
+  ',',
+  ' , ',
+  'a,b',
+  `${DEPLOY},`,
+  'a b',
+  `${DEPLOY} `,
+  ` ${DEPLOY}`,
+  `x\n${DEPLOY}`,
+  `${DEPLOY}\n`,
+  `$${DEPLOY_TAG_VARIABLE}`,
+  '$OTHER',
+  '-x',
+  '.x',
+  DEPLOY,
+  'Runner_1.a',
+];
+
+/** The pattern of each rule that reads DEPLOY_RUNNER_TAG, by job. */
+function deployTagPatterns(text) {
+  return ['deploy-runner-tag', 'deploy', 'deployment-smoke'].map((job) =>
+    (block(text, job) ?? [])
+      .filter((line) => line.includes(`$${DEPLOY_TAG_VARIABLE} =~`))
+      .map((line) => line.slice(line.indexOf('=~'))),
+  );
+}
+
+/** What lets deploy run off its runner, or the pipeline on main go quiet without it, in the files as given. */
+function deployTagProblems(files = {}) {
+  const { ci = CI } = files;
+  const problems = [];
+  for (const value of DEPLOY_TAGS) {
+    const project = Object.fromEntries(
+      Object.entries(PRODUCTION).filter(([name]) => name !== DEPLOY_TAG_VARIABLE),
+    );
+    if (value !== undefined) project[DEPLOY_TAG_VARIABLE] = value;
+    const jobs = pipelines(project, files);
+    const label = value === undefined ? 'not set' : JSON.stringify(value);
+    const deploy = jobs['main deploy'];
+    if (deploy !== undefined) {
+      if (deploy.length !== 1 || deploy[0] !== value) {
+        problems.push(`${label}: deploy is created with the tags [${deploy.join(', ')}]`);
+      }
+      if (!jobs['main deployment-smoke']) problems.push(`${label}: deploy without the smoke`);
+      if (jobs['main deploy-runner-tag']) {
+        problems.push(`${label}: deploy-runner-tag fails a pipeline that deploys`);
+      }
+    } else {
+      if (jobs['main deployment-smoke']) problems.push(`${label}: the smoke without deploy`);
+      if (!jobs['main deploy-runner-tag']) {
+        problems.push(`${label}: neither deploy nor deploy-runner-tag is created`);
+      }
+    }
+  }
+  const patterns = deployTagPatterns(ci);
+  if (patterns.some((each) => each.length !== 1) || new Set(patterns.flat()).size !== 1) {
+    problems.push(`the rules read DEPLOY_RUNNER_TAG differently: ${JSON.stringify(patterns)}`);
+  }
+  const guard = block(ci, 'deploy-runner-tag');
+  if (guard !== null) {
+    if (!guard.includes('      exit 1')) problems.push('deploy-runner-tag does not fail');
+    if (!guard.some((line) => /^ {6}echo ".*DEPLOY_RUNNER_TAG/.test(line))) {
+      problems.push('deploy-runner-tag does not name DEPLOY_RUNNER_TAG');
+    }
+    if (guard.some((line) => /^ {2}(environment|variables|tags|extends):/.test(line))) {
+      problems.push('deploy-runner-tag is given more than it needs');
+    }
+  }
+  return problems;
+}
+
+test('deploy runs only on the runner DEPLOY_RUNNER_TAG names: with it not set or holding no runner tag, neither deploy nor the smoke is created, and deploy-runner-tag fails the pipeline, naming it (#367)', () => {
+  assert.deepEqual(deployTagProblems(), []);
+  // Production's: deploy on its runner, the smoke after it, nothing failing.
+  const production = pipelines(PRODUCTION);
+  assert.deepEqual(production['main deploy'], [DEPLOY]);
+  assert.equal(production['main deploy-runner-tag'], undefined);
+  // Not set and empty: no deploy, no smoke, the guard on the runner of the
+  // build jobs; it is the only one of them to fail.
+  for (const project of [
+    { [RUNNER_TAG_VARIABLE]: OURS },
+    { ...PRODUCTION, [DEPLOY_TAG_VARIABLE]: '' },
+  ]) {
+    const jobs = pipelines(project);
+    assert.equal(jobs['main deploy'], undefined);
+    assert.equal(jobs['main deployment-smoke'], undefined);
+    assert.deepEqual(jobs['main deploy-runner-tag'], [OURS]);
+  }
+  assert.match(block(CI, 'deploy-runner-tag').join('\n'), /^ {2}stage: \.pre$/m);
+  // Not in a merge request: there is no deploy to guard.
+  assert.equal(
+    creates(
+      rulesOf(block(CI, 'deploy-runner-tag')),
+      {
+        CI_PIPELINE_SOURCE: 'merge_request_event',
+        CI_DEFAULT_BRANCH: 'main',
+      },
+      true,
+    ),
+    false,
+  );
+});
+
+test('the deploy runner check sees each way of letting deploy run off its runner or the pipeline go quiet', () => {
+  const RULE = '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH';
+  const PATTERN = ` && $${DEPLOY_TAG_VARIABLE} =~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/`;
+  const replaced = (from, to, text = CI) => {
+    const changed = text.replace(from, to);
+    assert.notEqual(changed, text, `the test looks for ${JSON.stringify(from)}`);
+    return changed;
+  };
+  const deployRule = `  environment:\n    name: production\n    url: $DEPLOY_APP_ORIGIN\n  rules:\n    - if: ${RULE}${PATTERN}\n`;
+  const smokeRule = `  rules:\n    - if: ${RULE}${PATTERN}\n  script:\n    # The site`;
+
+  // deploy as it was before: created whatever the variable holds; empty, it
+  // goes untagged, and not set, it waits on the literal name.
+  const before = replaced(deployRule, deployRule.replace(PATTERN, ''));
+  const seen = deployTagProblems({
+    ci: replaced(smokeRule, smokeRule.replace(PATTERN, ''), before),
+  });
+  assert.ok(seen.includes('"": deploy is created with the tags []'), seen.join('\n'));
+  assert.ok(
+    seen.includes('not set: deploy is created with the tags [$DEPLOY_RUNNER_TAG]'),
+    seen.join('\n'),
+  );
+  assert.ok(seen.includes('",": deploy is created with the tags []'), seen.join('\n'));
+  assert.ok(seen.includes('"": deploy-runner-tag fails a pipeline that deploys'), seen.join('\n'));
+
+  // The smoke left without the condition: it runs with no deploy before it.
+  assert.ok(
+    deployTagProblems({ ci: replaced(smokeRule, smokeRule.replace(PATTERN, '')) }).includes(
+      '"": the smoke without deploy',
+    ),
+  );
+
+  // A looser pattern lets blank and listed values through.
+  const loose = deployTagProblems({
+    ci: CI.replaceAll(PATTERN, ` && $${DEPLOY_TAG_VARIABLE} =~ /./`),
+  });
+  assert.ok(loose.includes('" ": deploy is created with the tags []'), loose.join('\n'));
+  assert.ok(loose.includes('"a,b": deploy is created with the tags [a, b]'), loose.join('\n'));
+
+  // One rule's pattern changed alone.
+  assert.ok(
+    deployTagProblems({
+      ci: replaced(smokeRule, smokeRule.replace('[A-Za-z0-9._-]*', '[A-Za-z0-9._-]+')),
+    }).some((problem) => problem.startsWith('the rules read DEPLOY_RUNNER_TAG differently')),
+  );
+
+  // No guard: an unset variable leaves a pipeline that deploys nothing and
+  // says nothing.
+  const guard = CI.slice(CI.indexOf('\ndeploy-runner-tag:\n') + 1, CI.indexOf('\ndeploy:\n') + 1);
+  assert.match(guard, /^deploy-runner-tag:\n[^]*\n {6}exit 1\n\n$/);
+  assert.ok(
+    deployTagProblems({ ci: replaced(guard, '') }).includes(
+      'not set: neither deploy nor deploy-runner-tag is created',
+    ),
+  );
+  // A guard without its `when: never`: it fails production's pipeline too.
+  assert.ok(
+    deployTagProblems({
+      ci: replaced(
+        '\n      when: never\n    - if: $CI_COMMIT_BRANCH',
+        '\n    - if: $CI_COMMIT_BRANCH',
+      ),
+    }).includes(`${JSON.stringify(DEPLOY)}: deploy-runner-tag fails a pipeline that deploys`),
+  );
+  // A guard that does not fail, or does not say why.
+  assert.ok(
+    deployTagProblems({
+      ci: replaced('      exit 1\n\ndeploy:', '      true\n\ndeploy:'),
+    }).includes('deploy-runner-tag does not fail'),
+  );
+  assert.ok(
+    deployTagProblems({
+      ci: replaced('CI/CD variable DEPLOY_RUNNER_TAG is not set', 'CI/CD variable is not set'),
+    }).includes('deploy-runner-tag does not name DEPLOY_RUNNER_TAG'),
+  );
+  // A guard given an environment would be given the credential.
+  assert.ok(
+    deployTagProblems({
+      ci: replaced(
+        'deploy-runner-tag:\n  stage: .pre\n',
+        'deploy-runner-tag:\n  stage: .pre\n  environment: production\n',
+      ),
+    }).includes('deploy-runner-tag is given more than it needs'),
+  );
+});
+
 test('both files hold the same default, the one the gate writes into the proof', () => {
-  assert.equal(RUNNER_TAG_DEFAULT, OURS);
-  assert.equal(variablesOf(CI)[RUNNER_TAG_VARIABLE], OURS);
-  assert.equal(variablesOf(VALIDATE)[RUNNER_TAG_VARIABLE], OURS);
+  assert.equal(RUNNER_TAG_DEFAULT, SHARED);
+  assert.equal(variablesOf(CI)[RUNNER_TAG_VARIABLE], SHARED);
+  assert.equal(variablesOf(VALIDATE)[RUNNER_TAG_VARIABLE], SHARED);
   assert.deepEqual(defaultTags(CI), [`$${RUNNER_TAG_VARIABLE}`]);
   assert.deepEqual(defaultTags(VALIDATE), [`$${RUNNER_TAG_VARIABLE}`]);
   // Tags are set in `default:` only, but for the two jobs that leave our
@@ -452,7 +701,7 @@ test('both files hold the same default, the one the gate writes into the proof',
   for (const job of jobsOf(CI).filter((name) => !['deploy', 'deployment-smoke'].includes(name))) {
     assert.equal(tagsOfJob(CI, job), null, job);
   }
-  assert.deepEqual(tagsOfJob(CI, 'deploy'), [DEPLOY]);
+  assert.deepEqual(tagsOfJob(CI, 'deploy'), [`$${DEPLOY_TAG_VARIABLE}`]);
   assert.deepEqual(tagsOfJob(CI, 'deployment-smoke'), [SHARED]);
 });
 
@@ -903,18 +1152,18 @@ function groups(project, files = {}) {
   );
 }
 
-/** The switch's values the pins run under: none, the fallback, a larger shared machine. */
+/** The switch's values the pins run under: production's, the fallback, a larger shared machine. */
 const SWITCH = [
-  [OURS, {}],
-  [SHARED, { [RUNNER_TAG_VARIABLE]: SHARED }],
-  ['saas-linux-medium-amd64', { [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }],
+  [OURS, PRODUCTION],
+  [SHARED, { ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED }],
+  ['saas-linux-medium-amd64', { ...PRODUCTION, [RUNNER_TAG_VARIABLE]: 'saas-linux-medium-amd64' }],
 ];
 
-/** What every job should hold when the moved jobs go to `tag`. */
-function expectedGroups(tag) {
+/** What every job should hold when the moved jobs go to `tag`, and deploy to `deploy` (null: not created). */
+function expectedGroups(tag, deploy = DEPLOY) {
   const holders = HEAVY_JOBS.flatMap((job) => [`merge-request ${job}`, `child ${job}`]);
   return Object.fromEntries(
-    Object.keys(expected(tag)).map((key) => [
+    Object.keys(expected(tag, deploy)).map((key) => [
       key,
       holders.includes(key) ? `heavy-tests-${tag}` : key === 'main deploy' ? DEPLOY_GROUP : null,
     ]),
@@ -985,10 +1234,14 @@ test('test and e2e hold one resource group, named after the runner tag, in the m
   }
   // Under the switch the pipeline is the same one, its heavy jobs on the
   // shared runners taking turns in their own group.
-  const shared = groups({ [RUNNER_TAG_VARIABLE]: SHARED });
+  const shared = groups({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED });
   assert.equal(shared['merge-request e2e'], 'heavy-tests-saas-linux-small-amd64');
-  assert.deepEqual(pipelines({ [RUNNER_TAG_VARIABLE]: SHARED })['child e2e'], [SHARED]);
-  assert.equal(groups({})['child test'], 'heavy-tests-qa-tools-ci');
+  assert.deepEqual(pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED })['child e2e'], [
+    SHARED,
+  ]);
+  assert.equal(groups(PRODUCTION)['child test'], 'heavy-tests-qa-tools-ci');
+  // With no project variable at all, as on the shared runners, and no deploy.
+  assert.deepEqual(groups({}), expectedGroups(SHARED, null));
   // The script-test groups and the light jobs take the second place.
   for (const job of jobsOf(VALIDATE).filter((name) => !HEAVY_JOBS.includes(name))) {
     assert.equal(groupOfJob(VALIDATE, job), null, job);
@@ -1151,12 +1404,16 @@ function interruptibleOf(text, job, fallback) {
   return (takes ? fallback : undefined) ?? false;
 }
 
-/** Every job of each pipeline and whether it is interruptible, in the files as given. */
+/**
+ * Every job of each pipeline and whether it is interruptible, in the files as
+ * given: those of production's project variables, `deploy` among them, and
+ * those of none, `deploy-runner-tag` among them.
+ */
 function interruptibles(files = {}) {
   const { ci = CI, validate = VALIDATE } = files;
   const defaultOf = (text) => ownInterruptible(block(text, 'default') ?? []);
   return Object.fromEntries(
-    placedJobs({}, files).map(({ key, job, text }) => {
+    [...placedJobs(PRODUCTION, files), ...placedJobs({}, files)].map(({ key, job, text }) => {
       const fallback = key.startsWith('merge-request ')
         ? (defaultOf(ci) ?? defaultOf(validate))
         : defaultOf(text);
@@ -1168,7 +1425,7 @@ function interruptibles(files = {}) {
 /** What every job should be: interruptible, but `deploy` and the proof job. */
 const expectedInterruptibles = () =>
   Object.fromEntries(
-    Object.keys(expected(OURS)).map((key) => [
+    Object.keys({ ...expected(OURS), ...expected(SHARED, null) }).map((key) => [
       key,
       !['main deploy', `child ${PROOF_JOB}`].includes(key),
     ]),
@@ -1226,8 +1483,8 @@ test('the interruptible check sees each way of letting deploy be cancelled or ke
   const line = '  interruptible: false\n';
   const ownDefault = 'default:\n  interruptible: true\n';
   assert.ok(CI.includes(ownDefault) && VALIDATE.includes(ownDefault), 'both files hold it');
-  const address = '  extends: .inspector-address\n  # The runner inside';
-  assert.ok(CI.includes(address), "deploy's extends: is where the test looks for it");
+  const start = '\ndeploy:\n  stage: deploy\n';
+  assert.ok(CI.includes(start), "deploy's first lines are where the test looks for it");
   // [the fault, the file edited, [what is replaced wherever it stands, its replacement]...]
   const faults = [
     ['deploy without interruptible: false', 'ci', [line, '']],
@@ -1237,8 +1494,7 @@ test('the interruptible check sees each way of letting deploy be cancelled or ke
       'deploy taking it from a template',
       'ci',
       [line, ''],
-      [address, address.replace('.inspector-address', '[.inspector-address, .keep]')],
-      ['\ndeploy:\n', `\n.keep:\n${line}\ndeploy:\n`],
+      [start, `\n.keep:\n${line}${start}  extends: .keep\n`],
     ],
     [
       'another job of .gitlab-ci.yml with it',

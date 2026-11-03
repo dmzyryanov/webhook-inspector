@@ -8,8 +8,11 @@ import { URL } from 'node:url';
  * site's second origin, `APP_ALIAS_ORIGIN`, the host the same site also
  * answers on, closed to search, where it moves on day X:
  * `https://webhook.qa-tools.ru` in production. An image is built for one
- * address: `.gitlab-ci.yml` sets all three once and passes them to the image
- * build as build arguments of `apps/frontend/Dockerfile`, and to the chart.
+ * address: since #367 the project's CI/CD variables `DEPLOY_APP_ORIGIN`,
+ * `DEPLOY_RECEIVE_ORIGIN` and `DEPLOY_APP_ALIAS_ORIGIN` hold the three, which
+ * `.gitlab-ci.yml` passes to the image build under the names above, as build
+ * arguments of `apps/frontend/Dockerfile`; the deploy job reads the variables
+ * itself and gives the chart their hosts.
  * Unset or empty, the first two are production's, and the third is
  * production's while the site is production's and none for any other site,
  * so a plain local build is what it was before they existed and a copy that
