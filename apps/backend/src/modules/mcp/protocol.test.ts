@@ -3,10 +3,16 @@
  * message a body holds, the `Origin` that may call, what `Accept` must allow,
  * the query string a URL may not carry, and the protocol versions. Each is
  * also given made-up input built to break it, at 1 KiB, 64 KiB and 1 MiB, and
- * must answer within a bound - the fastest of up to five runs, so that the
- * machine's load does not decide it (`withinBound`) - and never let in what
- * it should refuse. And `ownCopy`, which must give back every code unit of
- * whatever it is given.
+ * must answer within the bound of its kind - the fastest of up to five runs,
+ * so that the machine's load does not decide it (`withinBound`) - and never
+ * let in what it should refuse. And `ownCopy`, which must give back every
+ * code unit of whatever it is given.
+ *
+ * Each bound is near its checks' own cost, so that a reading of them worse
+ * than linear is over it on every run, with room for the load of the full
+ * backend suite beside eight busy processes on the agents' server. The
+ * measurements, alone and under that load, and the quadratic readings each
+ * bound catches and those it gives up, are in `docs/testing/flakes.md`, F-24.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -34,17 +40,38 @@ const ALIAS_ORIGIN = 'https://webhook.qa-tools.ru';
 const SIZES = [1024, 64 * 1024, 1024 * 1024];
 
 /**
- * Milliseconds one check of a hostile value may take, at best of up to five
- * runs: 1000, above the 500 of most of the suite's hostile input, as the
- * slowest check here - `parseMessage` on 1 MiB of `[`, a level of nesting a
- * byte for V8's own JSON.parse - takes 67 to 80 ms alone on the agents'
- * server, and up to 268 ms there beside the full backend suite and eight busy
- * processes; two loaded suite runs took it to 109 and 154 ms, over the 100 ms
- * of before #363. A quadratic reading of the same body, each `[` searched to
- * the end for its `]` with V8's own `indexOf`, takes 7.6 s: over the bound on
- * every run (`docs/testing/flakes.md`, F-24).
+ * Milliseconds `parseMessage` may take on one made-up body: 1000, above the
+ * 500 of most of the suite's hostile input, as the slowest body - 1 MiB of
+ * `[`, a level of nesting a byte for V8's own JSON.parse - takes 63 to 84 ms
+ * alone and up to 268 ms under that load; two loaded suite runs took it to
+ * 109 and 154 ms, over the 100 ms of before #363. A quadratic reading of the
+ * same body, each `[` searched to the end for its `]` with V8's own
+ * `indexOf`, takes 7.6 to 7.8 s: over the bound on every run. One search per
+ * 41-byte element of the batch body takes 178 to 213 ms: under it, given up.
  */
-const BOUND_MS = 1000;
+const BODIES_BOUND_MS = 1000;
+
+/**
+ * Milliseconds `acceptsJson` may take on one made-up `Accept` value: 250, as
+ * the slowest value - 1 MiB of commas, a million empty ranges - takes 46 to
+ * 55 ms alone and up to 140 ms under that load. A reading that searches the
+ * rest of the value once per range takes 364 ms on ranges of 21 characters,
+ * 480 ms on ranges of 16 and more on shorter ones, and once per byte 8 s:
+ * over the bound on every run.
+ */
+const ACCEPT_BOUND_MS = 250;
+
+/**
+ * Milliseconds every other check of a made-up value may take - an id, a
+ * copy, an `Origin`, a URL, a protocol version: 50, as the slowest of them,
+ * `parseMessage` on a body whose id is 1 MiB of emoji, takes 4 to 6 ms alone
+ * and up to 20 ms under that load, and the others 1 ms or less alone and
+ * 6 ms or less under it. The cheapest quadratic reading of any of them
+ * measured, one search of the rest of 16,384 `Origin` headers per header,
+ * takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and once
+ * per byte of 1 MiB 8 s: over the bound on every run.
+ */
+const BOUND_MS = 50;
 
 function json(value: unknown): Buffer {
   return Buffer.from(JSON.stringify(value), 'utf8');
@@ -53,10 +80,6 @@ function json(value: unknown): Buffer {
 /** `text` repeated to exactly `size` characters. */
 function fill(text: string, size: number): string {
   return text.repeat(Math.ceil(size / text.length)).slice(0, size);
-}
-
-function timed<T>(run: () => T): T {
-  return withinBound(BOUND_MS, run);
 }
 
 describe('the JSON-RPC message a body holds', () => {
@@ -281,14 +304,14 @@ describe('the JSON-RPC message a body holds', () => {
       ];
 
       for (const body of bodies) {
-        const parsed = timed(() => parseMessage(body));
+        const parsed = withinBound(BODIES_BOUND_MS, () => parseMessage(body));
 
         assert.ok(['invalid', 'request'].includes(parsed.kind));
         assert.equal(isCreateSessionCall(parsed), false);
       }
     });
 
-    it(`refuses made-up ids of ${size} characters or digits as invalid requests`, () => {
+    it(`refuses made-up ids of ${size} characters or digits as invalid requests within ${BOUND_MS} ms`, () => {
       const ids = [
         `"${fill('x', size)}"`,
         `"${fill('é', size)}"`,
@@ -301,7 +324,7 @@ describe('the JSON-RPC message a body holds', () => {
       ];
 
       for (const id of ids) {
-        const parsed = timed(() =>
+        const parsed = withinBound(BOUND_MS, () =>
           parseMessage(
             Buffer.from(
               `{"jsonrpc":"2.0","id":${id},"method":"tools/call","params":{"name":"wait_for_request"}}`,
@@ -337,7 +360,7 @@ describe('ownCopy (D203)', () => {
   });
 
   for (const size of SIZES) {
-    it(`copies made-up strings of ${size} characters exactly`, () => {
+    it(`copies made-up strings of ${size} characters exactly within ${BOUND_MS} ms`, () => {
       for (const value of [
         fill('x', size),
         fill('é', size),
@@ -349,7 +372,7 @@ describe('ownCopy (D203)', () => {
         `${fill('a', size / 2)}${fill('b', size / 2)}`,
         fill('cd', size + 2).slice(1, size + 1),
       ]) {
-        const copy = timed(() => ownCopy(value));
+        const copy = withinBound(BOUND_MS, () => ownCopy(value));
 
         assert.equal(copy.length, value.length);
         assert.equal(copy, value);
@@ -433,13 +456,13 @@ describe('the Origin that may call /mcp (D203)', () => {
         fill('w', size) + ALIAS_ORIGIN,
       ]) {
         assert.equal(
-          timed(() => isAllowedOrigin([value], BOTH)),
+          withinBound(BOUND_MS, () => isAllowedOrigin([value], BOTH)),
           false,
         );
       }
 
       assert.equal(
-        timed(() =>
+        withinBound(BOUND_MS, () =>
           isAllowedOrigin(
             Array.from({ length: size / 64 }, () => APP_ORIGIN),
             BOTH,
@@ -501,7 +524,7 @@ describe('the query string a URL to /mcp may not carry (D203)', () => {
         `/mcp#${fill('😀', size)}`,
       ]) {
         assert.equal(
-          timed(() => hasQueryString(url)),
+          withinBound(BOUND_MS, () => hasQueryString(url)),
           true,
           `${url.slice(0, 16)}… of ${url.length}`,
         );
@@ -516,7 +539,7 @@ describe('the query string a URL to /mcp may not carry (D203)', () => {
         fill('ÿ', size),
       ]) {
         assert.equal(
-          timed(() => hasQueryString(url)),
+          withinBound(BOUND_MS, () => hasQueryString(url)),
           false,
           `${url.slice(0, 16)}… of ${url.length}`,
         );
@@ -568,7 +591,7 @@ describe('what Accept must allow (D203)', () => {
   });
 
   for (const size of SIZES) {
-    it(`answers made-up Accept values of ${size} characters within ${BOUND_MS} ms`, () => {
+    it(`answers made-up Accept values of ${size} characters within ${ACCEPT_BOUND_MS} ms`, () => {
       const refused = [
         fill(',', size),
         fill(';', size),
@@ -580,13 +603,15 @@ describe('what Accept must allow (D203)', () => {
 
       for (const accept of refused) {
         assert.equal(
-          timed(() => acceptsJson(accept)),
+          withinBound(ACCEPT_BOUND_MS, () => acceptsJson(accept)),
           false,
         );
       }
 
       assert.equal(
-        timed(() => acceptsJson(`${'text/html,'.repeat(size / 10)}application/json`)),
+        withinBound(ACCEPT_BOUND_MS, () =>
+          acceptsJson(`${'text/html,'.repeat(size / 10)}application/json`),
+        ),
         true,
       );
     });
@@ -624,7 +649,7 @@ describe('the protocol versions (D203)', () => {
       fill('2025-06-18', 1024 * 1024),
     ]) {
       assert.equal(
-        timed(() => declaredProtocolVersion(header)),
+        withinBound(BOUND_MS, () => declaredProtocolVersion(header)),
         null,
       );
     }
