@@ -4171,3 +4171,217 @@ that the next reading over the bound names its space. The base's
 that each head is under 16 KiB, the `431` and `200 []` answers and the
 `waits.size === 0` at the end stay, now checked in each round. The change
 and body tests are unchanged.
+
+## F-26 — `reads 5242880 characters of nesting, garbage or an unclosed value as nothing`, in `access-keys.test.ts` and `session-list.test.ts`
+
+- **Test**: `apps/frontend/src/lib/access-keys.test.ts:627` and
+  `apps/frontend/src/lib/session-list.test.ts:691` at `bbcf33b`, the base of
+  the fix: the last size of the suites `parseAccessKeys: hostile values at
+  growing sizes` and `parseSessionList: hostile values at growing sizes`,
+  each of whose parses `timed` held to `LIMIT_MS`, 1500 ms, in one
+  wall-clock run (`:593` and `:661`). With them, `access-keys.test.ts:479`,
+  `reads old and new values of 5242880 characters, hostile or full, in
+  bounded time`, which reads the same 5 MiB of nesting, its four calls and
+  the building of its values held to 3000 ms (`:493`). Issue #355.
+- **Status**: changed in the tests on `chore/hostile-size-test-margin-355`,
+  at `33c7c8c` and `9bef555`: nesting stops at 2 MiB, `NESTING_MAX`, in tests
+  of its own, `reads <size> characters of nesting as nothing`
+  (`access-keys.test.ts:663`, `session-list.test.ts:712` at `9bef555`);
+  every other hostile value still goes on to 5 MiB, in `reads <size>
+  characters of garbage or an unclosed value as nothing` (`:656`, `:704`).
+  `LIMIT_MS` is 3000 ms in both (`:615`, `:667`), 2500 ms at `33c7c8c`. The
+  sibling, now `reads full or garbage old and new values of 5242880
+  characters, and 2097152 of nesting, in bounded time`
+  (`access-keys.test.ts:498`), times its reads and not the building of its
+  values, and holds them to 5000 ms (`:516`). The parsers were not changed;
+  VERSION kept.
+
+### The failure
+
+Six times in whole runs of the frontend suite on the agents' server, each
+time with other suites running beside it, and never in a run of the file
+alone:
+
+- `access-keys.test.ts`, `1651.1 ms for 5242896 characters`: the developer
+  of #342 on 2026-11-01, at `386a9a02` in qa-tools, before the move (#326),
+  one of two whole-suite runs; the file alone passed, 47 of 47.
+- `session-list.test.ts`, `1682.7 ms for 5242896 characters`: F-07's
+  frontend run at `4e69009` in qa-tools, left there under Watched, and left.
+- `access-keys.test.ts`, `1510.7 ms`, and `session-list.test.ts`,
+  `2027.6 ms for 5242880 characters`: the developer and the tester of #343
+  on 2026-11-03 at `9eb6deeb`, in one of two whole-suite runs each.
+- Both at once in this entry's first run at the base, on 2026-11-03 at
+  18:37 MSK, `npm test -w @webhook-inspector/frontend` beside
+  `node scripts/db.mjs task-test 355`, the 1-minute load average rising from
+  2.2 to 14.4: `ℹ tests 2453`, `ℹ pass 2443`, `ℹ fail 2`, `ℹ cancelled 8`
+  (the 8 cancelled are llms.test.ts's, Watched, and left):
+
+  ```text
+  test at src/lib/access-keys.test.ts:627:5
+  ✖ reads 5242880 characters of nesting, garbage or an unclosed value as nothing (1754.708436ms)
+    AssertionError [ERR_ASSERTION]: 1752.6 ms for 5242880 characters
+
+  test at src/lib/session-list.test.ts:691:5
+  ✖ reads 5242880 characters of nesting, garbage or an unclosed value as nothing (2036.188074ms)
+    AssertionError [ERR_ASSERTION]: 2032.6 ms for 5242880 characters
+  ```
+
+  The sibling passed in that run, in 2473.7 ms of its 3000.
+
+### The mechanism
+
+A bound with little room over V8's own time, as in F-24. Of the four values
+of the test, two are nesting: `[` then as many `]`, alone and as `items`.
+V8's JSON.parse builds an array for each `[`, 2,621,440 arrays one in
+another at 5 MiB, and the parsers then read `items` and no deeper: the time
+is the JSON.parse's. It grows faster than the length. One parse of `[` then
+`]` by `parseAccessKeys`, the fastest of five, took 60 ms at 1 MiB, 144 ms
+at 2 MiB, 486 ms at 4 MiB and 774 ms at 5 MiB: 60, 72, 122 and 155 ms a
+MiB. At 5 MiB a parse took 0.69 to 1.06 s alone, half the bound and more,
+and 2.0 s with the suite's other files beside it and another suite beside
+them. Every other hostile value of the two blocks took 85.2 ms at most
+alone at 5 MiB.
+
+### The measurement
+
+On 2026-11-03 on the agents' Linux host, an AMD EPYC 7763 with 8 CPUs, Node
+v24.22.2. The script, outside the tree, builds each value of the two blocks
+as the tests do and times one call of `parseAccessKeys` or
+`parseSessionList` on it, five rounds; min / median / max in ms, alone at a
+load of 0.7 to 1.3, and beside `node scripts/db.mjs task-test 355` at 11.6
+to 9.8:
+
+| value | 1 MiB alone | 2 MiB alone | 4 MiB alone | 5 MiB alone | 2 MiB loaded | 5 MiB loaded |
+| --- | --- | --- | --- | --- | --- | --- |
+| `parseAccessKeys`, nesting | 60.1 / 93.0 / 175.2 | 144.1 / 151.5 / 209.6 | 486.0 / 513.6 / 546.2 | 774.0 / 800.1 / 956.0 | 193.8 / 223.8 / 279.5 | 1087.7 / 1129.5 / 1349.0 |
+| `parseAccessKeys`, nesting as `items` | 53.3 / 54.2 / 64.2 | 152.4 / 159.7 / 161.2 | 547.6 / 595.9 / 685.4 | 716.2 / 730.8 / 1063.0 | 179.6 / 204.1 / 231.8 | 998.1 / 1113.5 / 1133.0 |
+| `parseSessionList`, nesting | 73.4 / 96.8 / 146.1 | 151.6 / 162.6 / 210.3 | 474.0 / 502.0 / 512.8 | 691.7 / 724.8 / 805.6 | 160.6 / 181.5 / 275.3 | 729.5 / 817.0 / 893.8 |
+| `parseSessionList`, nesting as `items` | 95.9 / 100.8 / 105.7 | 143.1 / 164.0 / 169.1 | 481.2 / 499.7 / 714.6 | 718.4 / 760.6 / 794.5 | 155.8 / 190.0 / 206.1 | 855.4 / 912.6 / 1045.3 |
+| `parseAccessKeys`, entries, the slowest other value | 9.1 / 10.5 / 12.3 | 17.9 / 19.8 / 20.5 | 46.5 / 49.2 / 59.5 | 49.9 / 56.9 / 64.2 | 23.1 / 28.3 / 31.1 | 85.0 / 95.1 / 121.4 |
+| `parseSessionList`, entries, the slowest other value | 19.0 / 24.0 / 28.3 | 25.9 / 27.3 / 31.9 | 54.3 / 56.0 / 72.1 | 73.5 / 75.0 / 85.2 | 26.0 / 46.9 / 105.7 | 74.1 / 95.9 / 116.7 |
+
+In the whole suite the load is heavier than beside one other suite, since
+the suite's own files run side by side. Sixteen whole runs of the frontend
+suite at the fix's sizes, each beside the backend suite,
+`node scripts/db.mjs task-test 355`, two frontend runs to a backend run,
+the 1-minute load average between 3.9 and 19.2, each run 47 to 53 s:
+
+- ten with `LIMIT_MS` still 1500 and the sibling as at the base but for its
+  nesting: every test of both blocks and the sibling passed in all ten. The
+  2 MiB nesting test, two parses, took 497 to 760 ms in `access-keys.test.ts`
+  and 452 to 1270 ms in `session-list.test.ts`; the sibling at 5 MiB 891 to
+  1615 ms.
+- six more of the same tree with a line written after each timed parse,
+  not committed: the slowest single parse was 750.6 ms, `parseSessionList`
+  on 2 MiB of `[` then `]`; `parseAccessKeys` on the same, 472.9 ms. Of the
+  5 MiB values, the entries were the slowest, 323.6 and 504.6 ms; every
+  other one took 240 ms or less. The sibling's reads took 844 to 1390 ms,
+  the building of its full value before them 159 to 323 ms more.
+
+Each of those sixteen runs exited 1 on llms.test.ts (Watched, and left), and
+three of them failed `request-filter.test.ts:307` besides.
+
+### The mutations
+
+Two quadratic forms of each parser, applied in the worktree and reverted,
+never committed. The items form keeps the entries in an array and looks for
+each id with `findIndex` before adding it, as a list replacing the `Map`
+might; the text form, before JSON.parse, looks from each `[` for a `]` after
+it, `raw.indexOf(']', i + 1)`, quadratic in the depth of nesting. One run
+each, alone, in ms:
+
+| form | value | 64 KiB | 1 MiB | 2 MiB | 5 MiB |
+| --- | --- | --- | --- | --- | --- |
+| `parseAccessKeys`, items | entries | 3.3 and 9.4 | 639.8 and 707.5 | 2527.0 and 2554.6 | 38020.2 and 39107.9 |
+| `parseAccessKeys`, text | nesting | 12.8 and 17.7 | 1769.2 and 1779.7 | 8085.6 and 8214.1 | |
+| `parseAccessKeys`, text | nesting as `items` | 7.4 and 7.7 | 1755.2 and 1772.5 | 7899.5 and 7985.7 | |
+| `parseSessionList`, items | entries | 13.6 | 1676.3 | 5020.5 | 108484.0 |
+| `parseSessionList`, text | nesting | | 1793.5 | 9231.5 | |
+| `parseSessionList`, text | nesting as `items` | | 1768.0 | 7559.9 | |
+
+From 1 to 2 MiB the time grows 3.0 to 5.1 times, and from 2 to 5 MiB 15
+and 22 times, where n² gives 4 and 6.25.
+
+Against the tests at `33c7c8c`, with `LIMIT_MS` at 2500 ms, each form
+applied in turn and its file run
+alone, `npm test -w @webhook-inspector/frontend -- src/lib/<name>.test.ts`,
+at a load of 1.3 to 1.6; the parser was put back with `git checkout --`
+after each:
+
+| form | the file | what failed |
+| --- | --- | --- |
+| `parseAccessKeys`, items | 49 of 51 passed, exit 1, 138 s | `reads 5242880 characters of entries as at most 100 keys`, `46295.0 ms for 5504957 characters`; the sibling at 5 MiB, `5242880 characters took too long`, in 85.7 s |
+| `parseAccessKeys`, text | 49 of 51, exit 1, 24 s | `reads 2097152 characters of nesting as nothing`, `8916.7 ms for 2097152 characters`; the sibling at 5 MiB, `5242880 characters took too long`, in 8.4 s |
+| `parseSessionList`, items | 56 of 57, exit 1, 77 s | `reads 5242880 characters of entries as at most 50 sessions`, `72483.2 ms for 5723307 characters` |
+| `parseSessionList`, text | 56 of 57, exit 1, 13 s | `reads 2097152 characters of nesting as nothing`, `8087.1 ms for 2097152 characters` |
+
+Each form fails its block, at the largest size only: the items form
+passes at 1 MiB, the text form at 1 MiB of nesting.
+
+### The fix
+
+In the tests only. Nesting stops at 2 MiB, where V8 takes a fifth of what
+it takes at 5 MiB, and a scan quadratic in the depth already takes 7.6 s or
+more; the other values, whose time is the parsers' own, still go on to the
+5 MiB a key of `localStorage` can hold at most, where a parse quadratic in
+the entries takes 38 to 46 s (`parseAccessKeys`) and 72 to 108 s
+(`parseSessionList`). `LIMIT_MS` is 3000 ms: 4.0 times the slowest loaded
+parse above, 750.6 ms, and 2.5 times under the fastest quadratic parse of
+a value at its largest size, 7.6 s alone, 7.8 s or more in the test runs.
+A bound of 1500 ms keeps 2.0 times over that loaded parse, which the load
+had made five times its 151.6 ms alone; the 2 MiB nesting passed at it in
+all sixteen runs above, but with less room than the load took. 2500 ms,
+the first value of the fix,
+`33c7c8c`, kept 3.3 times; in the runs at it below, at a load of up to
+20.7, the two parses of `access-keys.test.ts`'s 2 MiB nesting test took
+1330 ms together, and `9bef555` set 3000 ms. The items form of either parser
+at 1 MiB, 0.6 to 1.7 s, passes under every one of these bounds; at 5 MiB it
+fails them all. The sibling's time starts once its values are built and
+holds its four calls of `removedAccessKeys`, six parses, to 5000 ms, 3.6
+times their slowest loaded time above; the block holds each parse to its
+3000 ms.
+
+Every test of both blocks and the sibling passed in all 26 whole runs of
+the frontend suite at the fix's sizes, each beside the backend suite as
+above: the sixteen above, at 1500 ms; six at `33c7c8c`, at 2500 ms, at a
+load of 2.1 to 20.7; and four at `9bef555`, at 3000 ms, at 6.8 to 19.0;
+each `ℹ tests 2461`, in 47 to 57 s. In the last ten the 2 MiB nesting test,
+two parses, took 435 to 1330 ms in `access-keys.test.ts` and 487 to
+1347 ms in `session-list.test.ts`; the sibling, the building of its values
+in the test's time though not in its bound's, 828 to 2261 ms.
+
+Against `9bef555`, at 3000 ms, the four quadratic forms fail the same
+tests as at `33c7c8c`, at a load of 1.4 to 2.2, 49 of 51 and 56 of 57
+passing, exit 1: `parseAccessKeys`' items form with `41752.7 ms for
+5504957 characters` and the sibling in 130.9 s, its text form with
+`8082.3 ms for 2097152 characters` and the sibling in 8.5 s;
+`parseSessionList`'s items form with `95706.8 ms for 5723307 characters`
+and its text form with `7836.5 ms for 2097152 characters`.
+
+### Watched, and left
+
+- `llms.test.ts:640`, `the recipe’s waiting step, run with a stand-in for
+  curl (D200)`, failed its `before` hook in every whole run of this entry,
+  `jq must be installed`, `spawnSync jq ENOENT`, and its eight tests were
+  cancelled: the agents' server had no `jq` on 2026-11-03. The tests require
+  it and never skip, by their comment; CI's `test` job installs it. Not this
+  entry's; each of these runs exited 1 on it alone.
+- Two flakes of this entry's kind in other files of the frontend suite,
+  each a one-run bound of 1000 ms on 1 MiB, outside #355's scope: of the 26
+  loaded runs at the fix, `request-filter.test.ts:307`, `costs the list
+  nothing: a megabyte of one word over 1000 rows`, failed in four, `1096.0`,
+  `1100.0`, `1045.0` and `1222.1 ms for 1048576 characters`; and
+  `response-template.test.ts:413`, `loses nothing of the line, and stands
+  hostile lines at growing sizes in one pass`, in two, `1048576:
+  1182.378455 ms` and `1048576: 1114.422662 ms for "{{{{{{{{{{{{"`.
+- The backend suite beside them, 13 runs, failed
+  `src/modules/webhook/capture-budget.test.ts:960`, `refuses 100,000
+  webhooks of one address at once quickly once its line is full, and lets
+  the others in`, `refusing the flood took too long`, in nine; and once
+  each `src/modules/sessions/access-key.test.ts:473`, `took 108.1 ms at best
+  in 5 runs, over the 100 ms bound`; `capture-budget.test.ts:1490`, F-24's,
+  `weighing the flood took too long`;
+  `src/modules/limits/rate-limit.test.ts:388`, `took 5146.9 ms at best in 5
+  runs, over the 5000 ms bound`; and
+  `src/modules/requests/request-wait.test.ts:900`, `answered after 5001 ms`.
+  Its load was the frontend suite's; not this entry's.
