@@ -52,14 +52,24 @@ const SIZES = [1024, 64 * 1024, 1024 * 1024];
 const BODIES_BOUND_MS = 1000;
 
 /**
- * Milliseconds `acceptsJson` may take on one made-up `Accept` value: 250, as
- * the slowest value - 1 MiB of commas, a million empty ranges - takes 46 to
- * 55 ms alone and up to 140 ms under that load. A reading that searches the
- * rest of the value once per range takes 364 ms on ranges of 21 characters,
- * 480 ms on ranges of 16 and more on shorter ones, and once per byte 8 s:
- * over the bound on every run.
+ * Milliseconds `acceptsJson` may take on one made-up `Accept` value of one
+ * character repeated, or of one range with a parameter every four characters:
+ * 500, the suite's usual, as the slowest of them - 1 MiB of commas, a million
+ * empty ranges, a string for each - takes 46 to 55 ms alone and up to 249 ms
+ * under that load. A reading that searches the rest of the value once per
+ * parameter takes 1.9 s, and once per byte 8 s: over the bound on every run.
  */
-const ACCEPT_BOUND_MS = 250;
+const ACCEPT_BOUND_MS = 500;
+
+/**
+ * Milliseconds `acceptsJson` may take on one made-up list of whole media
+ * ranges, of 10 to 21 characters each: 200, as the slowest of them takes 16
+ * to 18 ms alone and up to 76 ms under that load. A reading that searches the
+ * rest of the list once per range takes 364 ms on ranges of 21 characters,
+ * 480 ms on ranges of 16 and 753 ms on ranges of 10: over the bound on every
+ * run.
+ */
+const ACCEPT_RANGES_BOUND_MS = 200;
 
 /**
  * Milliseconds every other check of a made-up value may take - an id, a
@@ -592,24 +602,34 @@ describe('what Accept must allow (D203)', () => {
 
   for (const size of SIZES) {
     it(`answers made-up Accept values of ${size} characters within ${ACCEPT_BOUND_MS} ms`, () => {
-      const refused = [
+      // One character repeated - a million empty ranges among them - and one
+      // range of a parameter every four characters.
+      for (const accept of [
         fill(',', size),
         fill(';', size),
-        'text/html;q=0.5,'.repeat(size / 16),
-        'application/json;q=0,'.repeat(Math.ceil(size / 21)),
         `application/json;${'q=1;'.repeat(size / 4)}q=0`,
         fill('\u0000', size),
-      ];
-
-      for (const accept of refused) {
+      ]) {
         assert.equal(
           withinBound(ACCEPT_BOUND_MS, () => acceptsJson(accept)),
           false,
         );
       }
+    });
+
+    it(`answers made-up Accept lists of whole media ranges of ${size} characters within ${ACCEPT_RANGES_BOUND_MS} ms`, () => {
+      for (const accept of [
+        'text/html;q=0.5,'.repeat(size / 16),
+        'application/json;q=0,'.repeat(Math.ceil(size / 21)),
+      ]) {
+        assert.equal(
+          withinBound(ACCEPT_RANGES_BOUND_MS, () => acceptsJson(accept)),
+          false,
+        );
+      }
 
       assert.equal(
-        withinBound(ACCEPT_BOUND_MS, () =>
+        withinBound(ACCEPT_RANGES_BOUND_MS, () =>
           acceptsJson(`${'text/html,'.repeat(size / 10)}application/json`),
         ),
         true,
