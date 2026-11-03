@@ -106,7 +106,7 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
-## 1.19.7
+## 1.19.8
 
 2026-11-03
 
@@ -119,6 +119,14 @@ public session, and on a private one opens and is closed `4404`, as without a
 key. From 1.19.0 it was answered with no subprotocol, which a browser fails as
 an abnormal closure, `1006`. The key under `webhook-inspector.access-key.` or
 `qa-tools.access-key.` is still never written back. (#356, D279)
+
+## 1.19.7
+
+2026-11-03
+
+**Nothing changes on this site; a few comments in the inspector's code now
+say where the files it serves come from.** Every address answers exactly as
+before. (#344)
 
 ## 1.19.6
 
