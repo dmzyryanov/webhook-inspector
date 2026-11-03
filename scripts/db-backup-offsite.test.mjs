@@ -3302,13 +3302,15 @@ function fingerprints(armored) {
   return found;
 }
 
-// The tests' recipient key: the owner's of 2026-10-01, from the comment on
-// issue #89, a public key. Production's is its CI/CD variable since #367,
-// not this file, and the chart holds none.
+// The tests' recipient key: a throwaway key made for the tests on
+// 2026-11-03 (#367), ed25519 with a cv25519 encryption subkey, whose private
+// half was discarded when it was made; only its public half is in the tree.
+// Production's key is its CI/CD variable since #367, never a file of the
+// repository, and the chart holds none.
 test('the tests’ recipient file is a public key, and holds no private key', () => {
   assert.deepEqual(fingerprints(RECIPIENT), [
-    { kind: 'primary', fingerprint: '4C5BCE04B61A2DE37D4D567BD332EF5D79E659B1' },
-    { kind: 'subkey', fingerprint: 'BD9E5C803178216D18745DF775374469D290765A' },
+    { kind: 'primary', fingerprint: 'BD9AD9D04BFEBDC8CDFE64DEFCB19EFCA5DA9C1C' },
+    { kind: 'subkey', fingerprint: '49EBCE0E04F351F00F43C98AD2734EA6D3638E06' },
   ]);
   assert.doesNotMatch(RECIPIENT, /PRIVATE KEY/);
   assert.equal(RECIPIENT.match(/-----BEGIN PGP PUBLIC KEY BLOCK-----/g).length, 1);

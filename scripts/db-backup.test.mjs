@@ -107,7 +107,7 @@ const NOTIFIER = fileURLToPath(
 const UPLOADER = fileURLToPath(
   new URL('../deploy/helm/qa-tools/files/db-backup-offsite.mjs', import.meta.url),
 );
-// The owner's public key, to which the off-server copy is encrypted.
+// The tests' public key (a throwaway one, #367), to which the off-server copy is encrypted.
 const RECIPIENT = fileURLToPath(new URL('fixtures/db-backup-recipient.asc', import.meta.url));
 const TEMPLATE = readFileSync(
   new URL('../deploy/helm/qa-tools/templates/db-backup.yaml', import.meta.url),
@@ -1568,7 +1568,7 @@ test('a stop signal during the off-server copy ends the run at once and keeps th
 // The script's own gpg command, on the key the chart ships. Without gpg on a
 // developer's machine the test is skipped; CI installs it (operations-tests).
 test(
-  'the real gpg encrypts the dump to the owner’s key, and the ciphertext names that key alone',
+  'the real gpg encrypts the dump to the recipient key, and the ciphertext names that key alone',
   { skip: !REAL_GPG && !process.env.CI ? 'gpg is not installed' : false },
   async (t) => {
     assert.ok(REAL_GPG, 'gpg is required in CI: operations-tests installs it');
@@ -1588,7 +1588,7 @@ test(
     assert.ok(!ciphertext.includes(dump), 'the dump is readable in the ciphertext');
     assert.ok(!ciphertext.includes('PGDMP'), 'the dump is readable in the ciphertext');
 
-    // Its packets: one public-key encrypted session key, for the owner's
+    // Its packets: one public-key encrypted session key, for the test key's
     // encryption subkey, and no other recipient. This machine has no private
     // key, so the listing ends in "No secret key".
     const home = mkdtempSync(join(tmpdir(), 'qa-gpg-'));
@@ -1605,7 +1605,7 @@ test(
     ];
     assert.deepEqual(
       recipients.map((match) => match[1]),
-      ['75374469D290765A'],
+      ['D2734EA6D3638E06'],
       `${packets.stdout}${packets.stderr}`,
     );
     assert.doesNotMatch(packets.stdout, /:symkey enc packet:/);
