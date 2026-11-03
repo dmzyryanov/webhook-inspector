@@ -4,7 +4,12 @@ import { syncBuiltinESMExports } from 'node:module';
 import { describe, it, mock } from 'node:test';
 import { CHANGELOG_SOURCE, parseChangelog, readChangelog } from '../../scripts/changelog.mjs';
 import { moveDay, moveSetting } from '../../scripts/move-setting.mjs';
-import { PRODUCTION_ORIGINS, SITE_ORIGINS, siteOrigins } from '../../scripts/site-origin.mjs';
+import {
+  PRODUCTION_ORIGINS,
+  SITE_ORIGINS,
+  type SiteOrigins,
+  siteOrigins,
+} from '../../scripts/site-origin.mjs';
 import { formatMoveDay, moveBannerShown, parseBuiltMove } from './move-link.ts';
 import { en } from '../i18n/en.ts';
 
@@ -48,14 +53,22 @@ const NOTICE_DAY = /\bFrom (\d{4}-\d{2}-\d{2}) they stop answering\b/.exec(
   readFileSync(new URL('../../../../CHANGELOG.md', import.meta.url), 'utf8').replace(/\s+/g, ' '),
 )?.[1];
 
+/**
+ * The move a build for `origins` carries, from the changelog as that build
+ * publishes it (#343): each case names its origins itself, so the ones the
+ * shell running the tests holds change nothing here (#354).
+ */
+const moveOf = (origins: SiteOrigins) =>
+  moveSetting(origins, readChangelog(CHANGELOG_SOURCE, origins));
+
 describe('the move a build carries (D276)', () => {
   it('reads day X from the changelog’s notice of the move, the one place that names it', () => {
     assert.ok(NOTICE_DAY, 'CHANGELOG.md names no day X');
-    assert.equal(moveDay(readChangelog()), NOTICE_DAY);
+    assert.equal(moveDay(readChangelog(CHANGELOG_SOURCE, PRODUCTION_ORIGINS)), NOTICE_DAY);
   });
 
   it('moves production’s site to its second origin on that day', () => {
-    const move = moveSetting(PRODUCTION_ORIGINS, readChangelog());
+    const move = moveOf(PRODUCTION_ORIGINS);
 
     assert.deepEqual(move, {
       from: 'https://qa-tools.ru',
@@ -72,19 +85,21 @@ describe('the move a build carries (D276)', () => {
   it('is the build’s origins: a copy with a second origin moves to it, one with none has no move', () => {
     const copy = { app: 'https://inspector.example', receive: 'https://hook.inspector.example' };
 
-    assert.deepEqual(moveSetting(siteOrigins({}), readChangelog())?.to, PRODUCTION_ORIGINS.alias);
-    assert.equal(moveSetting({ ...copy, alias: null }, readChangelog()), null);
-    assert.equal(moveSetting(copy, readChangelog()), null);
-    assert.deepEqual(
-      moveSetting({ ...copy, alias: 'https://next.inspector.example' }, readChangelog()),
-      { from: copy.app, to: 'https://next.inspector.example', day: NOTICE_DAY },
-    );
+    assert.deepEqual(moveOf(siteOrigins({}))?.to, PRODUCTION_ORIGINS.alias);
+    assert.equal(moveOf({ ...copy, alias: null }), null);
+    assert.equal(moveOf(copy), null);
+    assert.deepEqual(moveOf({ ...copy, alias: 'https://next.inspector.example' }), {
+      from: copy.app,
+      to: 'https://next.inspector.example',
+      day: NOTICE_DAY,
+    });
     // Day X's site, at the second origin with none of its own (#324): no banner anywhere.
     assert.equal(
-      moveSetting(
-        { app: 'https://webhook.qa-tools.ru', receive: 'https://hook.qa-tools.ru', alias: null },
-        readChangelog(),
-      ),
+      moveOf({
+        app: 'https://webhook.qa-tools.ru',
+        receive: 'https://hook.qa-tools.ru',
+        alias: null,
+      }),
       null,
     );
   });
@@ -144,7 +159,7 @@ describe('the move a build carries (D276)', () => {
       }),
       [CHANGELOG_SOURCE],
     );
-    assert.deepEqual(move, moveSetting(PRODUCTION_ORIGINS, readChangelog()));
+    assert.deepEqual(move, moveOf(PRODUCTION_ORIGINS));
     // What `vite.config.ts` hands the bundle, both defaults taken, is unchanged.
     assert.deepEqual(moveSetting(), moveSetting(SITE_ORIGINS, readChangelog()));
   });

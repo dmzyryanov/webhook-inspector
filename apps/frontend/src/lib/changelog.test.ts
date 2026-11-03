@@ -6,11 +6,37 @@ import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-// @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-import { changelogFeedProblems, checkBuild } from '../../scripts/check-build.mjs';
-// @ts-expect-error -- the same module: what it reads of a page's comments.
-import { COMMENTED_PAGES, pageCommentProblems, pageComments } from '../../scripts/check-build.mjs';
-import {
+import type { ChangelogEntry } from '../../scripts/changelog.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
+import { API_DOCS_LINK } from './api-docs-link.ts';
+import { filterDays } from './changelog-controls.ts';
+import { CHANGELOG_LINK } from './changelog-link.ts';
+import { isWellFormedXml } from './xml-format.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * `CHANGELOG.md` and everything pinned here are written for production
+ * (D274). The build's modules read the origins from the environment as they
+ * load, so they are imported once these are set, not with the static imports
+ * above, which would load them first; the scripts this file runs inherit
+ * them.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const {
+  changelogFeedProblems,
+  checkBuild,
+  COMMENTED_PAGES,
+  pageCommentProblems,
+  pageComments,
+  productionNamesLeft,
+  // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
+} = await import('../../scripts/check-build.mjs');
+const {
   BREAKING_FEED_PATH,
   CHANGELOG_SOURCE,
   CHANGELOG_URL,
@@ -38,12 +64,15 @@ import {
   stripReferences,
   unescapeXml,
   versionCount,
-  type ChangelogEntry,
-} from '../../scripts/changelog.mjs';
-import { API_DOCS_LINK } from './api-docs-link.ts';
-import { filterDays } from './changelog-controls.ts';
-import { CHANGELOG_LINK } from './changelog-link.ts';
-import { isWellFormedXml } from './xml-format.ts';
+} = await import('../../scripts/changelog.mjs');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS } = await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /**
  * The public changelog (issue #97, D184), without a browser: the parser and
@@ -112,6 +141,10 @@ function sample(newer: string, older = '2026-09-20\n\n**It started.**') {
 }
 
 describe('the parser', () => {
+  it('reads the changelog here for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('reads every version of CHANGELOG.md, newest first, with its date and headline', () => {
     const headings = [...source.matchAll(/^## (\d+\.\d+\.\d+)$/gm)].map((match) => match[1]);
     const version = read('../../../../VERSION').trim();
@@ -1437,6 +1470,80 @@ describe('the feeds', () => {
     assert.match(about?.title ?? '', /^0\.50\.0 — A new page, \/about, says who runs QA Tools/);
     assert.ok(about?.content?.startsWith('<p><strong>A new page, <code>/about</code>, says'));
     assert.equal(plainText('A `<id>` and **bold** `a`, `b`.'), 'A <id> and bold a, b.');
+  });
+
+  it('name another address in a build for it, every link but the ids, which are kept (D274)', () => {
+    // The text and the feeds as build-changelog.mjs writes them for the copy
+    // (#354), in a process of its own whose environment names it.
+    const dist = mkdtempSync(join(tmpdir(), 'webhook-inspector-dist-'));
+    const built = (file: string) => readFileSync(join(dist, file), 'utf8');
+
+    try {
+      execFileSync(
+        process.execPath,
+        [fileURLToPath(new URL('../../scripts/build-changelog.mjs', import.meta.url)), dist],
+        {
+          env: {
+            ...process.env,
+            APP_ORIGIN: ANOTHER.app,
+            RECEIVE_ORIGIN: ANOTHER.receive,
+            APP_ALIAS_ORIGIN: '',
+          },
+          encoding: 'utf8',
+        },
+      );
+
+      // The changelog as that build publishes it (#343), which the feeds carry.
+      const published = readChangelog(CHANGELOG_SOURCE, ANOTHER);
+
+      for (const [path, carried] of [
+        [FEED_PATH, published],
+        [BREAKING_FEED_PATH, published.filter(hasNotice)],
+      ] as const) {
+        const feed = built(path.slice(1));
+        const head = feed.slice(0, feed.indexOf('<entry>'));
+        const items = readFeedEntries(feed);
+
+        assert.ok(isWellFormedXml(feed), path);
+        assert.ok(
+          head.includes(
+            `  <link rel="self" type="application/atom+xml" href="${ANOTHER.app}${path}"/>\n`,
+          ),
+          path,
+        );
+        assert.ok(
+          head.includes(
+            `  <link rel="alternate" type="text/html" href="${ANOTHER.app}/changelog"/>\n`,
+          ),
+          path,
+        );
+        assert.ok(head.includes(`<uri>${ANOTHER.app}/</uri>`), path);
+        assert.ok(head.includes(`  <icon>${ANOTHER.app}/favicon-192.png</icon>\n`), path);
+        assert.ok(items.length > 0, path);
+        // Each entry's id is production's, the permanent one; its link is the copy's.
+        assert.deepEqual(
+          items.map((item) => item.id),
+          carried.map((entry) => feedEntryId(entry.version)),
+          path,
+        );
+        for (const [index, item] of items.entries()) {
+          assert.equal(item.link, `${ANOTHER.app}/changelog#v${carried[index]?.version}`, item.id);
+        }
+        assert.deepEqual(productionNamesLeft(feed, ANOTHER), [], path);
+      }
+
+      assert.deepEqual(
+        readFeedEntries(built('changelog.xml')).map((item) => item.id),
+        readFeedEntries(all).map((item) => item.id),
+      );
+
+      assert.ok(
+        built('changelog.md').includes(`The same text is a page at ${ANOTHER.app}/changelog.`),
+      );
+      assert.deepEqual(productionNamesLeft(built('changelog.md'), ANOTHER), []);
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
   });
 
   it('keep every id across builds, a new version only adding one', () => {

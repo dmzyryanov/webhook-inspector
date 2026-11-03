@@ -758,7 +758,13 @@ and footer it does read (`operatorNameProblems`). The frontend suite runs
 with production's settings in its environment
 (`src/testing/production-operator-env.ts`, loaded with `--import`), and so
 does the browser suite (`playwright.config.ts`); `src/lib/operator.test.ts`
-builds the site with an example origin and none of the settings.
+builds the site with an example origin and none of the settings. The
+frontend suite gives the same result whatever origins the developer's shell
+exports: a test file that loads a build module reading `APP_ORIGIN`,
+`APP_ALIAS_ORIGIN` or `RECEIVE_ORIGIN` sets the three to production's in
+`process.env` before importing it, or passes production's origins to it,
+and a build for another address is checked with a fixed one the test names
+itself, as in `src/lib/llms.test.ts` (#354).
 
 The backend names its `RECEIVE_ORIGIN` in the MCP tool `create_session`'s
 description, as it already did in every `receiveUrl`; it serves no OpenAPI

@@ -2,14 +2,40 @@ import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import process from 'node:process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-// @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-import * as buildCheck from '../../scripts/check-build.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
 import { en } from '../i18n/en.ts';
 import { HOME_ADDRESSES } from '../i18n/index.ts';
 import { ru } from '../i18n/ru.ts';
 import { LANDING_HEADING, LANDING_LEAD, LANDING_STEPS } from './landing-copy.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the files and the heads pinned here are written for production (D274).
+ * The build's modules read the origins from the environment as they load,
+ * so they are imported once these are set, not with the static imports
+ * above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+// @ts-expect-error -- a plain ES module with no declarations; the build runs it.
+const buildCheck = await import('../../scripts/check-build.mjs');
+const { siteFiles } = await import('../../scripts/build-site-files.mjs');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS, siteOriginPlugin } =
+  await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /**
  * What search engines and link previews read (issue #69, D183), without a
@@ -33,6 +59,7 @@ const {
   icoSizes,
   LOGO_IMAGES,
   pngSize,
+  productionNamesLeft,
   RUSSIAN_HOME_PAGE,
   SEARCH_FILES,
   SITEMAP_ADDRESSES,
@@ -46,6 +73,7 @@ const {
   icoSizes: (bytes: Buffer) => number[] | undefined;
   LOGO_IMAGES: Record<string, number>;
   pngSize: (bytes: Buffer) => { width: number; height: number } | undefined;
+  productionNamesLeft: (text: string, origins?: SiteOrigins) => string[];
   RUSSIAN_HOME_PAGE: string;
   SEARCH_FILES: string[];
   SITEMAP_ADDRESSES: string[];
@@ -68,6 +96,10 @@ const HOME_TEMPLATE = '../../index.html';
 const RUSSIAN_TEMPLATE = '../../ru/index.html';
 
 describe('robots.txt', () => {
+  it('is checked here against production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('keeps crawlers off the backend, and names the sitemap', () => {
     assert.equal(
       read(publicFile('robots.txt')),
@@ -536,6 +568,55 @@ describe('the hreflang links of the two home pages', () => {
     });
     assert.deepEqual(homePageProblems('index.html', read(HOME_TEMPLATE)), []);
     assert.deepEqual(homePageProblems(RUSSIAN_HOME_PAGE, read(RUSSIAN_TEMPLATE)), []);
+  });
+});
+
+/**
+ * What a build for another address writes of the same (D274, #354): the
+ * files from `public/` as `build-site-files.mjs` names them, and each home
+ * page as the last plugin of the build names it.
+ */
+describe('a build for another address', () => {
+  const files = siteFiles(ANOTHER);
+  const named = siteOriginPlugin(ANOTHER).transformIndexHtml.handler;
+
+  it('names it in robots.txt and in every address of the sitemap', () => {
+    assert.ok(
+      (files['robots.txt'] ?? '').split('\n').includes(`Sitemap: ${ANOTHER.app}/sitemap.xml`),
+    );
+    assert.deepEqual(
+      [...(files['sitemap.xml'] ?? '').matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1]),
+      ['/', '/ru/', '/docs', '/changelog', '/about', '/ru/about', '/terms', '/privacy'].map(
+        (path) => `${ANOTHER.app}${path}`,
+      ),
+    );
+  });
+
+  it('names it in the canonical address, og:url, og:image and hreflang links of both home pages', () => {
+    for (const [template, address] of [
+      [HOME_TEMPLATE, `${ANOTHER.app}/`],
+      [RUSSIAN_TEMPLATE, `${ANOTHER.app}/ru/`],
+    ] as const) {
+      const html = named(read(template));
+
+      assert.deepEqual(
+        headTags(html, 'link').filter((tag) => tag.rel === 'canonical'),
+        [{ rel: 'canonical', href: address }],
+        template,
+      );
+      assert.equal(metaContent(html, 'og:url'), address, template);
+      assert.equal(metaContent(html, 'og:image'), `${ANOTHER.app}/logo-512.png`, template);
+      assert.deepEqual(
+        alternates(html),
+        [
+          ['en', `${ANOTHER.app}/`],
+          ['ru', `${ANOTHER.app}/ru/`],
+          ['x-default', `${ANOTHER.app}/`],
+        ],
+        template,
+      );
+      assert.deepEqual(productionNamesLeft(html, ANOTHER), [], template);
+    }
   });
 });
 

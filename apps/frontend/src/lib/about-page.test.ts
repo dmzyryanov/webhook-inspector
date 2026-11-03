@@ -3,8 +3,30 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import { describe, it } from 'node:test';
-import {
+import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
+import { en } from '../i18n/en.ts';
+import { ru } from '../i18n/ru.ts';
+import { ABOUT_LINK } from './about-link.ts';
+import { CHANGELOG_LINK } from './changelog-link.ts';
+import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the templates and the pages pinned here are written for production
+ * (D274). The build's modules read the origins from the environment as they
+ * load, so they are imported once these are set, not with the static imports
+ * above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const {
   ABOUT_PAGE,
   ABOUT_PAGES,
   ABOUT_PLACEHOLDER,
@@ -14,18 +36,16 @@ import {
   renderAboutBody,
   renderAboutPage,
   RUSSIAN_ABOUT_PAGE,
-} from '../../scripts/about.mjs';
-import {
+} = await import('../../scripts/about.mjs');
+const {
   ABOUT_HREFLANG,
   aboutPageProblems,
   checkBuild,
+  productionNamesLeft,
   // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-} from '../../scripts/check-build.mjs';
-import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
-import { en } from '../i18n/en.ts';
-import { ru } from '../i18n/ru.ts';
-import { ABOUT_RU } from './about-copy-ru.ts';
-import {
+} = await import('../../scripts/check-build.mjs');
+const { ABOUT_RU } = await import('./about-copy-ru.ts');
+const {
   ABOUT_DESCRIPTION,
   ABOUT_EN,
   ABOUT_EYEBROW,
@@ -36,10 +56,16 @@ import {
   ABOUT_URL,
   aboutParagraphText,
   MCP_SERVER_URL,
-} from './about-copy.ts';
-import { ABOUT_LINK } from './about-link.ts';
-import { CHANGELOG_LINK } from './changelog-link.ts';
-import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
+} = await import('./about-copy.ts');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS, siteOriginPlugin } =
+  await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /**
  * The about page at `/about` (issue #131, D211), without a browser: the body
@@ -100,6 +126,10 @@ const WORDMARK = '<span class="brand-name">Webhook Inspector</span>';
 const ENGLISH_TEMPLATE_BEFORE = '387899c60ab4ba2e788cfb7525f4de986617d288c0752ee65ae88346f307575f';
 
 describe('the page', () => {
+  it('is built here for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('is written byte for byte as before its Russian twin came (D255), but for the footer line and the wordmark', () => {
     // The SHA-256 of the body 1.12.1 wrote: the page object, the language the
     // header and the band take, and the Russian page change nothing here. The
@@ -814,6 +844,30 @@ describe('the dev server and the build', () => {
     // Amended by D274: and the plugin that names the build's origins, last.
     assert.match(config, /plugins: \[aboutPagePlugin\(\), siteOriginPlugin\(\)\]/);
     assert.equal(ABOUT_PAGE, 'about/index.html');
+  });
+
+  it('name another address throughout both pages of a build for it, and no address of production’s (D274)', () => {
+    // What that last plugin makes of each page in a build for the copy (#354).
+    const named = siteOriginPlugin(ANOTHER).transformIndexHtml.handler;
+
+    for (const [html, address] of [
+      [named(page), `${ANOTHER.app}/about`],
+      [named(russianPage), `${ANOTHER.app}/ru/about`],
+    ] as const) {
+      assert.equal(html.split('rel="canonical"').length - 1, 1, address);
+      assert.ok(html.includes(`<link rel="canonical" href="${address}" />`), address);
+      assert.deepEqual(
+        hreflang(html),
+        [
+          ['en', `${ANOTHER.app}/about`],
+          ['ru', `${ANOTHER.app}/ru/about`],
+          ['x-default', `${ANOTHER.app}/about`],
+        ],
+        address,
+      );
+      assert.ok(html.includes(`<code>${ANOTHER.app}/mcp</code>`), address);
+      assert.deepEqual(productionNamesLeft(html, ANOTHER), [], address);
+    }
   });
 });
 
