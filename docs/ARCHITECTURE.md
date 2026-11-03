@@ -1260,5 +1260,10 @@ project's end-to-end coverage and are described in
 change needed it: since 1.19.3 (#346) the move banner and the arrival toast
 are rendered in the frontend suite, through `src/testing/render-in-node.ts`,
 which compiles `.tsx` for the test with TypeScript and gives `react-dom/client`
-a fake window and document, no browser. Nothing anywhere asserts layout or
+a fake window, document and navigator, no browser, holding only what React,
+the router, `main.tsx` and the tests use (#366). Its navigator is an English
+browser's, `languages` `['en-US']` as the browser suite's locale, so a page
+it starts draws the same text whatever the machine's locale; Node's own
+`navigator` follows the machine's (`src/testing/render-in-node.test.ts`
+starts one under `ru_RU.UTF-8`). Nothing anywhere asserts layout or
 appearance.
