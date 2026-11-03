@@ -374,32 +374,99 @@ describe('protocolKey and chooseProtocol under both names (D279)', () => {
     );
   });
 
-  it('never echo a key under either prefix, nor a name starting with either in another letter case', () => {
+  it('never echo a name under either exact prefix, a key or not', () => {
     for (const offered of [
       [`${NEW}${KEY}`],
       [`${OLD}${KEY}`],
       [`${NEW}${KEY}`, `${OLD}${KEY}`],
       [NEW, OLD],
-      [`${NEW.toUpperCase()}${KEY}`],
-      [`Webhook-Inspector.Access-Key.${KEY}`, `QA-Tools.Access-Key.${KEY}`],
+      [NEW],
+      [OLD],
+      [`${NEW}x`, `${OLD}x`],
+      [`${NEW}${NEW.toUpperCase()}`],
+      [`${OLD}${OLD.toUpperCase()}${KEY}`],
       [`${NEW}${'a'.repeat(1000)}`],
     ]) {
       assert.equal(chooseProtocol(new Set(offered)), false, JSON.stringify(offered));
     }
 
-    assert.equal(
-      chooseProtocol(new Set([`QA-TOOLS.ACCESS-KEY.${KEY}`, REALTIME_PROTOCOL])),
-      REALTIME_PROTOCOL,
-    );
     // A name that only begins like a prefix, without its dot, carries no key
     // and is echoed as any other name is.
     assert.equal(
       chooseProtocol(new Set(['webhook-inspector.access-key'])),
       'webhook-inspector.access-key',
     );
+    assert.equal(chooseProtocol(new Set(['qa-tools.access-key'])), 'qa-tools.access-key');
     assert.equal(isKeyProtocol(`${NEW}${KEY}`), true);
     assert.equal(isKeyProtocol(`${OLD}${KEY}`), true);
-    assert.equal(isKeyProtocol(`${NEW.toUpperCase()}${KEY}`), false);
+    assert.equal(isKeyProtocol(NEW), true);
+    assert.equal(isKeyProtocol(OLD), true);
+  });
+
+  /**
+   * Every name that is one of the two prefixes with a single letter's case
+   * turned, then a remainder: what a hand-made client mistyping the prefix
+   * offers. Each carries no key, since the prefixes are compared exactly
+   * (D245), and is answered as before 1.19.0 (#356).
+   */
+  const turnedOnce = (prefix: string, rest: string): string[] =>
+    [...prefix].flatMap((letter, at) =>
+      letter.toUpperCase() === letter
+        ? []
+        : [`${prefix.slice(0, at)}${letter.toUpperCase()}${prefix.slice(at + 1)}${rest}`],
+    );
+
+  it('echo a name starting with either prefix in another letter case, which carries no key, as before 1.19.0 (#356)', () => {
+    const mistyped = [
+      'Webhook-Inspector.Access-Key.x',
+      'QA-TOOLS.ACCESS-KEY.x',
+      `${NEW.toUpperCase()}${KEY}`,
+      `${OLD.toUpperCase()}${KEY}`,
+      `Webhook-Inspector.Access-Key.${KEY}`,
+      `Qa-Tools.Access-Key.${KEY}`,
+      NEW.toUpperCase(),
+      'Qa-Tools.Access-Key.',
+      `${NEW.toUpperCase()}${NEW}${KEY}`,
+      // What the lowering of 1.19.0 read as a prefix: the Kelvin sign, U+212A,
+      // lowers to `k`.
+      `webhook-inspector.access-\u212Aey.${KEY}`,
+      `qa-tools.access-\u212Aey.${KEY}`,
+      ...turnedOnce(NEW, KEY),
+      ...turnedOnce(OLD, KEY),
+      ...turnedOnce(NEW, ''),
+      ...turnedOnce(OLD, ''),
+    ];
+
+    assert.equal(turnedOnce(NEW, '').length, 25);
+    assert.equal(turnedOnce(OLD, '').length, 16);
+
+    for (const name of mistyped) {
+      assert.equal(isKeyProtocol(name), false, name);
+      assert.equal(protocolKey(name), null, name);
+      assert.equal(chooseProtocol(new Set([name])), name, name);
+      assert.equal(chooseProtocol(new Set([name, REALTIME_PROTOCOL])), name, name);
+      // After a name that carries a key, it is the first that carries none.
+      assert.equal(chooseProtocol(new Set([`${NEW}${KEY}`, name])), name, name);
+      assert.equal(chooseProtocol(new Set([`${OLD}${KEY}`, `${NEW}${KEY}`, name])), name, name);
+    }
+
+    assert.equal(
+      chooseProtocol(
+        new Set([`Webhook-Inspector.Access-Key.${KEY}`, `QA-Tools.Access-Key.${KEY}`]),
+      ),
+      `Webhook-Inspector.Access-Key.${KEY}`,
+    );
+    assert.equal(
+      chooseProtocol(new Set([REALTIME_PROTOCOL, `QA-TOOLS.ACCESS-KEY.${KEY}`])),
+      REALTIME_PROTOCOL,
+    );
+    // Such a name beside the key under an exact prefix: the key is read and
+    // never echoed, the mistyped name is answered.
+    assert.equal(protocolKey(`QA-TOOLS.ACCESS-KEY.x, ${NEW}${KEY}`), KEY);
+    assert.equal(
+      chooseProtocol(new Set(['QA-TOOLS.ACCESS-KEY.x', `${NEW}${KEY}`])),
+      'QA-TOOLS.ACCESS-KEY.x',
+    );
   });
 
   for (const size of [1024, 16 * 1024, 64 * 1024, 1024 * 1024]) {
@@ -438,6 +505,39 @@ describe('protocolKey and chooseProtocol under both names (D279)', () => {
       assert.equal(
         withinBound(100, () => chooseProtocol(new Set([...offered, REALTIME_PROTOCOL]))),
         REALTIME_PROTOCOL,
+      );
+    });
+
+    it(`answer a name in another letter case among made-up offers of ${size} characters at once (#356)`, () => {
+      const offered = new Set(Array.from({ length: size / 32 }, (_, n) => `${NEW}${n}`));
+      const long = `${NEW.toUpperCase()}${'a'.repeat(size)}`;
+      const turned = new Set(
+        Array.from({ length: size / 32 }, (_, n) => `${n % 2 === 0 ? NEW : OLD}${n}`.toUpperCase()),
+      );
+
+      assert.equal(
+        withinBound(100, () => chooseProtocol(new Set([...offered, long]))),
+        long,
+      );
+      assert.equal(
+        withinBound(100, () => chooseProtocol(new Set([long, ...offered]))),
+        long,
+      );
+      assert.equal(
+        withinBound(100, () => chooseProtocol(new Set([...offered, 'Qa-Tools.Access-Key.x']))),
+        'Qa-Tools.Access-Key.x',
+      );
+      assert.equal(
+        withinBound(100, () => chooseProtocol(turned)),
+        `${NEW}0`.toUpperCase(),
+      );
+      assert.equal(
+        withinBound(100, () => chooseProtocol(new Set([`${OLD}${'A'.repeat(size)}`, long]))),
+        long,
+      );
+      assert.equal(
+        withinBound(100, () => protocolKey(`${long}, ${[...turned].join(', ')}`)),
+        null,
       );
     });
   }
