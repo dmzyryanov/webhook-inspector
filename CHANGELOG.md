@@ -113,6 +113,14 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.14
+
+2026-11-03
+
+**Nothing changes on this site; the inspector's checks of what its pages draw
+now give the same result whatever language the computer running them is set
+to.** Every address answers exactly as before. (#366)
+
 ## 1.19.13
 
 2026-11-03
