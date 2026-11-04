@@ -65,22 +65,25 @@ const ACCEPT_BOUND_MS = 500;
 /**
  * Milliseconds `acceptsJson` may take on one made-up list of whole media
  * ranges, of 10 to 21 characters each: 200, as the slowest of them, ranges of
- * 21 characters, takes 16 to 21 ms alone and up to 78 ms under that load. A
- * reading that searches the rest of the list once per range takes 364 ms on
- * ranges of 21 characters, 480 ms on ranges of 16 and 753 ms on ranges of 10:
- * over the bound on every run.
+ * 21 characters, takes 16 to 21 ms alone and under that load up to 78 ms in
+ * 500 rounds, but 132 ms in one of 40 rounds of #377's tester: 1.5 times
+ * under the bound. A reading that searches the rest of the list once per
+ * range takes 364 ms on ranges of 21 characters, 480 ms on ranges of 16 and
+ * 753 ms on ranges of 10: over the bound on every run.
  */
 const ACCEPT_RANGES_BOUND_MS = 200;
 
 /**
  * Milliseconds every other check of a made-up value may take - an id, a
- * copy, an `Origin`, a URL, a protocol version: 50, as the slowest of them
- * alone, `parseMessage` on a body whose id is 1 MiB of emoji, takes 3.7 to
- * 5.5 ms, the ids up to 21 ms under that load, `ownCopy` up to 4.3 ms alone
- * and 16 ms under it, and the rest 0.1 ms or less. The cheapest quadratic
- * reading of them measured, one search of the rest of 16,384 `Origin`
- * headers per header, takes 147 ms; one per origin repeated in a 1 MiB value
- * 280 ms, and once per byte of 1 MiB 8 s: over the bound on every run.
+ * copy, an `Origin`, a URL, a protocol version - each value built before it
+ * is timed: 50, as the slowest of them alone, `parseMessage` on a body whose
+ * id is 1 MiB of emoji, takes 3.5 to 6.6 ms, and the ids under that load up
+ * to 24 ms in 879 rounds and 27 ms in one of 80 rounds of #377's tester: 1.9
+ * times under the bound. `ownCopy` takes up to 4.3 ms alone and 16 ms under
+ * that load, and the rest under 0.2 ms. The cheapest quadratic reading of
+ * them measured, one search of the rest of 16,384 `Origin` headers per
+ * header, takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and
+ * once per byte of 1 MiB 8 s: over the bound on every run.
  */
 const BOUND_MS = 50;
 
@@ -335,13 +338,11 @@ describe('the JSON-RPC message a body holds', () => {
       ];
 
       for (const id of ids) {
-        const parsed = withinBound(BOUND_MS, () =>
-          parseMessage(
-            Buffer.from(
-              `{"jsonrpc":"2.0","id":${id},"method":"tools/call","params":{"name":"wait_for_request"}}`,
-            ),
-          ),
+        // Built before the bound, so that it holds `parseMessage` alone.
+        const body = Buffer.from(
+          `{"jsonrpc":"2.0","id":${id},"method":"tools/call","params":{"name":"wait_for_request"}}`,
         );
+        const parsed = withinBound(BOUND_MS, () => parseMessage(body));
 
         assert.equal(parsed.kind, 'invalid', id.slice(0, 16));
         assert.equal(parsed.kind === 'invalid' && parsed.code, RpcErrorCode.INVALID_REQUEST);
@@ -472,13 +473,11 @@ describe('the Origin that may call /mcp (D203)', () => {
         );
       }
 
+      // Built before the bound, as the ids' bodies are.
+      const headers = Array.from({ length: size / 64 }, () => APP_ORIGIN);
+
       assert.equal(
-        withinBound(BOUND_MS, () =>
-          isAllowedOrigin(
-            Array.from({ length: size / 64 }, () => APP_ORIGIN),
-            BOTH,
-          ),
-        ),
+        withinBound(BOUND_MS, () => isAllowedOrigin(headers, BOTH)),
         false,
       );
     });
