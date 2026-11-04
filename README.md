@@ -526,4 +526,4 @@ on its own origins has no second origin by default and is unaffected.
 
 ## License
 
-To be added.
+Webhook Inspector is released under the MIT License; see [`LICENSE`](LICENSE).
