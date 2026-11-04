@@ -17,8 +17,9 @@
  *   navigator just large enough for `react-dom/client` to render a page into
  *   and for `main.tsx` to start on. It is no browser: no layout, no events,
  *   no CSS, and a timer it is given never runs. Each member is one that
- *   React, the router, `main.tsx` or a test uses, so a test that needs one
- *   more adds it (#366); the navigator is an English browser's, whatever the
+ *   React, the router, `main.tsx` and the pages it draws, or a test uses, so
+ *   a test that needs one more adds it (#366), with an assertion that fails
+ *   without it (#391); the navigator is an English browser's, whatever the
  *   machine's locale.
  *
  * A server render needs only the first, with `react-dom/server`.
@@ -211,7 +212,7 @@ export class FakeDocument extends FakeNode {
   }
 }
 
-/** The address bar: the address, its origin and its path, changed by history alone. */
+/** The address bar: the address, its origin, host and path, changed by history alone. */
 class FakeLocation {
   private url: URL;
 
@@ -229,6 +230,11 @@ class FakeLocation {
 
   get origin(): string {
     return this.url.origin;
+  }
+
+  /** The not-found screens draw it as their request's `Host:` line (#391). */
+  get host(): string {
+    return this.url.host;
   }
 
   get pathname(): string {
@@ -310,8 +316,9 @@ export class FakeWindow {
 /**
  * Makes `window`, `document` and `navigator` this process's globals, at
  * `href`, with an empty `<div id="root">` in the body, and tells React it
- * renders under `act`. Called before `react-dom/client` or any page is
- * imported: React DOM decides at its load whether it has a DOM.
+ * renders under `act`, which React otherwise warns of at every update an
+ * `act` wraps. Called before `react-dom/client` or any page is imported:
+ * React DOM decides at its load whether it has a DOM.
  */
 export function installFakeBrowser(href: string): FakeWindow {
   const fake = new FakeWindow(href);

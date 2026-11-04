@@ -2,16 +2,28 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { describe, it } from 'node:test';
+import { act, createElement } from 'react';
+import { installFakeBrowser } from './render-in-node.ts';
 
 /**
  * The render harness itself (#366): a page started in its fake browser sees
  * an English browser, whatever language the machine running the suite is set
  * to, so a test that reads what such a page draws gets the same text on any
- * machine.
+ * machine; and React, told that it renders under `act`, draws into it with
+ * nothing written to `console.error` (#391).
  */
 
 const HARNESS = new URL('./render-in-node.ts', import.meta.url).href;
 const I18N = new URL('../i18n/index.ts', import.meta.url).href;
+
+/**
+ * How long the child Node of `underLocale` may run, in milliseconds; it ends
+ * in about a second. `spawnSync` blocks this file's event loop until the
+ * child ends, so neither the runner's `--test-timeout` nor the exit guard can
+ * end a child that hangs: it is killed at this time instead, and the test
+ * fails (#391).
+ */
+const CHILD_TIMEOUT_MS = 30_000;
 
 /**
  * What a process whose locale is `locale` sees: Node's own browser
@@ -38,8 +50,13 @@ function underLocale(locale: string): { machine: unknown; page: unknown; languag
   const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     env,
     encoding: 'utf8',
+    timeout: CHILD_TIMEOUT_MS,
+    // A signal the child cannot catch, so the kill ends it.
+    killSignal: 'SIGKILL',
   });
 
+  // A child killed at the timeout has no status, and this error, `ETIMEDOUT`.
+  assert.ifError(run.error);
   assert.equal(run.status, 0, run.stderr);
 
   return JSON.parse(run.stdout);
@@ -53,5 +70,28 @@ describe('the fake browser', () => {
     assert.deepEqual(seen.machine, ['ru-RU'], 'this Node does not follow LC_ALL');
     assert.deepEqual(seen.page, ['en-US']);
     assert.equal(seen.language, 'en');
+  });
+
+  it('tells React it renders under act: React draws into it and writes no error (#391)', async (t) => {
+    const browser = installFakeBrowser('https://qa-tools.ru/');
+    // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
+    const { createRoot } = await import('react-dom/client');
+    const container = browser.document.getElementById('root');
+
+    assert.ok(container, 'the page has no #root');
+
+    // React writes its act warnings with `console.error`: outside an act
+    // environment, one for every update an `act` wraps.
+    const errors = t.mock.method(console, 'error', () => {});
+    const root = createRoot(container as unknown as HTMLElement);
+
+    await act(async () => root.render(createElement('p', null, 'Drawn')));
+    assert.equal(container.textContent, 'Drawn');
+    await act(async () => root.unmount());
+
+    assert.deepEqual(
+      errors.mock.calls.map((call) => call.arguments),
+      [],
+    );
   });
 });
