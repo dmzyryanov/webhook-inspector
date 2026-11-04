@@ -32,7 +32,7 @@ import {
   MAX_BODY_BYTES,
   MAX_RESPONSE_BODY_BYTES,
 } from '@webhook-inspector/shared';
-import { TIMED_RUNS, withinBound } from '../../testing/timing.ts';
+import { withinBound } from '../../testing/timing.ts';
 import {
   CAPTURE_BASE_WEIGHT_BYTES,
   CAPTURE_HEADER_LINE_WEIGHT_BYTES,
@@ -61,17 +61,40 @@ const MIB = 1024 * 1024;
  * each webhook - admitted, waiting or refused - before it returns, so a run
  * times that and not the reading of the 100,000 answers, a promise and a
  * turn each, which the one run these checks held to 5 s until #378 timed
- * too: over 2 s alone and up to 18 s beside the full backend suite and
- * eight busy loops (F-27). The admissions take 138 to 227 ms alone and up to
- * 648 ms under that load. Choosing the next by looking at every waiter of
- * the line rather than each address's first takes 3.4 s or more on the
- * 4,033 waiters of #242's flood, weighing the line by summing its waiters
- * 8.5 s, and walking every webhook ever sent at each admission 17 s: over
- * the bound on every run. On one address's line of 1,008 waiters the first
- * two take 1.0 and 0.4 s, and searching that line for each one refused
- * 0.2 s: under it, given up there.
+ * too: 2.1 to 3.1 s in the file's own runs, and up to 18 s beside the full
+ * backend suite and eight busy loops (F-27). The admissions take 156 to
+ * 282 ms alone and up to 648 ms under that load.
+ *
+ * They are timed on lines longer than the product's, in budgets of their
+ * own (`LONG_LINE`, `FLOOD_LINES`). An address's line holds 1,024 webhooks
+ * at most, 16 MiB of at least 16 KiB each (`waitingWeight`), and the
+ * process's 4,096; on those, an admission that looks at every waiter took
+ * 0.2 to 1.8 s alone, on either side of the bound. On the longer lines,
+ * finding each address's first by looking at every waiter of its line
+ * takes 21 s and 8.1 s, summing the line's weight at each admission 14 s
+ * and 5.5 s, and searching an address's line for each one refused 2.8 s in
+ * the first check: over the bound on every run (F-27).
  */
 const FLOOD_BOUND_MS = 1_500;
+
+/**
+ * The webhooks of one address waiting in the line that `refuses 100,000
+ * webhooks of one address at once quickly` times its flood on: 65,536, 64
+ * times the most an address's line holds. Searching the line for each one
+ * refused, the cheapest look at a waiter of F-27's, takes nearly twice the
+ * bound on a line this long, and about the bound on one half as long.
+ */
+const LONG_LINE = 65_536;
+
+/**
+ * How many times the product's lines, 16 MiB an address and 64 MiB in all,
+ * are the lines the light senders' flood check times its flood on: 5,
+ * 20,164 of #242's webhooks waiting rather than 4,032. With 5, as with 1,
+ * the four addresses' lines leave the process's less than one more of
+ * them, so the light sender's first waits and the rest are refused; with
+ * 2, 3 or 4, more of the light sender's would wait.
+ */
+const FLOOD_LINES = 5;
 
 /** The longest method a stored request can have: Node's longest, or the fallback for none. */
 const LONGEST_METHOD = [...METHODS, 'UNKNOWN'].reduce((longest, method) =>
@@ -975,17 +998,39 @@ describe('the line waiting for a place (D228)', () => {
     assert.equal(budget.lineUsed, 0);
   });
 
-  it('refuses 100,000 webhooks of one address at once quickly once its line is full, and lets the others in', async () => {
-    const { budget, filler } = full();
+  it('refuses 100,000 webhooks of one address at once quickly once its line is full, and lets the others in', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+
     const each = waitingWeight(['Host', 'h']);
+    // Timed on a line of `LONG_LINE` waiters, in a budget of its own. Each
+    // one refused leaves the line before `admit` returns, so a run leaves the
+    // budget as it found it, and the next is made on the same one.
+    const long = full({ waitingPerAddressBytes: LONG_LINE * each, waitingBytes: LONG_LINE * each });
+
+    for (let index = 0; index < LONG_LINE; index += 1) {
+      void long.budget.admit('flood', 1, undefined, each);
+    }
+
+    withinBound(FLOOD_BOUND_MS, () =>
+      Array.from({ length: 100_000 }, () => long.budget.admit('flood', 1, undefined, each)),
+    );
+    // None of them joined the line or went in: each was refused at once. The
+    // line is left as it is, its 30 s mocked: letting its 65,536 go, each
+    // from the front of the line's array, takes seconds.
+    assert.equal(long.budget.waiting, LONG_LINE);
+    assert.equal(long.budget.lineUsed, LONG_LINE * each);
+    assert.equal(long.budget.usedBy('flood'), 0);
+
+    // The product's line, untimed: what each one is answered, and that the
+    // others still go in.
+    const { budget, filler } = full();
     const room = Math.floor(CAPTURE_WAITING_PER_ADDRESS_BYTES / each);
     const waiters = Array.from({ length: room }, () => budget.admit('flood', 1, undefined, each));
-    // Each refused leaves the line before `admit` returns, so a run leaves the
-    // budget as it found it, and the next is made on the same one.
-    const sent = withinBound(FLOOD_BOUND_MS, () =>
-      Array.from({ length: 100_000 }, () => budget.admit('flood', 1, undefined, each)),
+    const refused = await Promise.all(
+      Array.from({ length: 100_000 }, () =>
+        settledOrPending(budget.admit('flood', 1, undefined, each)),
+      ),
     );
-    const refused = await Promise.all(sent.map((each) => settledOrPending(each)));
 
     assert.ok(refused.every((each) => each !== 'pending' && each.outcome === 'line-full'));
     assert.equal(budget.waiting, room);
@@ -1058,22 +1103,28 @@ describe('the light senders’ reserve (D261)', () => {
   /**
    * #242's flood sent to a budget of its own: four addresses at their 16 MiB
    * of S4's webhooks, which is the process's 64 MiB, and each address's line
-   * full. `admit` decides each webhook before it returns: admitted, waiting
-   * or refused.
+   * full, its lines and the process's `lines` times the product's, 16 MiB
+   * and 64 MiB. `admit` decides each webhook before it returns: admitted,
+   * waiting or refused.
    */
-  function floodSent(): { budget: CaptureBudget; sent: Promise<Admission>[] } {
-    const budget = createCaptureBudget();
+  function floodSent(lines = 1): { budget: CaptureBudget; sent: Promise<Admission>[] } {
+    const budget = createCaptureBudget({
+      waitingBytes: lines * CAPTURE_WAITING_BYTES,
+      waitingPerAddressBytes: lines * CAPTURE_WAITING_PER_ADDRESS_BYTES,
+    });
     const weight = captureWeight('GET', FLOOD_HEADERS);
     const waitWeight = waitingWeight(FLOOD_HEADERS);
     const sent = FLOODERS.flatMap((key) =>
-      Array.from({ length: 1_300 }, () => budget.admit(key, weight, undefined, waitWeight)),
+      Array.from({ length: lines * 1_300 }, () => budget.admit(key, weight, undefined, waitWeight)),
     );
+    const waiting = Math.floor(budget.settings.waitingPerAddressBytes / waitWeight);
 
     // 204 of 80.25 KiB fit an address's 16 MiB, and the four the process's
-    // 64 MiB; 1,008 of 16.25 KiB fill an address's line.
+    // 64 MiB; 1,008 of 16.25 KiB fill an address's line, 5,041 one five
+    // times as long.
     for (const key of FLOODERS) {
       assert.equal(budget.usedBy(key), 204 * weight);
-      assert.equal(budget.lineUsedBy(key), 1_008 * waitWeight);
+      assert.equal(budget.lineUsedBy(key), waiting * waitWeight);
     }
 
     assert.ok(budget.used + weight > budget.settings.totalBytes, 'the process has room left');
@@ -1514,24 +1565,22 @@ describe('the light senders’ reserve (D261)', () => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
 
     const small = captureWeight('POST', SMALL_HEADERS);
-    // A run takes a light sender's bytes of its budget, so each is given a
-    // budget of its own, flooded before the run is timed.
-    const floods = Array.from({ length: TIMED_RUNS }, () => floodSent());
-    let runs = 0;
-    const { budget, flood, sent } = withinBound(FLOOD_BOUND_MS, () => {
-      const { budget, sent: flood } = floods[runs] as ReturnType<typeof floodSent>;
+    // Timed on lines `FLOOD_LINES` times the product's: 20,164 waiting.
+    const { budget, sent: flood } = floodSent(FLOOD_LINES);
+    const sent: Promise<Admission>[] = [];
 
-      runs += 1;
-
+    assert.equal(budget.waiting, 20_164);
+    // Each run sends 100,000 more to the same budget, all of them answered
+    // below as one flood: after the first, the sender holds what a light
+    // sender may and its first waits, so each one more is refused at once,
+    // as most of the first run's are.
+    withinBound(FLOOD_BOUND_MS, () => {
       // 100,000 webhooks of 81 KiB at once, each on a connection of its own.
-      return {
-        budget,
-        flood,
-        sent: Array.from({ length: 100_000 }, () =>
-          budget.admit('under', small, undefined, CAPTURE_BASE_WEIGHT_BYTES),
-        ),
-      };
+      for (let index = 0; index < 100_000; index += 1) {
+        sent.push(budget.admit('under', small, undefined, CAPTURE_BASE_WEIGHT_BYTES));
+      }
     });
+
     const results = await Promise.all(sent.map((each) => settledOrPending(each)));
     const admittedCount = results.filter(
       (result) => result !== 'pending' && result.outcome === 'admitted',
