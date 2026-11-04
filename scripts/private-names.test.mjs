@@ -63,9 +63,11 @@ const ALLOWED = Object.freeze([
     lines: ["    'An agent in .claude/agents.',"],
   },
 
-  // PROVISIONAL (#375): the owner's decision on the operator's texts changes
-  // this group, and only this group.
-  // The operator's own Privacy Policy, shown only with OPERATOR_TEXTS (#369).
+  // The operator's own texts, kept as they are until #330 moves them out of
+  // this repository to the platform, and #369's guard, which names what it
+  // refuses in a build without the operator's settings: #330 removes this
+  // group together with them (#375, the owner's decision of 2026-11-04).
+  // The operator's Privacy Policy, shown only with OPERATOR_TEXTS (#369).
   { file: 'apps/frontend/src/lib/legal-copy.ts' },
   // Its test, which holds that text word for word.
   { file: 'apps/frontend/src/lib/legal-copy.test.ts' },
