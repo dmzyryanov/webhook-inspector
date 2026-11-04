@@ -10,6 +10,11 @@ command, the iteration and failure counts, the failure output as it appeared,
 the mechanism, and the current status. A fixed flake keeps its entry: the
 pre-fix measurement is what makes the post-fix one mean something.
 
+Some entries, F-06, F-11 and F-14, also measured or cite the delivery
+process's own tooling, the delivery queue and the delivery cycle with their
+tests, which is kept outside this repository: the text names it so, and the
+commands and the output keep the paths they ran with.
+
 A whole suite is measured from the repository root in the form the agent
 definitions prescribe (D132, amendments 2026-09-26 and 2026-10-01), one command
 per workspace:
@@ -848,7 +853,7 @@ whole margin.
 Other tests failed in the eleven-file runs at this load and are not this
 entry's subject: `scripts/monitor.test.mjs:360`, its table of page and lookup
 cases, 30 times in 12 runs before the fix and twice in 2 runs after; and
-`scripts/delivery-queue.test.mjs:1845`, `of processes waiting on a mutex that
+the delivery queue's test at `:1845`, `of processes waiting on a mutex that
 goes stale at once, and holders killed midway, none lets a second writer in`,
 once in each batch. So 18 of the 20 eleven-file runs exited 1 before the fix
 and 2 after, those two on the other tests alone. That the same recipe gave
@@ -1609,7 +1614,7 @@ exposed to it; recorded, not changed.
 
 ## F-11 — `of processes waiting on a mutex that goes stale at once, and holders killed midway, none lets a second writer in`
 
-- **Test**: `scripts/delivery-queue.test.mjs:2172` at `c43f5ea`, its check of
+- **Test**: the delivery queue's test, `:2172` at `c43f5ea`, its check of
   each process's exit at `:2240`; `:2191` at `d43d90e`, the fix as it stands,
   that check at `:2308` and the check of the writers at `:2328`. F-06 cited it
   as `:1845` at `f9e37bc`, the issue as `:1993`, the check `:2061`, at
@@ -1617,14 +1622,14 @@ exposed to it; recorded, not changed.
 - **Status**: fixed in the test on `fix/delivery-script-test-flakes`: the hold,
   the refusals and the check of the writers at `bbd0758`, the empty claim at
   `d43d90e` after the measurement below found it.
-  `.claude/scripts/delivery-queue.mjs` was not changed, and no failure whose
+  The delivery queue's script was not changed, and no failure whose
   output was kept is a second writer: each is a process giving up on its
   bounded wait, as the script says it does. Why they gave up in the
   measurement's failure — a claim left empty by a killed process, which the
   script waits on for 30 s (point 5 below) — is a wait of the script's, not
   of this test, and is filed as #225. What the test does not
   catch is under **Watched, and left**. #225 then closed point 5 in
-  `.claude/scripts/delivery-queue.mjs`, and took the test's handling of an
+  the delivery queue's script, and took the test's handling of an
   empty claim out again (**The fix**).
 
 ### The failure
@@ -1688,8 +1693,9 @@ not reproduced on its own.
 
 ### The forced reproductions
 
-Not committed. Each ran in a copy of `.claude` and `scripts` outside the
-worktree, of `c43f5ea` for before, of `bbd0758` and of `d43d90e` for after,
+Not committed. Each ran in a copy of the delivery tooling and its tests
+outside the worktree, of `c43f5ea` for before, of `bbd0758` and of `d43d90e`
+for after,
 the test file changed as below, one fresh process per run, on 2026-10-19
 (UTC+3): at `c43f5ea` and `bbd0758` between 17:22 and 17:31 at a 1-minute load
 average of 1.7 to 3.2, the empty claim at 17:52 at 6.0, at `d43d90e` between
@@ -1733,11 +1739,11 @@ AssertionError [ERR_ASSERTION]: round 1, its holder is gone: in each of 3 attemp
 
 ### The mutation
 
-In copies of `.claude/scripts/delivery-queue.mjs` outside the worktree, run
+In copies of the delivery queue's script outside the worktree, run
 as above with the test file of each commit, between 17:23 and 17:32 at a
 1-minute load average of 1.6 to 4.9, and at `d43d90e` between 17:54 and 17:59:
 
-| Change to `delivery-queue.mjs` | At `c43f5ea` | At `bbd0758` | At `d43d90e` |
+| Change to the delivery queue's script | At `c43f5ea` | At `bbd0758` | At `d43d90e` |
 | --- | --- | --- | --- |
 | `acquire()` takes a stale mutex by renaming its own file over it, with no claim and no check: `if (isStale(found)) { renameSync(mine, mutex); return { mutex, nonce }; }` | 3 of 3 failed, in round 0 or 1, a holder finding its mutex taken | 3 of 3 failed, in round 0, the same | 3 of 3 failed, in round 0 or 1, the same |
 | the same, and `stillHeld` always true, so that the second holder writes | 3 of 3 failed: `day-a's D217 was lost`, `day-g's update was lost`, `day-b's update was lost` | 3 of 3 failed: `day-b's D217 was lost`, `day-d's D225 was lost`, `day-b's D233 was lost` | 3 of 3 failed: `day-d's update was lost`, `day-c's D217 was lost`, `day-a's D225 was lost` |
@@ -1807,7 +1813,7 @@ of the empty claim alone.
 
 ### The fix
 
-In `scripts/delivery-queue.test.mjs` only, `bbd0758` and `d43d90e`; the
+In the delivery queue's test only, `bbd0758` and `d43d90e`; the
 test's name, its eight rounds, its four ways of going stale and its kills are
 unchanged.
 
@@ -1901,7 +1907,7 @@ node --test --test-name-pattern='goes stale at once|takeover|claim' scripts/deli
 No rate is claimed from it: it shows the stampede without its attempts, and
 the two new tests, passing at that load — the first of them as `f18ab7d` had
 it, before `0e926bd` added its third scenario, the takeover whose own file was
-swept away first. In copies of `.claude` and `scripts`
+swept away first. In copies of the delivery tooling and its tests
 outside the worktree, the first new test failed, 1 of 1 run each, on the
 script of `4f5e0d1` and on the fix with the claim made by `openSync(claim,
 'wx')` and written after, both at the same step:
@@ -2275,7 +2281,7 @@ above, held to every test reported and a failing one named. Copied into the
 base and run with its script, its four cases of the script fail: the script
 loads no guard, 9 of 16 tests are reported, the failing test is not named,
 and a runner held past the guard's wait loses the tail with exit 0 instead
-of failing the file. `scripts/delivery-cycle.test.mjs` pins the script. No test
+of failing the file. The delivery cycle's tests pin the script. No test
 file was changed: a full run without the flag ended every file on its own,
 no guard line in its output, and no slower: in the alternating batch a run
 took 61 to 123 s at the base, median 72.5 s, and 63 to 157 s at the head,
@@ -2325,7 +2331,7 @@ that hold a time.
 
 ### The failure
 
-On GitLab's CI runner of #198, `qa-tools-ci-firstvds` (4 vCPU, two jobs at a
+On the project's own CI runner, #198's (4 vCPU, two jobs at a
 time), the `test` job of merge request !251 ran 7 times on 2026-10-22.
 Beside another job — `e2e`, or once
 `delivery-tooling-tests` — it failed 4 of 6 runs, 66.7% (30.0%–90.3%), each
@@ -2576,7 +2582,7 @@ How the suite runs its files is unchanged.
 
 ### The failure
 
-On #198's CI runner, `qa-tools-ci-firstvds`, beside another heavy job, the
+On #198's CI runner, the project's own, beside another heavy job, the
 `test` job failed on this test in 3 of 20 runs, 15.0% (5.2%–36.0%), as
 #198's criterion 5 report of 2026-10-23 counted them: jobs 17400170786 and
 17400282383 (MR !255) and 17402279081 (MR !260), none of which changed that
@@ -3397,7 +3403,7 @@ three full runs.
 
 Once, in CI: the `test` job 17446318132 of MR !282's pipeline 2986147870 on
 `ce34386`, on 2026-10-25 at 08:29 UTC, the image `node:24-slim` on the
-project's runner `qa-tools-ci-firstvds` (#198), an AMD EPYC 9655 as the
+project's own CI runner (#198), an AMD EPYC 9655 as the
 job's log names it; the suite ran 3,283 tests, 3,282 passed, 1 failed. The
 retry, job 17446395843, passed, as did pipeline 2986113435 on `0e173f3`,
 whose code is the same. At `ce34386` the assertion was at `:2119`:

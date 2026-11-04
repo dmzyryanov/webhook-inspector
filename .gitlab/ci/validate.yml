@@ -306,7 +306,11 @@ delivery-checks:
     # group's rule and the check of what its tests read (D241). The
     # ci-runners test reads both pipeline files and the child pipeline the
     # gate writes and pins which runner each job lands on, with the project
-    # variable QA_TOOLS_RUNNER_TAG and without it (D258).
+    # variable QA_TOOLS_RUNNER_TAG and without it (D258). The private-names
+    # test reads every tracked file and fails one outside CHANGELOG.md that
+    # names a file of the QA Tools project that is not published, or
+    # production's CI runner or hosting provider, but where its list allows
+    # it (#375).
     # Three bounds, each above the one inside it (#122, D190): every test has
     # 5 minutes (`--test-timeout`; the two backup files set the same), after
     # which it fails by name and its file goes on; the whole run has 25
@@ -321,7 +325,7 @@ delivery-checks:
         scripts/check-api-breaking.test.mjs \
         scripts/chart.test.mjs scripts/monitor.test.mjs \
         scripts/main-validation.test.mjs scripts/script-test-groups.test.mjs \
-        scripts/ci-runners.test.mjs
+        scripts/ci-runners.test.mjs scripts/private-names.test.mjs
     # Both checks compare with the same base: the merge request's diff base, or
     # the previous commit on main. The API check fails a breaking difference in
     # packages/shared/openapi.json that the version's changelog entry does not

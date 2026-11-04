@@ -20,6 +20,6 @@ blob-report/
 # Worktrees a delivery run creates inside the repository, one per role. They
 # must be ignored rather than merely uncommitted: an untracked directory here
 # would appear in `git status --porcelain` and therefore change the working-tree
-# fingerprint (.claude/scripts/tree-fingerprint.sh) that decides whether a
-# tester run left the tree alone.
+# fingerprint the delivery process takes to decide whether a tester run left
+# the tree alone.
 .claude/worktrees/

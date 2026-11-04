@@ -1,7 +1,7 @@
 -- Initial schema for the Webhook Inspector.
 --
 -- Field semantics are documented in docs/ARCHITECTURE.md; the decisions behind
--- the types are recorded in docs/DECISIONS.md.
+-- the types are cited by their numbers (D004, D019, ...).
 
 CREATE TABLE sessions (
     -- 32 random bytes encoded as Base64URL without padding (D004).

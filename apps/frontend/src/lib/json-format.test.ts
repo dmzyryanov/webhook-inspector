@@ -1,10 +1,10 @@
 /**
  * The test table D112 names, in full.
  *
- * D112 accepts a hand-written tokenizer against `CLAUDE.md`'s "conventional and
- * simple" **only** together with this table, and says so in as many words:
- * shrinking it leaves unconventional code without the one thing that justifies
- * it. Every case below is therefore a requirement, not a sample.
+ * D112 accepts a hand-written tokenizer against the project's rule that the
+ * frontend be "conventional and simple" **only** together with this table, and
+ * says so in as many words: shrinking it leaves unconventional code without
+ * the one thing that justifies it. Every case below is therefore a requirement, not a sample.
  *
  * Escape sequences and control characters are assembled from `BACKSLASH` and
  * `String.fromCharCode` rather than typed as literals. Typing them would make

@@ -113,6 +113,16 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.15
+
+2026-11-04
+
+**Nothing changes on this site; the inspector's source no longer refers to
+files of ours that are not published with it.** Its documentation describes
+the server it runs on in general terms, its comments and tests say in place
+what they need, and an automated check keeps such references from coming
+back. Every page and address answers exactly as before. (#375)
+
 ## 1.19.14
 
 2026-11-03

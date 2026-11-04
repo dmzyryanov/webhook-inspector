@@ -125,7 +125,7 @@ last use and sooner for a session created with a shorter idle window or a
 lifetime (see [Session lifecycle](#session-lifecycle)), the rows `Delete` and
 `Delete all` remove at once, and the nightly backups, which keep deleted or
 expired data for up to 3 days (D176). Since 0.36.2 the nightly backups include an encrypted copy of
-each night's dump kept off the server, at Yandex Object Storage in Russia,
+each night's dump kept off the server, in an S3-compatible bucket in Russia,
 with the same retention: the 3 newest copies, the older ones deleted by the
 same nightly run. A copy is encrypted before it leaves the server, to a key
 whose private half only the owner holds, so neither the storage provider nor
@@ -346,10 +346,11 @@ JavaScript and load nothing from another site.
   interface language chosen (since v0.54.0, D222); only session ids and the
   access keys of private sessions leave the browser, to open those sessions
   and check that they still exist (the owner's decision 4 of #228, published
-  at once: what only the browser keeps applies when published, D224). **Where it is stored** — a server in Moscow, Russia
-  (FirstVDS), encrypted backup copies in Yandex Object Storage, Russia; mail
-  to the contact address is received by Apple iCloud Mail; the status page is
-  run by Statuser. **Deleting your data** — on the page or through the API, or
+  at once: what only the browser keeps applies when published, D224). **Where it is stored** — the operator's server, with
+  its city, its country and its hosting provider, and the encrypted backup
+  copies kept off the server, with their storage service and its country, as
+  the operator's text names them; mail to the contact address is received by
+  Apple iCloud Mail; the status page is run by Statuser. **Deleting your data** — on the page or through the API, or
   by writing to the contact address. **Changes to this policy** — a change
   that makes QA Tools keep more data, keep it longer or share it with anyone
   new is announced on the page at least 14 days before it applies, unless the

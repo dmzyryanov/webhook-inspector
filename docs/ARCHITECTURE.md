@@ -2,7 +2,7 @@
 
 ## Overview
 
-QA Tools v0.1 is a TypeScript monorepo deployed to a Russian VPS using k3s and Helm.
+QA Tools v0.1 is a TypeScript monorepo deployed to a single k3s server using Helm.
 
 ```text
 Internet
@@ -558,7 +558,8 @@ Connection settings and other local configuration come from a gitignored `.env`,
 
 ## Infrastructure
 Hosting:
-- Russian VPS (FirstVDS), Ubuntu 24.04 LTS, 2 vCPU, 4 GB RAM, 60 GB SSD
+- a single Linux server; its provider and size are the operator's, recorded
+  outside this repository
 
 Kubernetes:
 - k3s, single node acting as control plane and worker
@@ -748,9 +749,9 @@ origins, and `scripts/site-operator.mjs` names the operator's details in
 them or leaves the part out on their way into `dist/`, refusing a source
 that lost the part it edits; with production's settings each file is its
 source byte for byte. The build check refuses any file of the build — every
-file, read as UTF-8, images and fonts among them — that names
-`status.qa-tools.ru`, `contact@qa-tools.ru`, `FirstVDS` or `Yandex Object
-Storage` when the build's settings do not name it, in any case, inside a
+file, read as UTF-8, images and fonts among them — that names production's
+status page host, its contact address, its hosting provider or its backup
+storage when the build's settings do not name it, in any case, inside a
 longer word, split across lines or escaped as a character reference, a
 percent escape or a JavaScript escape, outside the changelog's history:
 `changelog.md`, the two feeds and the entries of `/changelog`, whose header
@@ -1106,7 +1107,16 @@ checks: `check-version`, `check-api-breaking` and the quick script tests in
 `delivery-checks`, and the slow script tests in `operations-tests`. A merge
 request pipeline runs that group only when the merge request changes a path
 its rule lists, what its tests read, which the job checks by recording it
-(D241). The `chart` job runs `helm lint` and, since 1.19.10 (#367), renders
+(D241). Among the quick ones, since 1.19.15 (#375),
+`scripts/private-names.test.mjs` fails when a tracked file outside
+`CHANGELOG.md` names a file of the QA Tools project that is not published,
+or production's CI runner or hosting provider, naming the file, the line and
+the name; its allow-list holds `.gitignore`'s entries, the check's own list,
+the changelog check's test of a private path it refuses and, until #330
+moves them out of this repository, the operator's own texts with their test
+and the build check that refuses those names with its test, and an entry
+that allows nothing fails it too. The `chart` job
+runs `helm lint` and, since 1.19.10 (#367), renders
 the chart with the real helm as an installer with none of production's values
 would: with made-up hosts and registry alone the render must name nothing of
 production's or its services and hold neither the monitor, the backup's

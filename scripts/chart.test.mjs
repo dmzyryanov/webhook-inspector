@@ -866,10 +866,10 @@ const DEPLOY_SCRIPT = firstScript('deploy', 'helm upgrade --install');
 
 /**
  * Production's CI/CD variables as set and read back on 2026-11-03 (#367;
- * qa-tools' docs/RESOURCES.md is their record), the runner's own and the
- * recipient key given as a stand-in's file: with these the deploy job gives
- * the chart production's values, the frontend image names production's
- * operator, and the jobs land on production's runners.
+ * their record is the operator's, outside this repository), the runner's
+ * own and the recipient key given as a stand-in's file: with these the deploy
+ * job gives the chart production's values, the frontend image names
+ * production's operator, and the jobs land on production's runners.
  */
 const PRODUCTION = Object.freeze({
   CI_REGISTRY_IMAGE: 'registry.gitlab.com/qa-tools-team/webhook-inspector',
