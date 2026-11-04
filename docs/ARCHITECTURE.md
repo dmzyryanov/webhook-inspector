@@ -1,8 +1,8 @@
-# QA Tools — Architecture
+# Webhook Inspector — Architecture
 
 ## Overview
 
-QA Tools v0.1 is a TypeScript monorepo deployed to a single k3s server using Helm.
+Webhook Inspector is a TypeScript monorepo deployed to a single k3s server using Helm.
 
 ```text
 Internet
