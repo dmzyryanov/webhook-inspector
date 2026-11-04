@@ -18,22 +18,41 @@ import {
   CERTIFICATE_PENDING_CODES,
   CERTIFICATE_WAIT,
   checkDeployment,
+  checkedList,
   LEGAL_PAGE_CHECKS,
   main as checkDeploymentMain,
+  notCheckedLine,
   ogImage,
+  OPERATOR_NOT_GIVEN,
+  operatorSettings,
+  parseCommandLine,
   pendingCertificateCode,
+  readContactEmail,
+  readOperatorTexts,
+  readStatusPage,
   RECEIVE_ROBOTS_TXT,
   RUSSIAN_ABOUT_MARKS,
   RUSSIAN_ABOUT_PATH,
   russianHomeMarks,
   RUSSIAN_HOME_PATH,
-  SECURITY_CONTACT,
+  securityContact,
   securityTxtIsCurrent,
   sitemapLine,
+  STATUS_PATHS,
+  USAGE,
   waitForCertificate,
 } from './check-deployment.mjs';
 // No imports of their own, so Node loads them as TypeScript here with nothing installed.
-import { mailtoOf, parseContactEmail } from '../apps/frontend/src/lib/operator.ts';
+import {
+  mailtoOf,
+  parseContactEmail,
+  parseOperatorTexts,
+  parseStatusPageUrl,
+} from '../apps/frontend/src/lib/operator.ts';
+// The frontend build's own writers of security.txt and of the /status
+// locations, which import nothing installed either.
+import { securityTxt } from '../apps/frontend/scripts/build-security-txt.mjs';
+import { statusLocations } from '../apps/frontend/scripts/nginx-conf.mjs';
 import { SESSION_ID_PATTERN } from '../packages/shared/src/index.ts';
 import {
   MAX_LIMIT_SECONDS,
@@ -425,6 +444,24 @@ const SECURITY_TXT = [
 ].join('\n');
 const security = (text = SECURITY_TXT, type = 'text/plain; charset=utf-8') =>
   new Response(text, { headers: { 'content-type': type, 'cache-control': 'no-cache' } });
+// The made-up deployment's operator settings (#369), which the answers here
+// name: production's, as its image is built with them, given to the smoke
+// as they are (#381).
+const OPERATOR = Object.freeze({
+  statusPageUrl: 'https://status.qa-tools.ru/',
+  contactEmail: 'contact@qa-tools.ru',
+  texts: true,
+});
+const DEPLOYED = Object.freeze({ operator: OPERATOR });
+// /status and /status/ in an image with a status page: nginx's 301 to it.
+const statusRedirect = (location = OPERATOR.statusPageUrl, status = 301) =>
+  new Response('<html><body><center><h1>301 Moved Permanently</h1></center></body></html>', {
+    status,
+    headers:
+      location === null
+        ? { 'content-type': 'text/html' }
+        : { 'content-type': 'text/html', location },
+  });
 // The files for search engines and the two addresses around them (D183), as
 // nginx and the backend answer them.
 const ROBOTS_TXT = [
@@ -454,6 +491,20 @@ const sessionPage = (robotsTag = 'noindex', status = 200) =>
 // The frontend's 404, the application as the page (D146).
 const notFoundPage = () =>
   new Response('<html><body>app</body></html>', {
+    status: 404,
+    headers: { 'content-type': 'text/html' },
+  });
+// The site's Page not found as nginx answers an address the image does not
+// serve: the frontend's 404, its page the application, the home page's own
+// document, revalidated.
+const pageNotFound = (headers = {}, status = 404, text = HOME) =>
+  new Response(text, {
+    status,
+    headers: { 'content-type': 'text/html', 'cache-control': 'no-cache', ...headers },
+  });
+// nginx's own plain 404, for a file the image lacks in a location of its own.
+const plainNotFound = () =>
+  new Response('<html><head><title>404 Not Found</title></head></html>', {
     status: 404,
     headers: { 'content-type': 'text/html' },
   });
@@ -497,17 +548,20 @@ const mcpMethodNotAllowed = (allow = 'POST') =>
     { status: 405, headers: allow === null ? {} : { allow } },
   );
 // Every answer after the session page: the site's old receive URL, /sxyz,
-// /mcp, then the receive host's unknown session, its root and its robots.txt.
+// /mcp, /status and /status/, then the receive host's unknown session, its
+// root and its robots.txt.
 const fromMoved = () => [
   moved(),
   notFoundPage(),
   mcpMethodNotAllowed(),
+  statusRedirect(),
+  statusRedirect(),
   missing(),
   receiveNotFound(),
   receiveRobots(),
 ];
 
-test('smoke checks frontend, a read-only random API lookup, the API reference, the about page in English and in Russian, the Terms of Use and the Privacy Policy, the Russian home page, the changelog feeds, security.txt, the files for search engines, a session page, the old receive URL, a path outside /s/, the MCP endpoint and the receive host', async () => {
+test("smoke checks frontend, a read-only random API lookup, the API reference, the about page in English and in Russian, the Terms of Use and the Privacy Policy, the Russian home page, the changelog feeds, security.txt, the files for search engines, a session page, the old receive URL, a path outside /s/, the MCP endpoint, the status page's redirect and the receive host", async () => {
   const seen = [];
   const signals = [];
   const answers = [];
@@ -516,7 +570,8 @@ test('smoke checks frontend, a read-only random API lookup, the API reference, t
     async (url, options) => {
       seen.push(url);
       assert.equal(options.method, undefined);
-      assert.equal(options.redirect, 'error');
+      // A redirect is an error, but where the redirect is the answer checked.
+      assert.equal(options.redirect, STATUS_PATHS.includes(url.pathname) ? 'manual' : 'error');
       assert.ok(options.signal instanceof AbortSignal);
       signals.push(options.signal);
       const answer = [
@@ -539,6 +594,8 @@ test('smoke checks frontend, a read-only random API lookup, the API reference, t
         moved,
         notFoundPage,
         mcpMethodNotAllowed,
+        statusRedirect,
+        statusRedirect,
         missing,
         receiveNotFound,
         receiveRobots,
@@ -548,6 +605,7 @@ test('smoke checks frontend, a read-only random API lookup, the API reference, t
     },
     NOW,
     RECEIVE,
+    DEPLOYED,
   );
   // Each request has a timeout of its own, and every answer's body was read,
   // so none is left holding a connection.
@@ -585,7 +643,7 @@ test('smoke checks frontend, a read-only random API lookup, the API reference, t
   // host looks such an id up and stores nothing (D187).
   const [, viewId] = /^\/v\/(.*)$/.exec(paths[15]);
   const [, movedId] = /^\/s\/(.*)$/.exec(paths[16]);
-  const [, receiverId] = /^\/s\/(.*)$/.exec(paths[19]);
+  const [, receiverId] = /^\/s\/(.*)$/.exec(paths[21]);
   assert.match(viewId, SESSION_ID_PATTERN);
   assert.match(movedId, SESSION_ID_PATTERN);
   assert.match(receiverId, SESSION_ID_PATTERN);
@@ -594,14 +652,17 @@ test('smoke checks frontend, a read-only random API lookup, the API reference, t
   assert.equal(paths[17], '/sxyz');
   // The MCP endpoint, on the site (D203).
   assert.equal(seen[18].href, 'https://qa-tools.ru/mcp');
+  // The status page's two addresses, on the site (#381).
+  assert.equal(seen[19].href, 'https://qa-tools.ru/status');
+  assert.equal(seen[20].href, 'https://qa-tools.ru/status/');
   // The receive host by its own origin, never the site's.
   assert.deepEqual(
-    seen.slice(19).map((url) => url.origin),
+    seen.slice(21).map((url) => url.origin),
     [RECEIVE, RECEIVE, RECEIVE],
   );
-  assert.equal(paths[20], '/');
-  assert.equal(paths[21], '/robots.txt');
-  assert.equal(seen.length, 22);
+  assert.equal(paths[22], '/');
+  assert.equal(paths[23], '/robots.txt');
+  assert.equal(seen.length, 24);
 });
 
 // A copy on another address (D274): the same answers, naming its own origins.
@@ -636,6 +697,8 @@ const EVERY_ANSWER = [
   moved,
   notFoundPage,
   mcpMethodNotAllowed,
+  statusRedirect,
+  statusRedirect,
   missing,
   receiveNotFound,
   receiveRobots,
@@ -651,6 +714,7 @@ test('smoke checks a copy on another address against that address, never qa-tool
     },
     NOW,
     OTHER_RECEIVE,
+    DEPLOYED,
   );
   assert.equal(seen.length, EVERY_ANSWER.length);
   assert.deepEqual([...new Set(seen.map((url) => url.origin))].sort(), [OTHER_RECEIVE, OTHER_SITE]);
@@ -668,7 +732,7 @@ test('smoke checks a copy on another address against that address, never qa-tool
     );
     const responses = answers.slice(0, index === 14 ? 14 : index + 1);
     await assert.rejects(
-      checkDeployment(OTHER_SITE, async () => responses.shift()(), NOW, OTHER_RECEIVE),
+      checkDeployment(OTHER_SITE, async () => responses.shift()(), NOW, OTHER_RECEIVE, DEPLOYED),
       problem,
     );
   }
@@ -679,7 +743,7 @@ test('smoke rejects a home page that asks not to be indexed', async () => {
     headers: { 'content-type': 'text/html', 'x-robots-tag': 'noindex' },
   });
   await assert.rejects(
-    checkDeployment('https://qa-tools.ru', async () => marked, NOW, RECEIVE),
+    checkDeployment('https://qa-tools.ru', async () => marked, NOW, RECEIVE, DEPLOYED),
     /home page carries X-Robots-Tag/,
   );
 });
@@ -695,7 +759,7 @@ test('smoke rejects a robots.txt that is missing, not plain text or without the 
   ]) {
     const responses = [...upToSecurity(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/robots\.txt/,
     );
   }
@@ -720,7 +784,7 @@ test('smoke rejects a sitemap the backend answers, the application page or one w
   ]) {
     const responses = [...upToSecurity(), robots(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/sitemap\.xml/,
     );
   }
@@ -733,7 +797,13 @@ test('smoke rejects a sitemap the backend answers, the application page or one w
     sessionPage(),
     ...fromMoved(),
   ];
-  await checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE);
+  await checkDeployment(
+    'https://qa-tools.ru',
+    async () => responses.shift(),
+    NOW,
+    RECEIVE,
+    DEPLOYED,
+  );
 });
 
 test('smoke rejects a missing og:image, one on another site, and one that is not a PNG', async () => {
@@ -753,6 +823,7 @@ test('smoke rejects a missing og:image, one on another site, and one that is not
         },
         NOW,
         RECEIVE,
+        DEPLOYED,
       ),
       /no og:image on this site/,
     );
@@ -762,7 +833,7 @@ test('smoke rejects a missing og:image, one on another site, and one that is not
   for (const answer of [notFoundPage(), logo('text/html'), logo('image/svg+xml')]) {
     const responses = [...upToSecurity(), robots(), sitemap(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /og:image, did not return a PNG/,
     );
   }
@@ -790,7 +861,7 @@ test('smoke rejects a session page without X-Robots-Tag: noindex, or not the pag
   ]) {
     const responses = [...upToSecurity(), robots(), sitemap(), logo(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /X-Robots-Tag: noindex/,
     );
   }
@@ -807,7 +878,7 @@ test('smoke rejects /s/ on the site unless it answers the JSON 410 (1009) (D187)
   ]) {
     const responses = [...upToSecurity(), robots(), sitemap(), logo(), sessionPage(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/s\/ on the site did not answer the JSON 410 \(1009\)/,
     );
   }
@@ -823,6 +894,8 @@ test('smoke rejects a receive host that does not receive, serves more than /s/, 
     moved(),
     notFoundPage(),
     mcpMethodNotAllowed(),
+    statusRedirect(),
+    statusRedirect(),
   ];
   for (const [answers, message] of [
     // The receive host's unknown session: the site's 410, the frontend's
@@ -849,7 +922,7 @@ test('smoke rejects a receive host that does not receive, serves more than /s/, 
   ]) {
     const responses = [...before(), ...answers];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       message,
     );
   }
@@ -895,7 +968,7 @@ test('smoke rejects /sxyz answered by the backend, with 200, or marked noindex',
       answer,
     ];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/sxyz did not answer the frontend's 404 page/,
     );
   }
@@ -931,13 +1004,13 @@ test('smoke rejects /mcp answered by the frontend, by a backend without the MCP 
       answer,
     ];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/mcp did not answer the MCP server's JSON-RPC 405/,
     );
   }
 });
 
-test('smoke rejects a security.txt that is missing, not plain text, without the contact or expired', async () => {
+test('smoke rejects a security.txt that is missing, not plain text, without the contact given, with another beside it, or expired', async () => {
   const expired = SECURITY_TXT.replace(/^Expires: .*$/m, 'Expires: 2026-09-30T11:59:59Z');
   for (const answer of [
     // The application shell for a file the image lacks, or nginx's plain 404.
@@ -946,16 +1019,23 @@ test('smoke rejects a security.txt that is missing, not plain text, without the 
       headers: { 'content-type': 'text/html' },
     }),
     new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } }),
+    plainNotFound(),
     security(SECURITY_TXT, 'text/html'),
     security(SECURITY_TXT, 'application/octet-stream'),
+    // Another address, none, or the one given and another, in either case.
     security(SECURITY_TXT.replace('contact@qa-tools.ru', 'someone@example.com')),
+    security(SECURITY_TXT.replace('contact@qa-tools.ru', 'CONTACT@qa-tools.ru')),
+    security(SECURITY_TXT.replace('contact@qa-tools.ru', 'contact@qa-tools.ru.example')),
     security(SECURITY_TXT.replace(/^Contact: .*\n/m, '')),
+    security(`Contact: mailto:someone@example.com\n${SECURITY_TXT}`),
+    security(`${SECURITY_TXT}contact: mailto:someone@example.com\n`),
+    security(SECURITY_TXT.replace('Contact: mailto:', 'Contact: ')),
     security(expired),
   ]) {
     const responses = [...upToRussian(), atomFeed(), breakingFeed(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
-      /security\.txt/,
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
+      /^Error: \/\.well-known\/security\.txt did not return a current security\.txt giving the contact address given$/,
     );
   }
 });
@@ -974,7 +1054,7 @@ test('smoke rejects /about answered by the application, uncached, kept out of se
   ]) {
     const responses = [html(), missing(), reference(), description(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/about did not return the about page/,
     );
   }
@@ -1003,7 +1083,7 @@ test('smoke rejects /ru/about answered by the application, the English page, unc
   ]) {
     const responses = [html(), missing(), reference(), description(), aboutPage(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /^Error: \/ru\/about did not return the Russian about page, uncached and indexable$/,
     );
   }
@@ -1025,14 +1105,14 @@ test('smoke rejects /terms and /privacy answered by the application, uncached, k
   for (const answer of wrong(termsPage)) {
     const responses = [...upToAbout(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /^Error: \/terms did not return the Terms of Use, uncached and indexable$/,
     );
   }
   for (const answer of wrong(privacyPage)) {
     const responses = [...upToAbout(), termsPage(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /^Error: \/privacy did not return the Privacy Policy, uncached and indexable$/,
     );
   }
@@ -1079,7 +1159,7 @@ test('smoke rejects /ru/ answered by the English shell, uncached, kept out of se
   ]) {
     const responses = [...upToLegal(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /^Error: \/ru\/ did not return the Russian home page, uncached and indexable$/,
     );
   }
@@ -1126,21 +1206,21 @@ test('smoke rejects a changelog feed answered by the application, not as UTF-8 A
   for (const answer of wrong()) {
     const responses = [...upToRussian(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/changelog\.xml did not return the changelog's Atom feed/,
     );
   }
   for (const answer of wrong()) {
     const responses = [...upToRussian(), atomFeed(), answer];
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
       /\/changelog-breaking\.xml did not return the changelog's Atom feed/,
     );
   }
   // The feed of every version holds at least one entry; the breaking one may hold none.
   const empty = [...upToRussian(), breakingFeed()];
   await assert.rejects(
-    checkDeployment('https://qa-tools.ru', async () => empty.shift(), NOW, RECEIVE),
+    checkDeployment('https://qa-tools.ru', async () => empty.shift(), NOW, RECEIVE, DEPLOYED),
     /\/changelog\.xml did not return the changelog's Atom feed/,
   );
 });
@@ -1216,41 +1296,51 @@ test('the smoke expects the titles the Terms of Use and the Privacy Policy carry
   }
 });
 
-// The smoke keeps its own copy of the line rather than importing the frontend's
-// source; this is what keeps the copy equal to the address the footer and the
-// built security.txt publish (D177).
-test('the smoke expects the contact the footer and security.txt publish', () => {
-  // Production's, the frontend image's CONTACT_EMAIL (#369): a build with no
-  // contact address publishes none. Since #367 the pipeline gives the build
-  // the project's CI/CD variable DEPLOY_CONTACT_EMAIL, whose value no file of
-  // the pipeline holds; the tests' record of production's operator settings
-  // is apps/frontend/src/testing/production-operator-env.ts, which
-  // scripts/chart.test.mjs holds equal to production's variables. Read as
-  // text: importing it would set this process's environment.
-  const line = /^ {2}CONTACT_EMAIL: '([^'\n]*)',$/m.exec(
-    readFileSync(
-      new URL('../apps/frontend/src/testing/production-operator-env.ts', import.meta.url),
-      'utf8',
-    ),
-  );
+// The smoke expects of security.txt what the image build writes for the
+// contact address it was built with, the deployment's CONTACT_EMAIL, which
+// the smoke is given (#381): it names no address of its own any more, and
+// this holds its line equal to the build's for any address the build takes.
+test("the smoke expects the security.txt the build writes for the contact address it is given, and names no operator's details of its own (#381)", () => {
+  const built = new Date('2026-09-29T10:11:12Z');
 
-  assert.ok(line, 'production-operator-env.ts sets no CONTACT_EMAIL');
-  assert.match(
-    readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8'),
-    /^ {4}CONTACT_EMAIL: \$DEPLOY_CONTACT_EMAIL$/m,
-  );
-  assert.equal(SECURITY_CONTACT, `Contact: ${mailtoOf(parseContactEmail(line[1]))}`);
+  for (const address of [
+    'contact@qa-tools.ru',
+    'hello@inspector.example',
+    'first.last+tag_1%x-y@sub-1.example.co',
+    `${'a'.repeat(64)}@${'b'.repeat(63)}.example`,
+  ]) {
+    assert.equal(readContactEmail(` ${address} `), parseContactEmail(` ${address} `));
+    const file = securityTxt(built, mailtoOf(parseContactEmail(address)));
+    assert.equal(file.split('\n')[0], securityContact(address));
+    assert.equal(securityTxtIsCurrent(file, address, NOW), true, address);
+    assert.equal(securityTxtIsCurrent(file, `x${address}`, NOW), false, address);
+  }
+  // The smoke's source names none of production's operator's details: the
+  // deployment's settings give them (#381, criterion 5).
+  const source = readFileSync(new URL('./check-deployment.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /@qa-tools\.ru|status\.qa-tools\.ru/i);
+  // With no setting given, it checks none of the three.
+  assert.deepEqual(operatorSettings(), OPERATOR_NOT_GIVEN);
+  assert.deepEqual(operatorSettings({}), OPERATOR_NOT_GIVEN);
 });
 
-test('a current security.txt has the contact and one Expires within the coming year', () => {
-  assert.equal(securityTxtIsCurrent(SECURITY_TXT, NOW), true);
+test('a current security.txt gives the contact address alone and one Expires within the coming year', () => {
+  const current = (text, address = OPERATOR.contactEmail) =>
+    securityTxtIsCurrent(text, address, NOW);
+  assert.equal(current(SECURITY_TXT), true);
   const withExpires = (value) => SECURITY_TXT.replace(/^Expires: .*$/m, `Expires: ${value}`);
-  assert.equal(securityTxtIsCurrent(withExpires('2026-09-30T12:00:00Z'), NOW), false);
-  assert.equal(securityTxtIsCurrent(withExpires('2027-09-30T12:00:00Z'), NOW), false);
-  assert.equal(securityTxtIsCurrent(withExpires('2027-09-30T11:59:59Z'), NOW), true);
-  assert.equal(securityTxtIsCurrent(withExpires('soon'), NOW), false);
-  assert.equal(securityTxtIsCurrent(`${SECURITY_TXT}Expires: 2027-01-01T00:00:00Z\n`, NOW), false);
-  assert.equal(securityTxtIsCurrent(SECURITY_TXT.replaceAll('\n', '\r\n'), NOW), true);
+  assert.equal(current(withExpires('2026-09-30T12:00:00Z')), false);
+  assert.equal(current(withExpires('2027-09-30T12:00:00Z')), false);
+  assert.equal(current(withExpires('2027-09-30T11:59:59Z')), true);
+  assert.equal(current(withExpires('soon')), false);
+  assert.equal(current(`${SECURITY_TXT}Expires: 2027-01-01T00:00:00Z\n`), false);
+  assert.equal(current(SECURITY_TXT.replaceAll('\n', '\r\n')), true);
+  // Another address, the address given twice, or another beside it.
+  assert.equal(current(SECURITY_TXT, 'someone@example.com'), false);
+  assert.equal(current(SECURITY_TXT, 'contact@qa-tools.r'), false);
+  assert.equal(current(`${SECURITY_TXT}Contact: mailto:contact@qa-tools.ru\n`), false);
+  assert.equal(current(`${SECURITY_TXT}CONTACT: mailto:someone@example.com\n`), false);
+  assert.equal(current(SECURITY_TXT.replace(/^Contact: .*\n/m, '')), false);
 });
 
 test('smoke rejects a broken frontend, SPA fallback, incorrect API and network failure', async () => {
@@ -1275,7 +1365,7 @@ test('smoke rejects a broken frontend, SPA fallback, incorrect API and network f
     [html(), missing(), reference(), Response.json({ openapi: '3.1.0' })],
   ]) {
     await assert.rejects(
-      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE),
+      checkDeployment('https://qa-tools.ru', async () => responses.shift(), NOW, RECEIVE, DEPLOYED),
     );
   }
   await assert.rejects(
@@ -1286,10 +1376,11 @@ test('smoke rejects a broken frontend, SPA fallback, incorrect API and network f
       },
       NOW,
       RECEIVE,
+      DEPLOYED,
     ),
   );
   await assert.rejects(
-    checkDeployment('http://qa-tools.ru', async () => html(), NOW, RECEIVE),
+    checkDeployment('http://qa-tools.ru', async () => html(), NOW, RECEIVE, DEPLOYED),
     /HTTPS/,
   );
 });
@@ -1857,7 +1948,13 @@ function aliasFetcher(seen, mark = (url, response) => onAliasSite(response)) {
     return url.origin === ALIAS_SITE ? mark(url, answer) : answer;
   };
 }
-const ALIAS_CHECK = { canonical: 'https://qa-tools.ru', closedToSearch: true };
+// The made-up deployment's settings as the command line gives them (#381).
+const OPERATOR_OPTIONS = [
+  `--status-page=${OPERATOR.statusPageUrl}`,
+  `--contact-email=${OPERATOR.contactEmail}`,
+  '--operator-texts=true',
+];
+const ALIAS_CHECK = { canonical: 'https://qa-tools.ru', closedToSearch: true, operator: OPERATOR };
 
 test("smoke checks the site's second host as a copy of the first closed to search: every answer of its own noindex, its pages naming the first host (#319, D275)", async () => {
   const seen = [];
@@ -1869,10 +1966,13 @@ test("smoke checks the site's second host as a copy of the first closed to searc
   assert.equal(seen[14].href, `${ALIAS_SITE}/logo-512.png`);
   assert.equal(seen[18].href, `${ALIAS_SITE}/mcp`);
 
+  assert.equal(seen[19].href, `${ALIAS_SITE}/status`);
+
   // Every answer of the second host is checked for the header, the API's,
-  // the MCP server's and the image's included; the receive host's are not.
-  // The session page, 15, carries it from nginx itself, on either host.
-  for (let index = 0; index < 19; index += 1) {
+  // the MCP server's, the image's and the status page's redirect included;
+  // the receive host's are not. The session page, 15, carries it from nginx
+  // itself, on either host.
+  for (let index = 0; index < 21; index += 1) {
     if (index === 15) {
       continue;
     }
@@ -1913,7 +2013,7 @@ test("smoke still refuses noindex on the first host's pages, and pages on the se
   // The first host closed to search would be a fault, not the second host's
   // header leaking there: checked as before, its home page refuses it.
   await assert.rejects(
-    checkDeployment('https://qa-tools.ru', async () => onAliasSite(html()), NOW, RECEIVE),
+    checkDeployment('https://qa-tools.ru', async () => onAliasSite(html()), NOW, RECEIVE, DEPLOYED),
     /^Error: The home page carries X-Robots-Tag$/,
   );
   // On the second host the pages name the first; naming the second instead
@@ -2092,7 +2192,7 @@ test("the smoke's command line checks the first host, then waits for the second'
   const first = [];
   const logged = [];
   await checkDeploymentMain(
-    ['https://qa-tools.ru', RECEIVE, ''],
+    ['https://qa-tools.ru', RECEIVE, '', ...OPERATOR_OPTIONS],
     async (url) => {
       first.push(url);
       return EVERY_ANSWER[first.length - 1]();
@@ -2113,7 +2213,7 @@ test("the smoke's command line checks the first host, then waits for the second'
   let pending = 1;
   let index = 0;
   await checkDeploymentMain(
-    ['https://qa-tools.ru', RECEIVE, ALIAS_SITE],
+    ['https://qa-tools.ru', RECEIVE, ALIAS_SITE, ...OPERATOR_OPTIONS],
     async (url) => {
       seen.push(url);
       if (url.origin === ALIAS_SITE && pending > 0) {
@@ -2150,7 +2250,7 @@ test("the smoke's command line checks the first host, then waits for the second'
     const asked = [];
     await assert.rejects(
       checkDeploymentMain(
-        ['https://qa-tools.ru', RECEIVE, alias],
+        ['https://qa-tools.ru', RECEIVE, alias, ...OPERATOR_OPTIONS],
         async (url) => {
           asked.push(url);
           return EVERY_ANSWER[asked.length - 1]();
@@ -2164,6 +2264,715 @@ test("the smoke's command line checks the first host, then waits for the second'
     assert.equal(asked.length, EVERY_ANSWER.length);
   }
   await assert.rejects(checkDeploymentMain(['https://qa-tools.ru']), /^Error: Usage: /);
+});
+
+// --- The operator's details the smoke checks (#381) --------------------------
+//
+// The deployment's image was built with a status page, a contact address and
+// the operator's texts, or without each (#369); the smoke is given them as
+// options, checks each as it says, and asks for nothing of one not given.
+
+/** A copy's own operator: every detail set, none of them production's. */
+const COPY_OPERATOR = Object.freeze({
+  statusPageUrl: 'https://status.inspector.example/',
+  contactEmail: 'hello@inspector.example',
+  texts: true,
+});
+/** A copy built with none of the three. */
+const NO_OPERATOR = Object.freeze({ statusPageUrl: null, contactEmail: null, texts: false });
+/** A copy with a contact address and nothing else. */
+const CONTACT_ONLY = Object.freeze({
+  statusPageUrl: null,
+  contactEmail: 'hello@inspector.example',
+  texts: false,
+});
+/** The addresses that answer as the operator's details say, the status page's two among them. */
+const OPERATOR_PATHS = ['/terms', '/privacy', '/.well-known/security.txt', ...STATUS_PATHS];
+
+/**
+ * A deployment whose image was built with `built`'s details, answering each
+ * address as nginx and the backend do, and `answers[path]()` where one is
+ * given; what was asked, the URL and the redirect mode, is pushed to `seen`.
+ */
+function deployment(built, seen = [], answers = {}) {
+  const site = {
+    '/': html,
+    '/docs': reference,
+    '/openapi.json': description,
+    '/about': aboutPage,
+    '/ru/about': russianAboutPage,
+    '/terms': () => (built.texts ? termsPage() : pageNotFound()),
+    '/privacy': () => (built.texts ? privacyPage() : pageNotFound()),
+    '/ru/': russianHome,
+    '/changelog.xml': atomFeed,
+    '/changelog-breaking.xml': breakingFeed,
+    '/.well-known/security.txt': () =>
+      built.contactEmail
+        ? security(SECURITY_TXT.replace('contact@qa-tools.ru', built.contactEmail))
+        : plainNotFound(),
+    '/robots.txt': robots,
+    '/sitemap.xml': sitemap,
+    '/logo-512.png': logo,
+    '/sxyz': notFoundPage,
+    '/mcp': mcpMethodNotAllowed,
+    '/status': () => (built.statusPageUrl ? statusRedirect(built.statusPageUrl) : pageNotFound()),
+    '/status/': () => (built.statusPageUrl ? statusRedirect(built.statusPageUrl) : pageNotFound()),
+  };
+
+  return async (url, options) => {
+    seen.push({ path: url.pathname, origin: url.origin, redirect: options.redirect });
+    if (url.origin === RECEIVE) {
+      return url.pathname === '/'
+        ? receiveNotFound()
+        : url.pathname === '/robots.txt'
+          ? receiveRobots()
+          : missing();
+    }
+    if (Object.hasOwn(answers, url.pathname)) return answers[url.pathname]();
+    if (Object.hasOwn(site, url.pathname)) return site[url.pathname]();
+    if (url.pathname.startsWith('/api/sessions/')) return missing();
+    if (url.pathname.startsWith('/v/')) return sessionPage();
+    if (url.pathname.startsWith('/s/')) return moved();
+    return assert.fail(`the smoke asked for ${url.pathname}`);
+  };
+}
+
+/** The smoke on the site of a deployment built with `built`, given `operator`. */
+const smokeOf = (built, operator = built, seen = [], answers = {}) =>
+  checkDeployment('https://qa-tools.ru', deployment(built, seen, answers), NOW, RECEIVE, {
+    operator,
+  });
+
+test("smoke checks the operator's details as the deployment's settings give them: each a value or none, and asked for only when given (#381)", async () => {
+  for (const built of [OPERATOR, COPY_OPERATOR, NO_OPERATOR, CONTACT_ONLY]) {
+    const seen = [];
+    await smokeOf(built, built, seen);
+    const asked = seen.map(({ path }) => path);
+    for (const path of OPERATOR_PATHS) {
+      assert.equal(asked.filter((each) => each === path).length, 1, path);
+    }
+    // The status page's two addresses are asked without following a
+    // redirect, which is their answer; everything else refuses one.
+    for (const { path, redirect } of seen) {
+      assert.equal(redirect, STATUS_PATHS.includes(path) ? 'manual' : 'error', path);
+    }
+  }
+  // Not given, not asked for: whatever the image was built with, and
+  // whatever those addresses would answer.
+  const never = Object.fromEntries(
+    OPERATOR_PATHS.map((path) => [path, () => assert.fail(`${path} was asked for`)]),
+  );
+  for (const built of [OPERATOR, NO_OPERATOR]) {
+    const seen = [];
+    await smokeOf(built, OPERATOR_NOT_GIVEN, seen, never);
+    await checkDeployment('https://qa-tools.ru', deployment(built, [], never), NOW, RECEIVE);
+    assert.equal(seen.length, 24 - OPERATOR_PATHS.length);
+  }
+  // Each one alone, given: that one is asked for, the others are not.
+  for (const [name, paths] of [
+    ['texts', ['/terms', '/privacy']],
+    ['contactEmail', ['/.well-known/security.txt']],
+    ['statusPageUrl', STATUS_PATHS],
+  ]) {
+    for (const built of [COPY_OPERATOR, NO_OPERATOR]) {
+      const seen = [];
+      const others = Object.fromEntries(
+        OPERATOR_PATHS.filter((path) => !paths.includes(path)).map((path) => [path, never[path]]),
+      );
+      await smokeOf(built, { ...OPERATOR_NOT_GIVEN, [name]: built[name] }, seen, others);
+      assert.deepEqual(
+        seen.map(({ path }) => path).filter((path) => OPERATOR_PATHS.includes(path)),
+        paths,
+        name,
+      );
+    }
+  }
+  // On the second host, closed to search, its Page not found carries the
+  // proxy's noindex like every other answer there (#319, D275).
+  for (const built of [OPERATOR, NO_OPERATOR]) {
+    const fetcher = deployment(built);
+    await checkDeployment(
+      ALIAS_SITE,
+      async (url, options) => {
+        const answer = await fetcher(url, options);
+        return url.origin === ALIAS_SITE ? onAliasSite(answer) : answer;
+      },
+      NOW,
+      RECEIVE,
+      { ...ALIAS_CHECK, operator: built },
+    );
+  }
+});
+
+test("smoke refuses the legal pages unlike OPERATOR_TEXTS: missing with the texts, served or not the site's Page not found without them (#381)", async () => {
+  for (const [path, page, name] of [
+    ['/terms', termsPage, 'the Terms of Use'],
+    ['/privacy', privacyPage, 'the Privacy Policy'],
+  ]) {
+    const refused = new RegExp(`^Error: ${path} did not return ${name}, uncached and indexable$`);
+    for (const answer of [pageNotFound, plainNotFound, notFoundPage]) {
+      await assert.rejects(smokeOf(OPERATOR, OPERATOR, [], { [path]: answer }), refused);
+    }
+    const notFound = new RegExp(
+      `^Error: ${path} did not answer the site's Page not found, as an image without the operator's texts does$`,
+    );
+    for (const answer of [
+      // The page itself, or the application shell with 200.
+      page,
+      () => pageNotFound({}, 200),
+      // nginx's plain 404, or a 404 whose page is not the application.
+      plainNotFound,
+      notFoundPage,
+      () => pageNotFound({}, 404, '<html><body>Not found</body></html>'),
+      // Not HTML, kept out of search, or another status.
+      () => pageNotFound({ 'content-type': 'text/plain' }),
+      () => pageNotFound({ 'x-robots-tag': 'noindex' }),
+      () => pageNotFound({}, 410),
+      () => statusRedirect('https://qa-tools.ru/'),
+    ]) {
+      await assert.rejects(smokeOf(NO_OPERATOR, NO_OPERATOR, [], { [path]: answer }), notFound);
+    }
+  }
+});
+
+test('smoke refuses security.txt unlike CONTACT_EMAIL: the file of another address with one, any but a 404 without one (#381)', async () => {
+  const given =
+    /^Error: \/\.well-known\/security\.txt did not return a current security\.txt giving the contact address given$/;
+  for (const answer of [
+    plainNotFound,
+    // Production's file, another copy's, or none, on a copy with its own address.
+    () => security(),
+    () => security(SECURITY_TXT.replace('contact@qa-tools.ru', 'hello@inspector.examples')),
+    () => security(SECURITY_TXT.replace(/^Contact: .*\n/m, '')),
+  ]) {
+    await assert.rejects(
+      smokeOf(COPY_OPERATOR, COPY_OPERATOR, [], { '/.well-known/security.txt': answer }),
+      given,
+    );
+  }
+  const none =
+    /^Error: \/\.well-known\/security\.txt did not answer 404, as an image without a contact address does$/;
+  for (const answer of [
+    () => security(),
+    () => security(SECURITY_TXT.replace(/^Contact: .*\n/m, '')),
+    () => security('', 'text/plain'),
+    () => pageNotFound({}, 200),
+    () => pageNotFound({}, 410),
+    () => new Response('unavailable', { status: 503 }),
+  ]) {
+    await assert.rejects(
+      smokeOf(NO_OPERATOR, NO_OPERATOR, [], { '/.well-known/security.txt': answer }),
+      none,
+    );
+  }
+});
+
+test("smoke refuses /status and /status/ unlike STATUS_PAGE_URL: anything but a 301 to it with one, anything but the site's Page not found without one (#381)", async () => {
+  for (const path of STATUS_PATHS) {
+    const given = new RegExp(
+      `^Error: ${path.replaceAll('/', '\\/')} did not answer a 301 to the status page given$`,
+    );
+    for (const answer of [
+      // Another kind of redirect.
+      () => statusRedirect(OPERATOR.statusPageUrl, 302),
+      () => statusRedirect(OPERATOR.statusPageUrl, 307),
+      () => statusRedirect(OPERATOR.statusPageUrl, 308),
+      // Another place, the same place written otherwise, or none.
+      () => statusRedirect('https://status.example.com/'),
+      () => statusRedirect('https://status.qa-tools.ru'),
+      () => statusRedirect('http://status.qa-tools.ru/'),
+      () => statusRedirect('https://status.qa-tools.ru/?from=qa-tools'),
+      () => statusRedirect('/status'),
+      () => statusRedirect(null),
+      // No redirect at all.
+      pageNotFound,
+      () => pageNotFound({}, 200),
+      html,
+    ]) {
+      await assert.rejects(smokeOf(OPERATOR, OPERATOR, [], { [path]: answer }), given);
+    }
+    // A copy's own status page, and not production's.
+    await assert.rejects(
+      smokeOf(COPY_OPERATOR, COPY_OPERATOR, [], { [path]: () => statusRedirect() }),
+      given,
+    );
+    const none = new RegExp(
+      `^Error: ${path.replaceAll('/', '\\/')} did not answer the site's Page not found, as an image without a status page does$`,
+    );
+    for (const answer of [
+      () => statusRedirect(),
+      () => statusRedirect('https://status.example.com/', 302),
+      plainNotFound,
+      notFoundPage,
+      () => pageNotFound({}, 200),
+      () => pageNotFound({ 'x-robots-tag': 'noindex' }),
+      () => pageNotFound({ 'content-type': 'application/json' }),
+    ]) {
+      await assert.rejects(smokeOf(NO_OPERATOR, NO_OPERATOR, [], { [path]: answer }), none);
+    }
+  }
+});
+
+// The smoke keeps its own copy of the two addresses rather than importing the
+// frontend's build script; this keeps them equal to the locations it writes.
+test('the smoke asks for the status page at the addresses the image build redirects (#369, #381)', () => {
+  const written = statusLocations('https://status.example.com/');
+  assert.deepEqual(
+    [
+      ...written.matchAll(
+        /^ {4}location = (\S+) \{\n {8}return 301 https:\/\/status\.example\.com\/;$/gm,
+      ),
+    ].map(([, path]) => path),
+    STATUS_PATHS,
+  );
+});
+
+const SITE = 'https://qa-tools.ru';
+
+test("the smoke's command line: D187's call as it was, each operator's setting an option of either form anywhere among the hosts, empty for none, not checked when not given (#381)", () => {
+  // D187's call, with or without the second host, which may be empty: none
+  // of the operator's details given.
+  assert.deepEqual(parseCommandLine([SITE, RECEIVE]), {
+    base: SITE,
+    receiveBase: RECEIVE,
+    aliasBase: '',
+    operator: OPERATOR_NOT_GIVEN,
+  });
+  assert.deepEqual(parseCommandLine([SITE, RECEIVE, '']).operator, OPERATOR_NOT_GIVEN);
+  assert.equal(parseCommandLine([SITE, RECEIVE, ALIAS_SITE]).aliasBase, ALIAS_SITE);
+  // As deployment-smoke runs it, the three after the hosts.
+  assert.deepEqual(parseCommandLine([SITE, RECEIVE, ALIAS_SITE, ...OPERATOR_OPTIONS]), {
+    base: SITE,
+    receiveBase: RECEIVE,
+    aliasBase: ALIAS_SITE,
+    operator: OPERATOR,
+  });
+  // Either form, before, between and after the hosts.
+  assert.deepEqual(
+    parseCommandLine([
+      '--status-page',
+      OPERATOR.statusPageUrl,
+      SITE,
+      '--contact-email',
+      OPERATOR.contactEmail,
+      RECEIVE,
+      '--operator-texts',
+      'true',
+    ]),
+    { base: SITE, receiveBase: RECEIVE, aliasBase: '', operator: OPERATOR },
+  );
+  // Empty or blank is none, as the image build reads it, in either form.
+  for (const blank of ['', ' ', '\t', '\n', '  \r\n ']) {
+    const none = { statusPageUrl: null, contactEmail: null, texts: false };
+    assert.deepEqual(
+      parseCommandLine([
+        SITE,
+        RECEIVE,
+        `--status-page=${blank}`,
+        `--contact-email=${blank}`,
+        `--operator-texts=${blank}`,
+      ]).operator,
+      none,
+    );
+    assert.deepEqual(
+      parseCommandLine([
+        SITE,
+        RECEIVE,
+        '--status-page',
+        blank,
+        '--contact-email',
+        blank,
+        '--operator-texts',
+        blank,
+      ]).operator,
+      none,
+    );
+  }
+  // A value is read as the build reads it: the status page as URL writes it,
+  // what nginx redirects to, and the address trimmed.
+  assert.deepEqual(
+    parseCommandLine([
+      SITE,
+      RECEIVE,
+      '--status-page= HTTPS://Status.Example.COM ',
+      '--contact-email= hello@inspector.example ',
+      '--operator-texts=false',
+    ]).operator,
+    {
+      statusPageUrl: 'https://status.example.com/',
+      contactEmail: 'hello@inspector.example',
+      texts: false,
+    },
+  );
+  // The texts need the other two only when one is given as none: not given,
+  // it is not checked.
+  assert.deepEqual(parseCommandLine([SITE, RECEIVE, '--operator-texts=true']).operator, {
+    statusPageUrl: undefined,
+    contactEmail: undefined,
+    texts: true,
+  });
+});
+
+test("the smoke's command line refuses an option it does not know, one given twice or without its value, a value the image build refuses, the texts without what they name and a fourth host, quoting nothing it was given (#381)", () => {
+  const SECRET = 'secret-value';
+  const refused = (argv, message) =>
+    assert.throws(
+      () => parseCommandLine(argv),
+      (error) => message.test(error.message) && !error.message.includes(SECRET),
+      argv.join(' ').slice(0, 200),
+    );
+  for (const option of [
+    `--status=${SECRET}`,
+    `--status-page-url=${SECRET}`,
+    `--STATUS-PAGE=${SECRET}`,
+    `--${SECRET}`,
+    `-${SECRET}`,
+    '--contact',
+    '-s',
+    '--',
+    '-',
+    `---status-page=${SECRET}`,
+  ]) {
+    refused(
+      [SITE, RECEIVE, option],
+      /^The smoke takes the options --status-page, --contact-email and --operator-texts alone\nUsage: /,
+    );
+  }
+  for (const argv of [
+    ['--status-page=', '--status-page=https://status.example.com/'],
+    ['--contact-email', SECRET, '--contact-email='],
+    ['--operator-texts=true', '--operator-texts', 'true'],
+  ]) {
+    refused([SITE, RECEIVE, ...argv], /^--[a-z-]+ is given more than once$/);
+  }
+  for (const argv of [
+    ['--status-page'],
+    ['--contact-email', '--operator-texts=true'],
+    ['--operator-texts', '-1'],
+    ['--status-page', `-${SECRET}`],
+  ]) {
+    refused(
+      [SITE, RECEIVE, ...argv],
+      /^--[a-z-]+ needs its value: --[a-z-]+=<value>, empty for none$/,
+    );
+  }
+  for (const argv of [
+    [],
+    [SITE],
+    ['', RECEIVE],
+    [SITE, ''],
+    ['--status-page=', SITE],
+    [SITE, RECEIVE, ALIAS_SITE, SECRET],
+    [SITE, RECEIVE, '', ''],
+  ]) {
+    refused(argv, /^Usage: node scripts\/check-deployment\.mjs /);
+  }
+  assert.ok(USAGE.startsWith('Usage: '));
+  for (const value of [
+    SECRET,
+    `status.example.com/${SECRET}`,
+    `ftp://status.example.com/${SECRET}`,
+    `javascript:alert('${SECRET}')`,
+    `https://user:${SECRET}@status.example.com/`,
+    `https://status.example.com/?${SECRET}`,
+    `https://status.example.com/#${SECRET}`,
+    `https://status.example.com:0/${SECRET}`,
+    `https://-${SECRET}.example/`,
+    `https://status.example.com/$${SECRET}`,
+    `https://status.example.com/;${SECRET}`,
+    `https://status.example.com/%zz${SECRET}`,
+  ]) {
+    refused([SITE, RECEIVE, `--status-page=${value}`], /^--status-page must /);
+  }
+  for (const value of [
+    SECRET,
+    `@${SECRET}.example`,
+    `${SECRET}@`,
+    `${SECRET}@-x.example`,
+    `${SECRET}@x..example`,
+    `.${SECRET}@x.example`,
+    `"${SECRET}"@x.example`,
+    `${SECRET} x@x.example`,
+    `${SECRET}@x.example\nContact: mailto:evil@x.example`,
+    `mailto:${SECRET}@x.example`,
+    `${'a'.repeat(65)}${SECRET}@x.example`,
+  ]) {
+    refused([SITE, RECEIVE, `--contact-email=${value}`], /^--contact-email must /);
+  }
+  for (const value of ['TRUE', 'True', 'yes', '1', 'on', `${SECRET}`, 'true false', 'truetrue']) {
+    refused(
+      [SITE, RECEIVE, `--operator-texts=${value}`],
+      /^--operator-texts must be true or false/,
+    );
+  }
+  // The texts name the status page and the contact address: an image built
+  // with them and either given as none is refused at its build, as here.
+  for (const argv of [
+    ['--operator-texts=true', '--status-page='],
+    ['--operator-texts=true', '--contact-email= '],
+    ['--operator-texts=true', '--status-page=', '--contact-email=hello@inspector.example'],
+  ]) {
+    refused(
+      [SITE, RECEIVE, ...argv],
+      /^--operator-texts=true needs a status page and a contact address/,
+    );
+  }
+});
+
+/** Whether the smoke's `read` and the build's `build` give the same for `raw`: the same value, or both a refusal. */
+function sameReading(read, build, raw, what) {
+  let expected;
+  let built = true;
+  try {
+    expected = build(raw);
+  } catch {
+    built = false;
+  }
+  if (built) {
+    assert.equal(read(raw), expected, what);
+  } else {
+    assert.throws(() => read(raw), Error, what);
+  }
+}
+
+/** Runs `fn`, failing if it takes more than 2 s: far more than any of these takes. */
+function swiftly(what, fn) {
+  const started = performance.now();
+  fn();
+  assert.ok(performance.now() - started < 2000, `${what} took too long`);
+}
+
+// The smoke keeps its own reading of the three settings rather than importing
+// the frontend's source; this keeps it equal to the image build's, on made-up
+// input at growing sizes, so that the smoke expects what the build made of
+// the same value.
+test('the smoke reads each operator setting as the image build does, on any input and at any size (#369, #381)', () => {
+  const statusPages = [
+    '',
+    ' ',
+    '\t\n',
+    'https://status.qa-tools.ru/',
+    'https://status.qa-tools.ru',
+    ' https://status.qa-tools.ru/ ',
+    'HTTPS://STATUS.EXAMPLE.COM/A/B',
+    'http://status.example.com:8080/x/',
+    'https://status.example.com:0/',
+    'https://status.example.com:65536/',
+    'https://xn--e1afmkfd.xn--p1ai/',
+    'https://пример.рф/',
+    'https://status.example.com./',
+    'https://status..example.com/',
+    'https://-status.example.com/',
+    'https://status.example.com/a b',
+    'https://status.example.com/a"b',
+    'https://status.example.com/%41%zz',
+    'https://status.example.com/%41',
+    'https://status.example.com/a;b',
+    "https://status.example.com/a'b",
+    'https://status.example.com/a$b',
+    'https://status.example.com/a(b)',
+    'https://status.ex\nample.com/',
+    'https://status.example.com/\t',
+    'https://user@status.example.com/',
+    'https://status.example.com/?',
+    'https://status.example.com/#',
+    'https://1.2.3.4/',
+    'https://[::1]/',
+    'ftp://status.example.com/',
+    'javascript:alert(1)',
+    'data:text/html,x',
+    'status.example.com',
+    '//status.example.com/',
+    'https://',
+    'https:///x',
+    '\u0000https://status.example.com/',
+    'https://status.example.com/\u0000',
+    'https://status.example.com/é',
+  ];
+  const contacts = [
+    '',
+    ' ',
+    'contact@qa-tools.ru',
+    ' contact@qa-tools.ru\n',
+    'Contact@QA-Tools.RU',
+    'a@b',
+    'a@b.c',
+    '@b.c',
+    'a@',
+    'a@@b.c',
+    'a@b@c.d',
+    'a.@b.c',
+    '.a@b.c',
+    'a..b@c.d',
+    'a+b_c%d-e@f-g.h',
+    'a@-b.c',
+    'a@b-.c',
+    'a@b_c.d',
+    'a b@c.d',
+    '"a"@b.c',
+    'a@b.c\nContact: mailto:x@y.z',
+    'a@[1.2.3.4]',
+    'é@b.c',
+    'a@é.c',
+    `${'a'.repeat(64)}@b.c`,
+    `${'a'.repeat(65)}@b.c`,
+    `a@${'b'.repeat(63)}.c`,
+    `a@${'b'.repeat(64)}.c`,
+    `${'a'.repeat(64)}@${'b.'.repeat(94)}cc`,
+    `${'a'.repeat(64)}@${'b.'.repeat(95)}cc`,
+  ];
+  const texts = [
+    '',
+    ' ',
+    'true',
+    ' true ',
+    'false',
+    '\tfalse\n',
+    'TRUE',
+    'True',
+    '1',
+    'yes',
+    'truefalse',
+  ];
+
+  for (const raw of statusPages) {
+    sameReading(readStatusPage, parseStatusPageUrl, raw, JSON.stringify(raw));
+  }
+  for (const raw of contacts) {
+    sameReading(readContactEmail, parseContactEmail, raw, JSON.stringify(raw));
+  }
+  for (const raw of texts) {
+    sameReading(readOperatorTexts, parseOperatorTexts, raw, JSON.stringify(raw));
+  }
+
+  // At growing sizes, each shape read the same, and quickly.
+  for (const size of [10, 1000, 100_000]) {
+    const grown = {
+      status: [
+        ' '.repeat(size),
+        `${'\t'.repeat(size)}https://status.example.com/`,
+        `https://${'a'.repeat(size)}.example/`,
+        `https://${'a.'.repeat(size)}example/`,
+        `https://${'a-'.repeat(size)}a.example/`,
+        `https://status.example.com/${'a/'.repeat(size)}`,
+        `https://status.example.com/${'%41'.repeat(size)}`,
+        `https://status.example.com/${'%'.repeat(size)}`,
+        `https://status.example.com/${'%4'.repeat(size)}`,
+        `https://status.example.com/${'$'.repeat(size)}`,
+        `https://status.example.com/${'?'.repeat(size)}`,
+        `https://status.example.com:${'1'.repeat(size)}/`,
+        `https://${'@'.repeat(size)}status.example.com/`,
+        'h'.repeat(size),
+      ],
+      contact: [
+        ' '.repeat(size),
+        `${'a'.repeat(size)}@example.com`,
+        `a@${'b.'.repeat(size)}com`,
+        `${'a.'.repeat(size)}a@x.example`,
+        `${'a.'.repeat(size)}@x.example`,
+        '@'.repeat(size),
+        `${'a@'.repeat(size)}x.example`,
+        'a'.repeat(size),
+        `a@${'b-'.repeat(size)}b.example`,
+      ],
+      texts: [
+        ' '.repeat(size),
+        `${' '.repeat(size)}true${'\n'.repeat(size)}`,
+        'true'.repeat(size),
+        'x'.repeat(size),
+      ],
+    };
+    swiftly(`size ${size}`, () => {
+      for (const raw of grown.status) {
+        sameReading(readStatusPage, parseStatusPageUrl, raw, `status, size ${size}`);
+      }
+      for (const raw of grown.contact) {
+        sameReading(readContactEmail, parseContactEmail, raw, `contact, size ${size}`);
+      }
+      for (const raw of grown.texts) {
+        sameReading(readOperatorTexts, parseOperatorTexts, raw, `texts, size ${size}`);
+      }
+    });
+    // And on the command line, refusals quoting none of it.
+    swiftly(`command line, size ${size}`, () => {
+      for (const argv of [
+        [SITE, RECEIVE, `--status-page=https://${'a'.repeat(size)}.example/?${'q'.repeat(size)}`],
+        [SITE, RECEIVE, `--contact-email=${'a '.repeat(size)}@example.com`],
+        [SITE, RECEIVE, `--operator-texts=${'x'.repeat(size)}`],
+        [SITE, RECEIVE, `--${'x'.repeat(size)}=1`],
+        [SITE, RECEIVE, ...Array.from({ length: size }, () => '--status-page=')],
+        [SITE, RECEIVE, ...Array.from({ length: size }, () => SITE)],
+        Array.from({ length: size }, () => '-'),
+      ]) {
+        assert.throws(
+          () => parseCommandLine(argv),
+          (error) => error.message.length < 400,
+          `size ${size}`,
+        );
+      }
+      assert.deepEqual(
+        parseCommandLine([SITE, RECEIVE, `--status-page=${' '.repeat(size)}`]).operator
+          .statusPageUrl,
+        null,
+      );
+    });
+  }
+});
+
+test("the smoke's command line says what it checked of the operator's details, and what it did not check, their setting not given (#381)", async () => {
+  const run = async (built, options) => {
+    const lines = [];
+    await checkDeploymentMain(
+      [SITE, RECEIVE, ...options],
+      deployment(built),
+      NOW,
+      async () => assert.fail('no wait'),
+      (line) => lines.push(line),
+    );
+    return lines;
+  };
+  const common = [
+    'frontend, API/database lookup, API reference, the about page in English and in Russian',
+    'the Russian home page, the two changelog feeds',
+    'the files for search engines, a session page, the old receive URL (410), a path outside /s/, the MCP endpoint (405)',
+  ];
+
+  // D187's call: the details are not checked, and the first line says so.
+  assert.deepEqual(await run(OPERATOR, []), [
+    'Not checked, as their setting is not given: the Terms of Use and the Privacy Policy (--operator-texts), security.txt (--contact-email) and /status (--status-page)',
+    `Deployed ${common[0]}, ${common[1]}, ${common[2]} and the receive host passed on qa-tools.ru (read-only)`,
+  ]);
+  // All three given, as deployment-smoke gives them: no such line.
+  assert.deepEqual(await run(OPERATOR, OPERATOR_OPTIONS), [
+    `Deployed ${common[0]}, the Terms of Use and the Privacy Policy, ${common[1]}, security.txt with the contact address given, ${common[2]}, the status page's redirect (301) and the receive host passed on qa-tools.ru (read-only)`,
+  ]);
+  // All three given as none.
+  assert.deepEqual(
+    await run(NO_OPERATOR, ['--status-page=', '--contact-email=', '--operator-texts=']),
+    [
+      `Deployed ${common[0]}, no Terms of Use or Privacy Policy (Page not found), ${common[1]}, no security.txt (404), ${common[2]}, no status page (Page not found) and the receive host passed on qa-tools.ru (read-only)`,
+    ],
+  );
+  // One given: the other two are named.
+  assert.deepEqual(await run(CONTACT_ONLY, ['--contact-email=hello@inspector.example']), [
+    'Not checked, as their setting is not given: the Terms of Use and the Privacy Policy (--operator-texts) and /status (--status-page)',
+    `Deployed ${common[0]}, ${common[1]}, security.txt with the contact address given, ${common[2]} and the receive host passed on qa-tools.ru (read-only)`,
+  ]);
+  assert.equal(
+    notCheckedLine({ ...OPERATOR, texts: undefined }),
+    'Not checked, as their setting is not given: the Terms of Use and the Privacy Policy (--operator-texts)',
+  );
+  assert.equal(notCheckedLine(OPERATOR), undefined);
+  assert.match(checkedList(OPERATOR_NOT_GIVEN), /^frontend, .* and the receive host$/);
+  // A deployment unlike the settings given fails, naming what.
+  await assert.rejects(
+    run(OPERATOR, ['--status-page=', '--contact-email=', '--operator-texts=']),
+    /^Error: \/terms did not answer the site's Page not found, as an image without the operator's texts does$/,
+  );
+  await assert.rejects(
+    run(NO_OPERATOR, OPERATOR_OPTIONS),
+    /^Error: \/terms did not return the Terms of Use, uncached and indexable$/,
+  );
 });
 
 // The runtime paths are the rule check-version.mjs holds, the one qa-tools'

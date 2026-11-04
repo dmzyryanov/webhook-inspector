@@ -1689,11 +1689,7 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
   const smoke = pipelineKey(pipeline, 'deployment-smoke');
 
   assert.match(smoke, /^ {2}extends: \.inspector-address$/m);
-  assert.ok(
-    smoke.includes(
-      '- node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN"\n',
-    ),
-  );
+  assert.ok(smoke.includes(`- ${SMOKE_COMMAND}\n`));
   assert.match(smoke, /^ {2}timeout: 10m$/m);
 
   // The deploy job reads the variables themselves, on the runner one names.
@@ -1708,6 +1704,120 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
 
   assert.ok(commands.indexOf('Not deployed:') < commands.indexOf('helm upgrade --install'));
   assert.match(validate, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'$/m);
+});
+
+/** deployment-smoke's command (D187, D275, #381): the three hosts, then the operator's three settings. */
+const SMOKE_COMMAND =
+  'node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN" --status-page="$DEPLOY_STATUS_PAGE_URL" --contact-email="$DEPLOY_CONTACT_EMAIL" --operator-texts="$DEPLOY_OPERATOR_TEXTS"';
+
+// A stand-in node for deployment-smoke's command: it records its arguments,
+// NUL-separated, and runs nothing.
+const SMOKE_STAND_INS = mkdtempSync(join(tmpdir(), 'chart-test-smoke-'));
+
+writeFileSync(
+  join(SMOKE_STAND_INS, 'node'),
+  '#!/bin/sh\nfor arg in "$@"; do printf \'%s\\0\' "$arg"; done > "$SMOKE_ARGS"\n',
+  { mode: 0o755 },
+);
+after(() => rmSync(SMOKE_STAND_INS, { recursive: true, force: true }));
+
+/** deployment-smoke's command as the runner's shell runs it with the project's CI/CD variables `project`: the arguments the smoke is given. */
+function smokeArguments(project) {
+  const line = /^ {4}- (node scripts\/check-deployment\.mjs [^\n]*)$/m.exec(
+    pipelineKey(readFileSync(PIPELINE, 'utf8'), 'deployment-smoke'),
+  );
+
+  assert.ok(line, 'deployment-smoke runs no scripts/check-deployment.mjs');
+
+  const record = join(SMOKE_STAND_INS, `args-${(runs += 1)}`);
+  const run = spawnSync('sh', ['-c', line[1]], {
+    cwd: SMOKE_STAND_INS,
+    env: {
+      PATH: `${SMOKE_STAND_INS}:${process.env.PATH}`,
+      SMOKE_ARGS: record,
+      ...jobVariables(['.inspector-address', 'deployment-smoke'], project),
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+
+  const args = readFileSync(record, 'utf8').split('\0').slice(0, -1);
+
+  rmSync(record);
+  assert.equal(args[0], 'scripts/check-deployment.mjs');
+  return args.slice(1);
+}
+
+test("deployment-smoke gives the smoke production's address and operator from the project's CI/CD variables, each operator's setting as the frontend image is built with it, empty for none (#381)", async () => {
+  const { parseOperator } = await import('../apps/frontend/src/lib/operator.ts');
+  const { parseCommandLine } = await import('./check-deployment.mjs');
+  /** What the image built with `project`'s variables names, as the smoke is to expect it. */
+  const builtWith = (project) => {
+    const operator = parseOperator({
+      STATUS_PAGE_URL: project.DEPLOY_STATUS_PAGE_URL,
+      CONTACT_EMAIL: project.DEPLOY_CONTACT_EMAIL,
+      OPERATOR_TEXTS: project.DEPLOY_OPERATOR_TEXTS,
+    });
+
+    return { ...operator };
+  };
+
+  // Production's: the three hosts and the operator's three details.
+  const production = parseCommandLine(smokeArguments(PRODUCTION));
+
+  assert.deepEqual(production, {
+    base: PRODUCTION.DEPLOY_APP_ORIGIN,
+    receiveBase: PRODUCTION.DEPLOY_RECEIVE_ORIGIN,
+    aliasBase: PRODUCTION.DEPLOY_APP_ALIAS_ORIGIN,
+    operator: builtWith(PRODUCTION),
+  });
+  assert.deepEqual(production.operator, {
+    statusPageUrl: 'https://status.qa-tools.ru/',
+    contactEmail: 'contact@qa-tools.ru',
+    texts: true,
+  });
+
+  // A copy's own, with no second host, and one with none of the three:
+  // each given, so each is checked, empty as none.
+  const copy = {
+    ...PRODUCTION,
+    DEPLOY_APP_ORIGIN: 'https://inspector.example',
+    DEPLOY_RECEIVE_ORIGIN: 'https://hook.inspector.example',
+    DEPLOY_APP_ALIAS_ORIGIN: '',
+    DEPLOY_STATUS_PAGE_URL: 'https://status.inspector.example/',
+    DEPLOY_CONTACT_EMAIL: 'hello@inspector.example',
+    DEPLOY_OPERATOR_TEXTS: 'false',
+  };
+  const none = {
+    ...copy,
+    DEPLOY_STATUS_PAGE_URL: '',
+    DEPLOY_CONTACT_EMAIL: '',
+    DEPLOY_OPERATOR_TEXTS: '',
+  };
+
+  for (const project of [copy, none]) {
+    const smoke = parseCommandLine(smokeArguments(project));
+
+    assert.equal(smoke.aliasBase, '');
+    assert.deepEqual(smoke.operator, builtWith(project));
+  }
+  assert.deepEqual(parseCommandLine(smokeArguments(none)).operator, {
+    statusPageUrl: null,
+    contactEmail: null,
+    texts: false,
+  });
+
+  // Each value reaches the smoke as one argument, as it is: never split,
+  // expanded or run by the shell. The smoke then refuses what the image
+  // build refuses.
+  const hostile = "a b\"; $(touch ran) `touch ran` '*' $HOME";
+  const args = smokeArguments({ ...PRODUCTION, DEPLOY_CONTACT_EMAIL: hostile });
+
+  assert.equal(args.length, 6);
+  assert.equal(args[4], `--contact-email=${hostile}`);
+  assert.deepEqual(readdirSync(SMOKE_STAND_INS), ['node']);
+  assert.throws(() => parseCommandLine(args), /^Error: --contact-email must /);
 });
 
 /* ------------------------------------------------------------------------ */
@@ -1893,25 +2003,24 @@ test("the frontend image's address and operator: its build takes production's fr
     /^ {4}BUILD_VARIABLES: 'DEPLOY_APP_ALIAS_ORIGIN DEPLOY_STATUS_PAGE_URL DEPLOY_CONTACT_EMAIL DEPLOY_OPERATOR_TEXTS'$/m,
   );
   // Not global, not the inspector's address, not the other images': the
-  // deploy job and the smoke do not read them, and the test jobs build no
-  // image.
+  // deploy job does not read them, the test jobs build no image, and the
+  // smoke reads the project's variables themselves, not the build's names
+  // (#381).
   assert.doesNotMatch(
     uncommented(pipelineKey(pipeline, 'variables')),
     /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_VALUES/,
   );
-  for (const job of [
-    '.inspector-address',
-    'image:backend',
-    'image:postgres',
-    'deploy',
-    'deployment-smoke',
-  ]) {
+  for (const job of ['.inspector-address', 'image:backend', 'image:postgres', 'deploy']) {
     assert.doesNotMatch(
       uncommented(pipelineKey(pipeline, job)),
       /STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS|BUILD_VARIABLES|BUILD_VALUES|BUILD_ARGS/,
       job,
     );
   }
+  assert.doesNotMatch(
+    uncommented(pipelineKey(pipeline, 'deployment-smoke')),
+    /(?<!DEPLOY_)(?:STATUS_PAGE_URL|CONTACT_EMAIL|OPERATOR_TEXTS)|BUILD_VARIABLES|BUILD_VALUES|BUILD_ARGS/,
+  );
 
   // The check comes before either build, and the image builds twice at
   // most: once in a merge request, once on main. The script's commands,

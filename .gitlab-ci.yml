@@ -581,5 +581,10 @@ deployment-smoke:
   script:
     # The site, and the receive host where webhooks are received since 0.36.0
     # (D187), through its own TCP route; then the site's second host, when
-    # there is one, closed to search (D275).
-    - node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN"
+    # there is one, closed to search (D275). Each with the operator's details
+    # the frontend image was built with (#369, #381): the project's CI/CD
+    # variables image:frontend gives its build, each passed as it is, so
+    # that one set empty is checked as left out of the site, and the smoke
+    # requires /status, security.txt and the legal pages to answer as the
+    # image built from them does.
+    - node scripts/check-deployment.mjs "$APP_ORIGIN" "$RECEIVE_ORIGIN" "$APP_ALIAS_ORIGIN" --status-page="$DEPLOY_STATUS_PAGE_URL" --contact-email="$DEPLOY_CONTACT_EMAIL" --operator-texts="$DEPLOY_OPERATOR_TEXTS"
