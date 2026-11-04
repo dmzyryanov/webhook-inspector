@@ -4240,7 +4240,7 @@ tree.
   `capture-budget.test.ts:960` in three, `rate-limit.test.ts:388` in two,
   `capture-budget.test.ts:1490` in one, and in one
   `measure-ordinary-load.test.ts:1818`, `100000 nodes took 4758.5 ms`, over
-  their bounds on time; not #377's.
+  their bounds on time; not #377's. The last since #393, F-30.
 - The 248.5 ms of one round of the `b3a644b` series, its `Accept` value not
   named: the commas' or the parameters', the likelier, would be half the
   500 ms they are held to; a list of whole ranges' would be over its 200 ms
@@ -5045,7 +5045,7 @@ numbers.
   and `5574.850466 ms` in the second and third runs of `fa58d1d`: one
   wall-clock run a size, held to 2000 ms plus twenty times the run of the
   size before. #377's tester saw it once (F-24); not seen in the five runs
-  of `c83acfd`. Out of #378's scope.
+  of `c83acfd`. Out of #378's scope. Since #393, F-30.
 - `request-wait.test.ts:900`, `answered after 5001 ms` in one of #355's
   runs (F-26), was not seen in the nine runs above.
 - `answer-budget.test.ts:222`, in `refuses 100,000 answers of one full
@@ -5473,5 +5473,203 @@ growing sizes in one pass, its message a line`, also goes to.
   made-up handshakes of 1048576 characters under both prefixes at once`,
   `took 102.9 ms at best in 5 runs, over the 100 ms bound`, as in F-26's
   runs. Its load was the frontend suite's; not this entry's.
+
+The scripts are not kept in the tree.
+
+## F-30 — `summarises hostile profiles of growing size in linear time`
+
+- **Test**: `apps/backend/src/measure-ordinary-load.test.ts:1818` at
+  `c123cac`, the base of the fix. It built a profile of 1,000, 10,000 and
+  100,000 nodes, ten samples a node, timed one run of `summarizeCpuProfile`
+  on each and held it to 2000 ms plus twenty times the run of the size
+  before (`:1846`): `100000 nodes took … ms`. Issue #393, a follow-up of
+  #378, whose F-27 left it under Watched, and left, as F-24 did. At the fix
+  the test is at `:1850`; each size is held through `withinBound` to
+  `PROFILE_MS_PER_NODE` (`:1848`) a node, on profiles of
+  `PROFILE_SAMPLES_PER_NODE` (`:1827`) samples a node.
+- **Status**: changed in the test on `chore/cpu-profile-linear-bound-393`,
+  at `0e7663f`; the commit after it, which adds this entry, words the two
+  constants' comments with the numbers below and changes no code.
+  `summarizeCpuProfile` and `testing/timing.ts` were not changed; VERSION
+  kept.
+
+### The failure
+
+Never in a run of the file alone; in whole runs of the backend suite on the
+agents' server beside eight busy loops:
+
+- #378's developer at `fa58d1d`, on 2026-11-04, four runs at a load of
+  about 15 to 21: `100000 nodes took 4722.036921999999 ms` in the second
+  and `5574.850466 ms` in the third (F-27, Watched, and left).
+- #377's tester at `2c636d7`, three runs: `100000 nodes took 4758.5 ms` in
+  one (F-24, Watched, and left).
+- This entry's two runs at the base, below, passed it: 0 of 2, Wilson 95%
+  0%–65.8%. With #378's nine runs, four at `fa58d1d` and five at
+  `c83acfd`, two of which failed it, and #377's tester's three, one: 3 of
+  14, 7.6%–47.6%.
+
+### The mechanism
+
+One run decided, as in F-24, F-26 and F-27, and the bound grew with the one
+run before it. Alone, the summary of 100,000 nodes, a million samples, took
+1.1 to 1.7 s a first run and 1.0 to 1.4 s at best of five, against a bound
+of 2.6 to 3.6 s from the 10,000-node run before it, 30 to 78 ms: 1.5 to 3.2
+times its own time. Under load the large run slowed more than the small one
+it was held to: in the loaded series below, 1.2 to 6.0 s at 100,000 nodes
+and 24.5 to 623.5 ms at 10,000, and replaying the base's check on each
+round's first runs, 4 of 26 rounds were over it, 6.1%–33.5%.
+
+The samples were most of that time. In one run of each, alone, the nodes
+with no samples took 8.5 ms at 10,000 nodes and 78.4 ms at 100,000, of 66.5
+and 1251.9 ms with them. At best of five the 100,000-node summary took 32 to 43 times the
+10,000-node one alone, for ten times the nodes and samples, and 11 to 85
+times under load; why is not measured. In the same runs, with the samples
+in node order instead of strided, both sizes took about a third as long and
+grew about the same, 20.2 to 376.7 ms against 66.5 to 1251.9 ms, 18.6 and
+18.8 times, so it is not the strides alone.
+
+A bound on the fastest of five, as the suite's other hostile-input checks
+have (D203), was not enough on the base's profiles: their fastest of five
+under load reached 3380.3 ms, and the cheapest summary quadratic in the
+nodes measured, below, took 7.0 s alone, 2.1 times as long. A bound between
+them leaves at most 1.44 times on each side; the fix's 3000 ms, on the
+base's profiles, would have been over in 3 of the 26 loaded rounds,
+4.0%–29.0%.
+
+### The measurement
+
+On 2026-11-04 from 22:36 to 23:20 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2. A script outside the tree imports a
+copy of the tree's `scripts/measure-ordinary-load.mjs`, its one import of
+`packages/shared` made absolute and nothing else changed, builds the test's
+profiles of 1,000, 10,000 and 100,000 nodes at ten samples a node, the
+base's, or two, the fix's, the window at 0.8 of the samples as the test
+has it, and summarises each size five times on the one built profile, as
+`withinBound` does when every run is over: the first run, and the fastest
+of the five. Under load is beside `node scripts/db.mjs task-test 393`, the
+full backend suite, run after run, and eight busy loops,
+`node -e 'for(;;){}'`; the 1-minute load average sampled every 5 s. Min /
+median / max of the rounds, in ms:
+
+| samples a node | beside | load | rounds | 1,000: first; fastest of five | 10,000: first; fastest of five | 100,000: first; fastest of five |
+| --- | --- | --- | --- | --- | --- | --- |
+| ten, the base's | nothing | 2.61 to 3.42 | 10 | 1.6 / 2.3 / 11.4; 1.3 / 1.6 / 3.0 | 30.5 / 50.3 / 77.9; 24.8 / 29.7 / 37.8 | 1122.5 / 1487.5 / 1699.3; 976.4 / 1150.0 / 1405.3 |
+| ten, the base's | the suite at the base, two runs, its last round after them, and eight loops | 7.17 to 21.63 | 26 | 1.7 / 3.2 / 27.6; 1.3 / 1.8 / 8.1 | 62.0 / 125.1 / 623.5; 24.5 / 74.3 / 157.5 | 1711.5 / 3674.3 / 6030.6; 1199.0 / 2247.8 / 3380.3 |
+| two, the fix's | nothing | 2.27 to 3.29 | 10 | 1.3 / 1.5 / 6.8; 0.6 / 0.8 / 1.6 | 17.2 / 27.5 / 52.0; 10.5 / 16.4 / 21.6 | 399.6 / 540.6 / 630.4; 250.3 / 279.2 / 407.3 |
+| two, the fix's | the suite at the fix, five runs, and eight loops | 3.4 to 21.11 | 202 | 0.8 / 1.5 / 18.1; 0.5 / 0.7 / 3.5 | 14.1 / 53.3 / 266.7; 10.9 / 25.8 / 107.7 | 478.0 / 1233.2 / 2589.0; 299.9 / 574.9 / 1288.8 |
+
+At two samples a node, no round's fastest of five was over the fix's
+bound, 0 of 202, 0%–1.9%; nor was any of the 1010 runs of a size: the
+slowest were 18.1, 266.7 and 2622.3 ms, against 30, 300 and 3000.
+
+The full suite under that load, the series above beside it; the case's
+whole test in s, the building of its profiles included:
+
+| run | tree | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | the case |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `c123cac`, the base | 3.35 to 19.46 | 3423 | 3422 | 1: `access-key.test.ts:264`, `took 103.3 ms at best in 5 runs, over the 100 ms bound` | 3.8 |
+| 2 | `c123cac` | 17.58 to 22.07 | 3423 | 3423 | 0 | 7.1 |
+| 3 | `0e7663f` | 2.48 to 19.79 | 3423 | 3423 | 0 | 2.2 |
+| 4 | `0e7663f` | 17.48 to 21.21 | 3423 | 3423 | 0 | 2.0 |
+| 5 | `0e7663f` | 17.90 to 20.39 | 3423 | 3423 | 0 | 3.4 |
+| 6 | `0e7663f` | 18.59 to 20.60 | 3423 | 3422 | 1: `wait.test.ts:240`, `100000 announcements took 1009 ms` (Watched, and left) | 2.0 |
+| 7 | `0e7663f` | 18.57 to 20.41 | 3423 | 3423 | 0 | 2.3 |
+
+Each run took 203 to 218 s. The case passed in all five runs at the fix,
+0 of 5, 0%–43.4%; with the series, 0 of 202 rounds.
+
+### The mutations
+
+Scratch copies of the script outside the tree, never committed, each one
+change to `summarizeCpuProfile`:
+
+- `includes`: each node's id looked for among the ids kept so far,
+  `kept.includes(node.id)`, before it is kept: quadratic in the nodes,
+  with V8's own search.
+- `some`: the same with `kept.some((each) => each === node.id)`.
+- `find`: each sample's node searched for in `profile.nodes` with `find`
+  before the map is read: the samples times the nodes.
+- `functions`: each sample's time added to a list of `[name, total]`
+  searched by name, `functionList.find(...)`, for the map of functions:
+  the samples times the functions.
+
+Timed by scripts like the series', building the same profiles, one run a
+size, alone, in ms:
+
+| form | ten samples a node, load 0.9 to 1.5: 1,000 / 10,000 / 100,000 | two samples a node, load 2.3 to 5.0: 1,000 / 10,000 / 100,000 |
+| --- | --- | --- |
+| none | 2.0 to 10.4 / 39.2 to 78.5 / 1205.4 to 1323.1 | 1.0 to 7.2 / 18.1 to 42.6 / 383.7 to 527.6 |
+| `includes` | 7.9 / 123.6 / 7027.0 | 2.1 to 5.8 / 77.3 to 93.8 / 5591.6 to 5688.0 |
+| `some` | 14.4 / 159.0 / 7673.3 | 11.1 / 146.8 / 6911.4 |
+| `find` | 38.6 / 1922.2 / not run | 19.0 / 399.7 / not run; 3493.8 at 30,000 |
+| `functions` | 20.5 / 202.4 / 2536.1 | 9.6 / 64.3 / 811.3 |
+
+Against the tests, each in a copy of `measure-ordinary-load.test.ts`
+outside the tree that imports the form's copy of the script, every other
+import made absolute, run alone through the workspace's script,
+`npm test -w @webhook-inspector/backend -- --test-name-pattern="summarises
+hostile profiles" <copy>`, at a load of 1.97 to 13.36 falling after the
+loaded runs:
+
+| form | the base's test, `c123cac` | the fix's, `0e7663f` |
+| --- | --- | --- |
+| none | passed, 2.1 s | passed, 0.65 s |
+| `includes` | failed, `100000 nodes took 6933.198992 ms`, 7.3 s | failed at 100,000 nodes, `took 5269.3 ms at best in 5 runs, over the 3000 ms bound`, 27.7 s |
+| `some` | failed, `100000 nodes took 8122.376461999999 ms`, 8.5 s | failed at 100,000 nodes, `took 6237.2 ms at best in 5 runs, over the 3000 ms bound`, 32.1 s |
+| `find` | not run: it passes 10,000 nodes, 1922 ms under 2772, and a run at 100,000 would take about 190 s, a hundred times as long, estimated | failed at 100,000 nodes, 10,000 passed: `took 26634.2 ms at best in 5 runs, over the 3000 ms bound`, 140.3 s |
+| `functions` | passed, 3.3 s | passed, 1.0 s |
+
+The `find` form's whole test, 140.3 s, is past the suite's 120 s timeout,
+a timer, which did not end the synchronous run: the test failed on its
+bound after the fifth run.
+
+### The fix
+
+In the test only. Each size's summary is held through `withinBound`, the
+fastest of up to five runs, to a bound linear in the size, 0.03 ms a node:
+30, 300 and 3000 ms. A summary worse than linear is over it from some size
+on, on every run, and the load that stops one run does not stop five.
+
+The profiles carry two samples a node instead of ten: the samples, a linear
+pass, were most of the summary's time, and with ten their fastest of five
+under load came within 2.1 times of the cheapest quadratic form's time
+alone. With two, 3000 ms is 2.3 times the slowest loaded fastest of five,
+1288.8 ms, and every one of the 1010 loaded runs at 100,000 nodes was under
+it; the `includes` form's best of five, 5269.3 ms, is 1.76 times over it,
+and the `some` form's 2.1 times. At 1,000 and 10,000 nodes the bound is
+8.6 and 2.8 times the slowest loaded fastest of five. The samples still
+grow with the nodes, 2,000 to 200,000, and every hostile part of the
+profiles is kept: the long names, the deep `node_modules` URLs, the samples
+naming no node, a negative delta every eleventh and the window. The whole
+test took 2.0 to 3.4 s in the loaded runs, where at the base it took 3.8
+and 7.1 s.
+
+### Watched, and left
+
+- The `functions` form passes both the base's test and the fix's: the
+  profiles name 374, 704 and 915 functions at the three sizes, so a list of
+  them searched is no worse than the samples times 915. A profile with as
+  many functions as nodes would fail it; the test was not made one, as the
+  issue asks for a summary quadratic in the nodes.
+- `:1562`, `reads hostile probe files of growing size in linear time`,
+  `:1780`, `names modules by package, path or pseudo-node, and cuts a
+  hostile URL to 120 characters`, and `:1882`, `reads pg_stat_statements'
+  counts, …`, at the fix, hold one wall-clock run a size to 2000 ms plus
+  twenty times the size before, as this test did. They passed in all seven
+  loaded runs above, their whole tests 1.6 to 2.6 s, 0.15 to 0.55 s and
+  0.30 to 0.91 s; not measured, and outside #393's scope.
+- `src/modules/requests/wait.test.ts:240`, `takes a burst of 100000
+  announcements during one read as one more read, within a second`, failed
+  once in the five runs at the fix, `100000 announcements took 1009 ms`: one
+  wall-clock run of 100,000 announcements held to 1000 ms (`:254`). No
+  earlier entry names it; not this entry's.
+- `access-key.test.ts:264` in the first run at the base, `took 103.3 ms at
+  best in 5 runs, over the 100 ms bound`, as in F-26's and F-27's runs.
+- CI's `test` job, on an AMD EPYC 9655, took the base's whole test in 1.60
+  to 1.74 s in the merge request pipelines of !26, !27 and !28 of 2026-11-04,
+  where alone on the agents' server it took 2.1 s. The fix's times there
+  and the mutations on that runner were not measured; a runner much faster
+  than the agents' server narrows the 1.76 times by which the `includes`
+  form is over the bound.
 
 The scripts are not kept in the tree.

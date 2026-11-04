@@ -1816,7 +1816,14 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
     }
   });
 
-  /** Samples a node of the hostile profiles below. */
+  /**
+   * Samples a node of the hostile profiles below: two. At ten, as until
+   * #393, the million samples of 100,000 nodes were most of the summary's
+   * time - 1.0 to 1.4 s at best of five alone on the agents' server, up to
+   * 3.4 s under the load below - while the cheapest summary quadratic in the
+   * nodes measured took 7.0 s alone: too near for a bound to leave room on
+   * both sides (`docs/testing/flakes.md`, F-30).
+   */
   const PROFILE_SAMPLES_PER_NODE = 2;
 
   /**
@@ -1824,7 +1831,19 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
    * 0.03, so 30 ms at 1,000 nodes, 300 at 10,000 and 3000 at 100,000, the
    * fastest of up to five runs (`withinBound`), so that the machine's load
    * does not decide it. A bound linear in the size, which a summary worse
-   * than linear is over from some size on, on every run.
+   * than linear is over from some size on, on every run. One run a size held
+   * to 2000 ms plus twenty times the size before, as until #393, failed
+   * under load with nothing wrong.
+   *
+   * At 100,000 nodes the summary takes 0.25 to 0.41 s at best of five alone
+   * on the agents' server, and beside the full backend suite and eight busy
+   * loops up to 2.6 s a run and 1.3 s at best of five: 2.3 times under the
+   * bound. Each node's id looked for among those kept with V8's own
+   * `includes`, the cheapest summary quadratic in the nodes measured, takes
+   * 5.3 s at best of five alone, 1.8 times over it; each sample's node
+   * searched for in the nodes, 26.6 s. A summary that totals each sample's
+   * function in a list searched by name passes: these profiles name at most
+   * 915 functions, so it is not quadratic in their nodes (F-30).
    */
   const PROFILE_MS_PER_NODE = 0.03;
 
