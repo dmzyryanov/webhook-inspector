@@ -5053,9 +5053,9 @@ taking answers, before it checked the bound.
 ### The mechanism
 
 Two things fail that assertion, each measured on the agents' server. The
-runner's TCP sizes, read in this change's own pipeline, leave the first
-alone on CI; that it is the one that failed there is inferred, the failed
-run having printed no port.
+runner's TCP sizes, read in this change's own pipeline, leave only the
+first possible on CI; that it is the one that failed there is inferred,
+the failed run having printed no port.
 
 **The count was another connection's.** `countOf` returned the first count
 the file kept whose client port was the case's. The kernel gives a
