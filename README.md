@@ -297,10 +297,8 @@ The commands below use the five values the [Install](#install) section sets:
    This site's image sets all three from CI/CD variables of the project
    (Deploying from GitLab CI, below). The texts behind
    `OPERATOR_TEXTS` are this site's operator's and name its hosting; a copy
-   leaves them off. `scripts/check-deployment.mjs` below still expects this
-   site's contact address and legal pages, so on a copy built without them it
-   stops at its check of the Terms of Use, and the checks after that one do
-   not run.
+   leaves them off. Keep the three values: the check after the install
+   (step 6) is given them, to check what the image was built with.
 3. **The namespace and its Secrets.** The database password, which the chart
    reads and never holds, in the Secret `<release>-postgres`:
 
@@ -356,11 +354,26 @@ The commands below use the five values the [Install](#install) section sets:
    in `backend.trustedProxyCidrs`, by default `10.42.0.0/24`, the pod network
    k3s gives its first node; a cluster whose Traefik pod has an address
    outside it sets its own range, or the receive host takes no webhook.
+   Then check the deployed site from outside, as CI does after each
+   deployment, giving the check the three settings the image was built with
+   in step 2, each empty for one left out — for an image built with none of
+   them, as above:
+
+   ```bash
+   node scripts/check-deployment.mjs https://$SITE_HOST https://$RECEIVE_HOST \
+     --status-page= --contact-email= --operator-texts=
+   ```
+
+   With a setting, give its value, `--status-page=https://status.example.com/`,
+   `--contact-email=hello@example.com` or `--operator-texts=true`. Each is
+   checked as the image serves it: `/status` and `/status/` a 301 to the
+   status page, or the site's `Page not found`; `/.well-known/security.txt`
+   giving the contact address alone, or a 404; `/terms` and `/privacy` the
+   Terms of Use and the Privacy Policy, or `Page not found`. A setting not
+   given is not checked, and the first line the check prints names it, so
    `node scripts/check-deployment.mjs https://$SITE_HOST https://$RECEIVE_HOST`
-   then checks the deployed site from outside, as CI does after each
-   deployment. On a copy built without this site's contact address and legal
-   pages it stops at the Terms of Use (step 2); check such a copy by opening
-   the site, creating a session and sending a `POST` to its receive URL.
+   alone checks the rest. The check only reads: it creates no session, and
+   nothing it asks for is stored.
 
 Two options are off until configured:
 
@@ -445,7 +458,10 @@ docker exec k3d-$CLUSTER-server-0 install -d -o 999 -g 999 -m 0700 /var/backups/
   `curl --cacert` nor the check script, which needs both hosts, can trust
   them: `curl -k`, and
   `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/check-deployment.mjs https://inspector.localhost:18443 https://hook.inspector.localhost:18443`,
-  which stops at the Terms of Use, as step 2 says.
+  which then stopped at the Terms of Use: the check expected this site's
+  legal pages and contact address until it was given the image's settings
+  (#381), with which step 6's call checks such a copy as built. That call was
+  not run on the test cluster.
 - To remove it all, the cluster with its registry and kubeconfig file, the
   registry settings file and the images built:
 
@@ -468,9 +484,9 @@ repository holds an installation's values:
 | `DEPLOY_APP_ORIGIN` | The site's origin, `https://<host>` | frontend image, `deploy`, `deployment-smoke` | all |
 | `DEPLOY_RECEIVE_ORIGIN` | The receive host's origin | frontend image, `deploy`, `deployment-smoke` | all |
 | `DEPLOY_APP_ALIAS_ORIGIN` | The site's second origin; empty for none (below) | frontend image, `deploy`, `deployment-smoke` | all |
-| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image | all |
-| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image | all |
-| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image | all |
+| `DEPLOY_STATUS_PAGE_URL` | The image's `STATUS_PAGE_URL`; empty for none | frontend image, `deployment-smoke` | all |
+| `DEPLOY_CONTACT_EMAIL` | The image's `CONTACT_EMAIL`; empty for none | frontend image, `deployment-smoke` | all |
+| `DEPLOY_OPERATOR_TEXTS` | The image's `OPERATOR_TEXTS`, `true` or `false`; empty for `false` | frontend image, `deployment-smoke` | all |
 | `DEPLOY_ALIAS_TLS_SECRET` | The second host's certificate Secret; with a second origin | `deploy` | `production` |
 | `DEPLOY_RECEIVE_TLS_SECRET` | The receive host's certificate Secret | `deploy` | `production` |
 | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_DATABASE` | The database role and database | `deploy` | `production` |
@@ -512,7 +528,9 @@ On `main` the frontend image is built once per commit and published under the
 commit's SHA; a rerun of the pipeline reuses it. It reads its variables when it
 is first built, so a change of `DEPLOY_APP_ORIGIN`, `DEPLOY_RECEIVE_ORIGIN`,
 `DEPLOY_APP_ALIAS_ORIGIN` or an operator variable reaches the image only with a
-new commit, while `deploy` and the smoke read the new value at once. For the
+new commit, while `deploy` and the smoke read the new value at once: the
+smoke, which checks the site against the operator variables, fails on a
+changed one until a new commit's image carries it. For the
 same reason the build stops before building, naming the variable, when one of
 the six is not set, or the site's or the receive host's origin is empty: an
 image built from the frontend's fallbacks would stay that commit's. An empty

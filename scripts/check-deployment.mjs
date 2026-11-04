@@ -4,18 +4,186 @@ import { pathToFileURL, URL } from 'node:url';
 import process from 'node:process';
 import console from 'node:console';
 
-/** The line `/.well-known/security.txt` must carry (RFC 9116, D177). */
-export const SECURITY_CONTACT = 'Contact: mailto:contact@qa-tools.ru';
+/**
+ * The operator's details a deployment's frontend image was built with
+ * (#369), which the smoke checks the site against (#381): `statusPageUrl`,
+ * the image's `STATUS_PAGE_URL`; `contactEmail`, its `CONTACT_EMAIL`; and
+ * `texts`, its `OPERATOR_TEXTS` (`apps/frontend/src/lib/operator.ts`). Each is
+ * `undefined` when not given, and is then not checked; `null`, or `false` for
+ * the texts, when given as none; and otherwise the value, read as the image
+ * build reads it. Not one of them has a default: the smoke names no
+ * operator's status page, address or texts unless it is given them.
+ */
+export const OPERATOR_NOT_GIVEN = Object.freeze({
+  statusPageUrl: undefined,
+  contactEmail: undefined,
+  texts: undefined,
+});
+
+/** A label of a host name: letters, digits and inner hyphens (as `operator.ts`). */
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
 /**
- * Whether a `security.txt` names the project's contact and has exactly one
- * `Expires` in RFC 3339 UTC form, later than `now` and less than a year after it.
+ * Whether `host` is a host name: dot-separated labels of 1 to 63 letters,
+ * digits and inner hyphens, at most 253 characters (as `operator.ts`).
  */
-export function securityTxtIsCurrent(text, now = new Date()) {
+function isHostName(host) {
+  return (
+    host.length <= 253 &&
+    host.split('.').every((label) => label.length <= 63 && HOST_LABEL.test(label))
+  );
+}
+
+/** The path a status page's address may have (as `operator.ts`). */
+const STATUS_PATH = /^\/(?:[A-Za-z0-9._~/-]|%[0-9A-Fa-f]{2})*$/;
+
+/**
+ * `--status-page`, the image's `STATUS_PAGE_URL`, read as the image build
+ * reads it (`parseStatusPageUrl` of `operator.ts`): the address as `URL`
+ * writes it, which is what nginx redirects to, or `null` for none when blank.
+ * What the build refuses is refused, and the value is never quoted back.
+ * `scripts/delivery.test.mjs` holds the two readings equal.
+ */
+export function readStatusPage(raw) {
+  const value = raw.trim();
+
+  if (value === '') {
+    return null;
+  }
+
+  const refusal =
+    '--status-page must be an http or https address, such as https://status.example.com/, or empty for none';
+  let url;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(refusal);
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(refusal);
+  }
+
+  if (url.username !== '' || url.password !== '') {
+    throw new Error('--status-page must not carry credentials');
+  }
+
+  if (/[?#]/.test(value)) {
+    throw new Error('--status-page must have no query or fragment');
+  }
+
+  if (!isHostName(url.hostname) || url.port === '0') {
+    throw new Error(
+      '--status-page must name its host as dot-separated labels of letters, digits and inner hyphens, with any port but 0',
+    );
+  }
+
+  if (!STATUS_PATH.test(url.pathname)) {
+    throw new Error(
+      '--status-page must have a path of letters, digits, ".", "_", "~", "-", "/" and percent escapes only',
+    );
+  }
+
+  return url.href;
+}
+
+/** The part of a contact address before its `@` (as `operator.ts`). */
+const LOCAL_PART = /^[A-Za-z0-9_%+-]+(?:\.[A-Za-z0-9_%+-]+)*$/;
+
+/**
+ * `--contact-email`, the image's `CONTACT_EMAIL`, read as the image build
+ * reads it (`parseContactEmail` of `operator.ts`): the address trimmed, or
+ * `null` for none when blank. What the build refuses is refused, and the
+ * value is never quoted back. `scripts/delivery.test.mjs` holds the two
+ * readings equal.
+ */
+export function readContactEmail(raw) {
+  const value = raw.trim();
+
+  if (value === '') {
+    return null;
+  }
+
+  const at = value.lastIndexOf('@');
+  const local = value.slice(0, Math.max(at, 0));
+  const domain = value.slice(at + 1);
+
+  if (
+    at <= 0 ||
+    value.length > 254 ||
+    local.length > 64 ||
+    !LOCAL_PART.test(local) ||
+    !isHostName(domain)
+  ) {
+    throw new Error(
+      '--contact-email must be one mail address of letters, digits, ".", "_", "%", "+" and "-" before its "@" and a host name after it, such as contact@example.com, or empty for none',
+    );
+  }
+
+  return value;
+}
+
+/**
+ * `--operator-texts`, the image's `OPERATOR_TEXTS`, read as the image build
+ * reads it (`parseOperatorTexts` of `operator.ts`): `true`, or `false` for
+ * `false` and blank; anything else is refused.
+ */
+export function readOperatorTexts(raw) {
+  const value = raw.trim();
+
+  if (value === '' || value === 'false') {
+    return false;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+
+  throw new Error('--operator-texts must be true or false, or empty for false');
+}
+
+/**
+ * The operator's details from the options given, as strings, each
+ * `undefined` when not given. Refused, as the image build refuses it: the
+ * operator's texts with the status page or the contact address given as
+ * none, which the texts name.
+ */
+export function operatorSettings({ statusPage, contactEmail, operatorTexts } = {}) {
+  const operator = {
+    statusPageUrl: statusPage === undefined ? undefined : readStatusPage(statusPage),
+    contactEmail: contactEmail === undefined ? undefined : readContactEmail(contactEmail),
+    texts: operatorTexts === undefined ? undefined : readOperatorTexts(operatorTexts),
+  };
+
+  if (
+    operator.texts === true &&
+    (operator.statusPageUrl === null || operator.contactEmail === null)
+  ) {
+    throw new Error(
+      "--operator-texts=true needs a status page and a contact address: the operator's texts name both, and an image built with them and without either is refused",
+    );
+  }
+
+  return Object.freeze(operator);
+}
+
+/** The `Contact` line a `security.txt` of the image built with `CONTACT_EMAIL=<address>` carries (D177). */
+export function securityContact(address) {
+  return `Contact: mailto:${address}`;
+}
+
+/**
+ * Whether a `security.txt` gives the contact address `address`, as its one
+ * `Contact` field, and has exactly one `Expires` in RFC 3339 UTC form, later
+ * than `now` and less than a year after it.
+ */
+export function securityTxtIsCurrent(text, address, now = new Date()) {
   const lines = text.split(/\r?\n/);
+  const contacts = lines.filter((line) => /^contact:/i.test(line));
   const expires = lines.filter((line) => line.startsWith('Expires:'));
 
-  if (!lines.includes(SECURITY_CONTACT) || expires.length !== 1) {
+  if (contacts.length !== 1 || contacts[0] !== securityContact(address) || expires.length !== 1) {
     return false;
   }
 
@@ -34,8 +202,8 @@ export function securityTxtIsCurrent(text, now = new Date()) {
 
 /**
  * What tells the about page from the application shell (D211). The smoke keeps
- * its own copy, as it does of the security contact, so that it loads nothing
- * from `apps/frontend/src`; `scripts/delivery.test.mjs` keeps it equal.
+ * its own copy, so that it loads nothing from `apps/frontend/src`;
+ * `scripts/delivery.test.mjs` keeps it equal.
  */
 export const ABOUT_TITLE_TAG = '<title>About QA Tools</title>';
 
@@ -54,7 +222,8 @@ export const RUSSIAN_ABOUT_MARKS = {
 /**
  * The Terms of Use and the Privacy Policy (D217), each by its address, what it
  * is called in a failure and the title that tells it from the application
- * shell. The smoke keeps its own copy, as it does of the about page's title;
+ * shell, in an image built with the operator's texts (#369). The smoke keeps
+ * its own copy, as it does of the about page's title;
  * `scripts/delivery.test.mjs` keeps it equal to the pages' templates.
  */
 export const LEGAL_PAGE_CHECKS = [
@@ -65,6 +234,14 @@ export const LEGAL_PAGE_CHECKS = [
     titleTag: '<title>Privacy Policy — QA Tools</title>',
   },
 ];
+
+/**
+ * The two addresses that send a reader to the status page (D209), each a
+ * 301 in an image built with a `STATUS_PAGE_URL` (#369,
+ * `apps/frontend/scripts/nginx-conf.mjs`); `scripts/delivery.test.mjs` keeps
+ * them equal to the locations that script writes.
+ */
+export const STATUS_PATHS = ['/status', '/status/'];
 
 /**
  * What tells the Russian home page from the English shell (D226): its
@@ -224,7 +401,11 @@ export function ogImage(html) {
  *   whose pages it serves as they are;
  * - `closedToSearch`, set for that second host: every answer of the site
  *   carries `X-Robots-Tag: noindex`, where the first host's pages carry
- *   none.
+ *   none;
+ * - `operator`, the operator's details its image was built with
+ *   (`OPERATOR_NOT_GIVEN`, by default none of them given): the legal pages,
+ *   `security.txt` and the status page's redirect are each checked as the
+ *   detail says, and not asked for when it is not given (#381).
  */
 export async function checkDeployment(
   base,
@@ -238,6 +419,7 @@ export async function checkDeployment(
   if (root.username || root.password) throw new Error('Do not put credentials in the URL');
   const canonical = new URL(site.canonical ?? root.origin).origin;
   const closedToSearch = site.closedToSearch === true;
+  const operator = { ...OPERATOR_NOT_GIVEN, ...site.operator };
   // What a page offered to search engines carries: no X-Robots-Tag on the
   // first host, and on a host closed to search what every answer carries.
   const indexable = closedToSearch ? 'noindex' : null;
@@ -249,12 +431,14 @@ export async function checkDeployment(
     throw new Error('Do not put credentials in the URL');
   }
   // Every request is a GET that follows no redirect, with 15 s of its own for
-  // the answer and its body. Every body is read in full, whether or not a
-  // check looks at it, so no answer is left holding its connection open.
-  const get = async (address) => {
+  // the answer and its body: a redirect is an error, but where the answer
+  // checked is a redirect, which is then the answer itself (`manual`). Every
+  // body is read in full, whether or not a check looks at it, so no answer
+  // is left holding its connection open.
+  const get = async (address, redirect = 'error') => {
     const url = new URL(address, root);
     const response = await fetcher(url, {
-      redirect: 'error',
+      redirect,
       signal: globalThis.AbortSignal.timeout(15000),
     });
     const answer = {
@@ -285,6 +469,14 @@ export async function checkDeployment(
   if (page.headers.get('x-robots-tag') !== indexable) {
     throw new Error('The home page carries X-Robots-Tag');
   }
+  // The site's `Page not found`, which an address the image does not serve
+  // answers: the frontend's 404 with the application as its page (D146),
+  // the very document the home page is, which renders `Page not found`.
+  const isPageNotFound = (answer) =>
+    answer.status === 404 &&
+    answer.headers.get('content-type')?.includes('text/html') === true &&
+    answer.headers.get('x-robots-tag') === indexable &&
+    answer.text === page.text;
   // Read-only lookup: reaches the backend and database, without creating a session.
   // The id has a session id's shape, 32 random bytes in base64url (43 characters),
   // because the backend answers an id of any other shape without reading the
@@ -346,18 +538,30 @@ export async function checkDeployment(
   ) {
     throw new Error('/ru/about did not return the Russian about page, uncached and indexable');
   }
-  // The Terms of Use and the Privacy Policy (D217), seventh and eighth: static
-  // pages like /about, checked as it is.
-  for (const { path, name, titleTag } of LEGAL_PAGE_CHECKS) {
-    const legal = await get(path);
-    if (
-      legal.status !== 200 ||
-      !legal.headers.get('content-type')?.includes('text/html') ||
-      legal.headers.get('cache-control') !== 'no-cache' ||
-      legal.headers.get('x-robots-tag') !== indexable ||
-      !legal.text.includes(titleTag)
-    ) {
-      throw new Error(`${path} did not return ${name}, uncached and indexable`);
+  // The Terms of Use and the Privacy Policy (D217), seventh and eighth, as the
+  // image's OPERATOR_TEXTS says (#369): with the operator's texts, static
+  // pages like /about, checked as it is; without them, the site's Page not
+  // found. Not asked for when the setting is not given (#381).
+  if (operator.texts !== undefined) {
+    for (const { path, name, titleTag } of LEGAL_PAGE_CHECKS) {
+      const legal = await get(path);
+      if (!operator.texts) {
+        if (!isPageNotFound(legal)) {
+          throw new Error(
+            `${path} did not answer the site's Page not found, as an image without the operator's texts does`,
+          );
+        }
+        continue;
+      }
+      if (
+        legal.status !== 200 ||
+        !legal.headers.get('content-type')?.includes('text/html') ||
+        legal.headers.get('cache-control') !== 'no-cache' ||
+        legal.headers.get('x-robots-tag') !== indexable ||
+        !legal.text.includes(titleTag)
+      ) {
+        throw new Error(`${path} did not return ${name}, uncached and indexable`);
+      }
     }
   }
   // The Russian home page (D226): the application under a head of its own,
@@ -391,15 +595,27 @@ export async function checkDeployment(
       throw new Error(`${path} did not return the changelog's Atom feed, uncached`);
     }
   }
-  // security.txt (RFC 9116, D177): plain text, never the application shell,
-  // with the contact the footer shows and an Expires that has not passed.
-  const security = await get('/.well-known/security.txt');
-  if (
-    security.status !== 200 ||
-    !security.headers.get('content-type')?.startsWith('text/plain') ||
-    !securityTxtIsCurrent(security.text, now)
-  ) {
-    throw new Error('/.well-known/security.txt did not return a current security.txt');
+  // security.txt (RFC 9116, D177), as the image's CONTACT_EMAIL says (#369):
+  // with a contact address, plain text, never the application shell, giving
+  // that address alone and an Expires that has not passed; without one, a
+  // 404. Not asked for when the setting is not given (#381).
+  if (operator.contactEmail !== undefined) {
+    const security = await get('/.well-known/security.txt');
+    if (operator.contactEmail === null) {
+      if (security.status !== 404) {
+        throw new Error(
+          '/.well-known/security.txt did not answer 404, as an image without a contact address does',
+        );
+      }
+    } else if (
+      security.status !== 200 ||
+      !security.headers.get('content-type')?.startsWith('text/plain') ||
+      !securityTxtIsCurrent(security.text, operator.contactEmail, now)
+    ) {
+      throw new Error(
+        '/.well-known/security.txt did not return a current security.txt giving the contact address given',
+      );
+    }
   }
   // The files for search engines (D183), served by the frontend now that the
   // Ingress sends only /api/, /ws/ and /s/ to the backend: before, the backend
@@ -477,6 +693,28 @@ export async function checkDeployment(
   ) {
     throw new Error("/mcp did not answer the MCP server's JSON-RPC 405");
   }
+  // The status page (D209), another site, as the image's STATUS_PAGE_URL
+  // says (#369): /status and /status/ each a 301 to it, its address exactly,
+  // or without one the site's Page not found. Asked without following the
+  // redirect, which is the answer checked. Not asked for when the setting is
+  // not given (#381).
+  if (operator.statusPageUrl !== undefined) {
+    for (const path of STATUS_PATHS) {
+      const status = await get(path, 'manual');
+      if (operator.statusPageUrl === null) {
+        if (!isPageNotFound(status)) {
+          throw new Error(
+            `${path} did not answer the site's Page not found, as an image without a status page does`,
+          );
+        }
+      } else if (
+        status.status !== 301 ||
+        status.headers.get('location') !== operator.statusPageUrl
+      ) {
+        throw new Error(`${path} did not answer a 301 to the status page given`);
+      }
+    }
+  }
   // The receive host (D187), through its own TCP route: an unknown session
   // answers the receiver's JSON 404, and nothing is stored.
   const receiver = await get(new URL(`/s/${sessionShapedId()}`, receiveRoot).href);
@@ -508,10 +746,133 @@ export async function checkDeployment(
 }
 
 /**
- * The command line: the site, the receive host and, when one is given and not
- * empty, the site's second host (#319, D275), which is checked after the
- * first once its certificate is there, as a host closed to search whose
- * pages name the first.
+ * How the smoke is run (D187, #381): the site, the receive host and the
+ * site's second host, the last optional, as positional arguments, and the
+ * operator's details the deployment's image was built with as options,
+ * before, between or after them.
+ */
+export const USAGE =
+  'Usage: node scripts/check-deployment.mjs <https-site-url> <https-receive-url> [<https-second-site-url>] [--status-page=<url>] [--contact-email=<address>] [--operator-texts=<true|false>] (an option empty for none, not checked when not given)';
+
+/** Each option, as written, and what it gives `operatorSettings`. */
+const OPTIONS = new Map([
+  ['--status-page', 'statusPage'],
+  ['--contact-email', 'contactEmail'],
+  ['--operator-texts', 'operatorTexts'],
+]);
+
+/**
+ * The command line, read: `base`, `receiveBase` and `aliasBase`, empty for
+ * no second host, and `operator`, the details given (`operatorSettings`). An
+ * option is `--name=<value>` or `--name <value>`, the second form taking no
+ * value that starts with `-`; an option given twice, an option the smoke
+ * does not know, a fourth positional argument, or a missing site or receive
+ * host is refused. Nothing given is quoted back in a refusal.
+ */
+export function parseCommandLine(argv) {
+  const positionals = [];
+  const given = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (!arg.startsWith('-')) {
+      positionals.push(arg);
+      continue;
+    }
+
+    const equals = arg.indexOf('=');
+    const name = equals === -1 ? arg : arg.slice(0, equals);
+    const key = OPTIONS.get(name);
+
+    if (key === undefined) {
+      throw new Error(
+        `The smoke takes the options --status-page, --contact-email and --operator-texts alone\n${USAGE}`,
+      );
+    }
+
+    if (Object.hasOwn(given, key)) {
+      throw new Error(`${name} is given more than once`);
+    }
+
+    if (equals !== -1) {
+      given[key] = arg.slice(equals + 1);
+      continue;
+    }
+
+    const value = argv[index + 1];
+
+    if (value === undefined || value.startsWith('-')) {
+      throw new Error(`${name} needs its value: ${name}=<value>, empty for none`);
+    }
+
+    given[key] = value;
+    index += 1;
+  }
+
+  const [base, receiveBase, aliasBase = ''] = positionals;
+
+  if (!base || !receiveBase || positionals.length > 3) {
+    throw new Error(USAGE);
+  }
+
+  return { base, receiveBase, aliasBase, operator: operatorSettings(given) };
+}
+
+/** What the smoke checks on a host, as the line that says it passed names it. */
+export function checkedList(operator) {
+  const parts = [
+    'frontend',
+    'API/database lookup',
+    'API reference',
+    'the about page in English and in Russian',
+  ];
+
+  if (operator.texts === true) parts.push('the Terms of Use and the Privacy Policy');
+  if (operator.texts === false) parts.push('no Terms of Use or Privacy Policy (Page not found)');
+  parts.push('the Russian home page', 'the two changelog feeds');
+  if (typeof operator.contactEmail === 'string') {
+    parts.push('security.txt with the contact address given');
+  }
+  if (operator.contactEmail === null) parts.push('no security.txt (404)');
+  parts.push(
+    'the files for search engines',
+    'a session page',
+    'the old receive URL (410)',
+    'a path outside /s/',
+    'the MCP endpoint (405)',
+  );
+  if (typeof operator.statusPageUrl === 'string') {
+    parts.push("the status page's redirect (301)");
+  }
+  if (operator.statusPageUrl === null) parts.push('no status page (Page not found)');
+  parts.push('the receive host');
+
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/** The line naming what the smoke does not check, its setting not given; `undefined` when each is given. */
+export function notCheckedLine(operator) {
+  const left = [];
+
+  if (operator.texts === undefined) {
+    left.push('the Terms of Use and the Privacy Policy (--operator-texts)');
+  }
+  if (operator.contactEmail === undefined) left.push('security.txt (--contact-email)');
+  if (operator.statusPageUrl === undefined) left.push('/status (--status-page)');
+  if (left.length === 0) return undefined;
+
+  const named = left.length === 1 ? left[0] : `${left.slice(0, -1).join(', ')} and ${left.at(-1)}`;
+
+  return `Not checked, as their setting is not given: ${named}`;
+}
+
+/**
+ * The command line (`parseCommandLine`): the site and the receive host, then,
+ * when one is given and not empty, the site's second host (#319, D275),
+ * which is checked after the first once its certificate is there, as a host
+ * closed to search whose pages name the first; both with the operator's
+ * details given (#381), and first a line naming what is not checked.
  */
 export async function main(
   argv,
@@ -520,15 +881,13 @@ export async function main(
   sleep = sleepFor,
   log = console.log,
 ) {
-  const [base, receiveBase, aliasBase = ''] = argv;
-  if (!base || !receiveBase) {
-    throw new Error(
-      'Usage: node scripts/check-deployment.mjs <https-site-url> <https-receive-url> [<https-second-site-url>]',
-    );
+  const { base, receiveBase, aliasBase, operator } = parseCommandLine(argv);
+  const notChecked = notCheckedLine(operator);
+  if (notChecked !== undefined) {
+    log(notChecked);
   }
-  const checked =
-    'frontend, API/database lookup, API reference, the about page in English and in Russian, the Terms of Use and the Privacy Policy, the Russian home page, the two changelog feeds, security.txt, the files for search engines, a session page, the old receive URL (410), a path outside /s/, the MCP endpoint (405) and the receive host';
-  await checkDeployment(base, fetcher, now, receiveBase);
+  const checked = checkedList(operator);
+  await checkDeployment(base, fetcher, now, receiveBase, { operator });
   log(`Deployed ${checked} passed on ${new URL(base).host} (read-only)`);
   if (aliasBase === '') {
     return;
@@ -540,6 +899,7 @@ export async function main(
   await checkDeployment(alias.href, fetcher, now, receiveBase, {
     canonical: new URL(base).origin,
     closedToSearch: true,
+    operator,
   });
   log(
     `Deployed ${checked} passed on ${alias.host}, every answer of its own with X-Robots-Tag: noindex (read-only)`,
