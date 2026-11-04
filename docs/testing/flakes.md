@@ -562,10 +562,13 @@ test. Neither has frames left to count by then.
 ## F-04 — `answers made-up Accept values of 1048576 characters within 100 ms`
 
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:460` at `7018965`,
-  `:459` after the fix; the same `timed` bound holds every check of made-up
-  input in that file (100 ms, 1000 ms since #363: F-24) and in
-  `captured.test.ts` (200 ms). Branch `feat/mcp-server` (issue #116, D203);
-  never on `main`.
+  `:459` after the fix; the same `withinBound` rule holds every check of
+  made-up input in that file and in `captured.test.ts` (200 ms). That file's
+  bound was one, 100 ms, then 1000 ms since #363; since #377 each check has
+  the bound of its kind: 1000 ms for the made-up bodies, 500 ms for `Accept`
+  values of one character, or one parameter, repeated, 200 ms for `Accept`
+  lists of whole media ranges and 50 ms for the rest (F-24, After #377).
+  Branch `feat/mcp-server` (issue #116, D203); never on `main`.
 - **Status**: fixed in the tests, before review.
 
 ### The failure
@@ -3796,11 +3799,16 @@ Not this issue's; not filed by this entry.
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:260` at `bc8f7a8`,
   the base of the fix, and `:267` at the fix, `c3ffb2b`. Each of its ten
   made-up bodies is read by `parseMessage` through `timed`, `withinBound`
-  with the file's one bound, `BOUND_MS`, which every check of made-up input
-  in the file shares (F-04). Issue #363.
+  with the file's one bound then, `BOUND_MS`, which every check of made-up
+  input in the file shared (F-04). Issue #363. Since #377, `:304`, through
+  `withinBound` with a bound of its own, `BODIES_BOUND_MS`.
 - **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
   `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
-  `testing/timing.ts` were not changed; VERSION kept.
+  `testing/timing.ts` were not changed; VERSION kept. On
+  `chore/mcp-protocol-tight-bounds-377` the case keeps its 1000 ms and the
+  file's other checks of made-up input are held to tighter bounds, of 500,
+  200 and 50 ms (After #377); `protocol.ts` and `testing/timing.ts` were not
+  changed, VERSION kept.
 
 ### The failure
 
@@ -3929,11 +3937,191 @@ the full suite, `node scripts/db.mjs task-test 363`, with nothing of this
 entry's beside it, `ℹ tests 3407`, `ℹ pass 3407`, `ℹ fail 0`, exit 0, in
 112 s at a load of 2.2 to 10.0, the bodies case in 257 ms.
 
+### After #377
+
+One bound of 1000 ms, set for this case, left the file's other checks of
+made-up input room for a reading many times slower than their own (#377,
+from the review of #363). On `chore/mcp-protocol-tight-bounds-377` each is
+held, through `withinBound` as before, to the bound of its kind, near its
+own cost and with room for the load above. The test names carry their
+bound, now the ids' and `ownCopy`'s too; the bodies case's does not, nor
+the protocol version's, a test of five headers of which one is of 1 MiB:
+
+| bound | its checks | slowest alone | slowest under load | quadratic readings over it | given up |
+| --- | --- | --- | --- | --- | --- |
+| `BODIES_BOUND_MS`, 1000 ms | `parseMessage` on the made-up bodies, this case | 60 to 84 ms, `[` | 269 ms, `[` | from every byte, 7.8 s | one search per 41-byte batch element, 178 and 213 ms |
+| `ACCEPT_BOUND_MS`, 500 ms | `Accept` values of one character repeated - `,`, `;`, NUL - and one range with a parameter every four characters | 37 to 66 ms, the commas | 165 ms, the commas; 249 ms in one round whose value was not named | from every byte, 8.0 s; once per parameter, 1.9 and 2.0 s | none measured |
+| `ACCEPT_RANGES_BOUND_MS`, 200 ms | `Accept` lists of whole media ranges, 10 to 21 characters each | 16 to 21 ms, ranges of 21 characters | 78 ms, the same, in 500 rounds; 132 ms in one of 40 rounds of #377's tester | once per range: of 21 characters 364 and 377 ms, of 16 480 and 500 ms, of 10 753 and 756 ms | none measured |
+| `BOUND_MS`, 50 ms | ids, `ownCopy`, `Origin`, URLs and the protocol version | 3.5 to 6.6 ms, an id of emoji, its body built before it is timed; `ownCopy` 4.3 ms; the rest 0.1 ms or less | 24 ms, the ids, in 879 rounds, and 27 ms in one of 80 rounds of #377's tester; `ownCopy` 16 ms; the rest 0.14 ms or less | from every byte of 1 MiB, 7.8 to 16.5 s, and of the 16,384 `Origin` headers joined, 501 to 657 ms; once per URL parameter or escape, 1.9 to 2.9 s; once per origin repeated in one value, 280 to 467 ms; once per header of 16,384, the rest of them searched, 147 and 162 ms | none measured; but `Origin`, URLs and the protocol version, at 0.16 ms or less, are held some 300 times or more above their cost, so a slowdown of them short of that passes (inferred from these readings); of coarser URL readings, one search from every 32nd to every 256th character still fails it, 62 to 231 ms, and one from every 512th or coarser passes, as #377's tester measured |
+
+The `Accept` case of before is two since: its values of one character, or
+one parameter, repeated allocate a string for each, a million for the
+commas, and under load read up to 165 ms, where the lists of whole ranges
+read at most 78 ms in the 500 rounds below, and 132 ms in one round of
+#377's tester. One bound for both, first 250 ms, would have been 1.5
+times the loaded commas and under 1.5 times a reading once per range of 21
+characters; the `b3a644b` series below read 248.5 ms in one round.
+
+On 2026-11-04 from 02:36 to 03:07 MSK on the same host, an AMD EPYC 7763
+with 8 CPUs, Node v24.22.2, a script outside the tree built the file's
+made-up values of 1 MiB and, each round, ran each check five times on each
+value, keeping each value's fastest run and, for each kind, the slowest
+value's: the number `withinBound` holds to its bound when every run is over
+it. Under load is beside `node scripts/db.mjs task-test 377`, the full
+backend suite, and eight busy loops, `node -e 'for(;;){}'`, as above. Min,
+median and max of the rounds, in ms:
+
+| beside | load | rounds | bodies | `Accept`, every value | ids | `ownCopy` |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.6 to 0.8 | 20 | 63.1 / 67.8 / 83.7 | 45.7 / 49.2 / 55.5 | 3.7 / 4.2 / 5.5 | 0.5 / 0.7 / 1.0 |
+| nothing | 1.8 to 1.7 | 20 | 59.6 / 67.6 / 73.0 | 44.4 / 48.6 / 51.3 | 3.7 / 4.2 / 4.5 | 0.5 / 0.9 / 4.3 |
+| the suite at the base, `d9f3959`, and eight loops | 5.4 to 19.5 | 60 | 68.2 / 95.6 / 245.7 | 50.7 / 79.9 / 140.1 | 3.6 / 6.3 / 20.1 | 0.5 / 0.7 / 5.4 |
+| the suite at `b3a644b` and eight loops | 7.0 to 19.0 | 60 | 63.6 / 96.5 / 209.4 | 49.9 / 78.0 / 248.5 | 3.6 / 7.7 / 20.8 | 0.5 / 0.7 / 5.5 |
+| the suite at `82dc81b` and eight loops | 10.9 to 19.2 | 50 | 66.0 / 89.6 / 268.7 | 49.0 / 86.4 / 165.1 | 3.6 / 7.1 / 15.4 | 0.5 / 0.7 / 11.4 |
+| the same, and the `Accept` script below at once | 13.9 to 20.5 | 50 | 65.4 / 106.6 / 219.4 | 51.5 / 82.3 / 164.1 | 3.9 / 8.7 / 17.5 | 0.5 / 0.7 / 16.3 |
+
+`Origin` and the protocol version read under 0.01 ms in every round, and
+URLs 0.09 ms at most. The slowest `Accept` value of a round was the commas
+in 52 of the `b3a644b` series' 60 rounds, the parameters in 7 and the
+ranges of 21 characters in 1; that series did not keep each value's own
+maximum, so which value read 248.5 ms is not known. The series after it
+kept them, and a second script read the `Accept` values alone, each its
+fastest of five a round:
+
+| beside | load | rounds | `,` | the parameters | ranges of 21 | ranges of 10, and JSON | ranges of 16 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.9 to 1.8 | 20 | 36.7 / 38.6 / 65.6 | 25.1 / 27.0 / 29.3 | 16.3 / 17.8 / 20.7 | 7.3 / 8.1 / 10.1 | 4.6 / 5.5 / 7.4 |
+| eight loops | 12.9 to 12.3 | 20 | 38.0 / 57.5 / 98.6 | 24.7 / 28.0 / 55.9 | 15.8 / 18.9 / 38.4 | 7.6 / 9.3 / 19.3 | 4.8 / 6.3 / 13.0 |
+| the suite at `b3a644b` and eight loops | 12.6 to 18.6 | 150 | 36.2 / 54.3 / 148.9 | 24.0 / 40.1 / 150.7 | 16.5 / 31.0 / 75.9 | 7.2 / 12.6 / 36.9 | 4.6 / 7.8 / 26.0 |
+| eight loops, the suite at `82dc81b` just ended | 19.2 to 14.3 | 80 | 35.7 / 45.0 / 112.5 | 24.9 / 29.5 / 84.0 | 15.9 / 18.6 / 61.1 | 8.2 / 10.0 / 27.4 | 5.1 / 6.2 / 22.5 |
+| the suite at `82dc81b`, eight loops and the first script | 13.9 to 18.9 | 150 | 36.0 / 62.1 / 156.2 | 25.1 / 50.7 / 131.1 | 16.5 / 33.1 / 77.7 | 8.2 / 15.5 / 43.1 | 5.1 / 9.8 / 25.0 |
+
+`;` and NUL read 0.19 ms or less in every round. Of the lists of whole
+ranges, the highest of the 500 rounds beside the loops that named the
+value, 400 of them beside the suite too, was 77.7 ms, 2.6 times under
+200 ms. #377's tester, at `f3f5f46`, read the ranges of 21 characters at
+132.1 ms in one of 40 rounds beside the suite and eight loops, and at most
+67.2 ms in the other 39: 1.5 times under 200 ms.
+
+The quadratic readings were the same script's, one run each with nothing
+beside it, at a load of 0.5 to 1.3; each searches its value, as decoded
+text, from a set of places to the end for a character the value does not
+hold, with V8's `indexOf`, as F-24's reader above does from every `[`:
+
+| the reading, at 1 MiB | ms |
+| --- | --- |
+| from every byte: the body of an id of `x`; of an id of emoji, two-byte text | 7,791.8; 16,538.7 |
+| from every byte: `ownCopy`'s `x`; an `Origin` of the site's own repeated; a URL; `Accept`'s commas; the protocol version's header; the bodies case's `[` | 8,002.2; 8,348.5; 8,110.6; 8,010.0; 7,996.6; 7,767.6 |
+| from every byte of the 16,384 `Origin` headers joined, 344,062 characters | 656.5; 501 to 520 in the runs of #377's tester |
+| once per URL parameter `a=1&`; per escape `%3F` | 1,917.7 and 2,124.4; 2,520.2 and 2,892.2 |
+| once per `Accept` parameter `q=1;` | 1,889.8 and 1,989.5 |
+| once per `Accept` range of 10 characters; of 16; of 21 | 753.4 and 755.5; 480.2 and 499.8; 364.4 and 376.8 |
+| once per origin repeated in one `Origin` value: of 19 characters; of 27 | 381.5 and 466.7; 280.3 and 291.1 |
+| once per `Origin` header of 16,384, the rest of the array searched | 161.8 and 146.6 |
+| once per 41-byte element of the batch body | 177.7 and 212.7 |
+
+Every reading but the batch's is over its check's bound by 1.8 times or
+more: the ranges of 21 characters, the closest, by 1.8 times over 200 ms,
+and the `Origin` headers by 2.9 times over 50 ms. The batch's, 178 ms, is
+under the bodies case's 1000 ms, which `[` needs: given up, as before.
+
+The same readings, written into `protocol.ts` for a run and taken out
+after it, each switched on by an environment variable, were then run by
+the test itself, `node scripts/db.mjs task-test 377 --
+src/modules/mcp/protocol.test.ts`, with the checks of `82dc81b` and nothing
+beside it:
+
+| the reading in `protocol.ts` | `ℹ tests 41` | what failed, at 1 MiB |
+| --- | --- | --- |
+| from every byte, in `parseMessage`, `ownCopy`, `isAllowedOrigin`, `hasQueryString`, `acceptsJson` and `declaredProtocolVersion` | `ℹ pass 33`, `ℹ fail 8` | every case of made-up input of 1 MiB, the bodies, the ids, `ownCopy`, `Origin`, URLs, both `Accept` cases and the protocol version: `took 7292.6` to `7854.1 ms at best in 5 runs, over the` 50, 200, 500 or `1000 ms bound`; none at 1 or 64 KiB |
+| once per `Accept` range longer than 8 characters, and once per `Origin` header, the rest of them searched | `ℹ pass 39`, `ℹ fail 2` | `Origin`: `took 140.7 ms at best in 5 runs, over the 50 ms bound`; the lists of whole ranges, on ranges of 16 characters: `took 480.6 ms at best in 5 runs, over the 200 ms bound` |
+| once per `Accept` range longer than 16 characters, and once per origin repeated in one `Origin` value | `ℹ pass 39`, `ℹ fail 2` | `Origin`: `took 421.2 ms at best in 5 runs, over the 50 ms bound`; the lists of whole ranges, on ranges of 21 characters: `took 440.8 ms at best in 5 runs, over the 200 ms bound` |
+| once per element of a batch, before JSON.parse, twice | `ℹ pass 41`, `ℹ fail 0`, twice | nothing: the bodies case in 390 and 376 ms, against 178 to 191 ms without it |
+
+A first placing of the batch's reading, after JSON.parse, never ran: the
+batch body of 1 MiB ends inside an element, as `fill` cuts it, and is a
+parse error, not a batch.
+
+The full suite under load, each run exit 1 on failures of other files'
+bounds on time, none in this file:
+
+| the tree | beside it | load | `ℹ tests` | `ℹ pass` | `ℹ fail`, all in other files |
+| --- | --- | --- | --- | --- | --- |
+| the base, `d9f3959`, the bound 1000 ms | eight loops and the first loaded series | 2.7 to 18.6 | 3420 | 3417 | 3: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` and `:1490` |
+| `b3a644b`, `Accept` at 250 ms and the rest at 50 ms | eight loops and a series | 3.3 to 17.7 | 3420 | 3418 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` |
+| `b3a644b` | eight loops and the `Accept` script | 11.9 to 18.8 | 3420 | 3417 | 3: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` and `:1490` |
+| `82dc81b`, the bounds of the fix | eight loops and a series | 10.0 to 18.3 | 3423 | 3422 | 1: `rate-limit.test.ts:388` |
+| `82dc81b` | eight loops and both scripts at once | 13.5 to 19.7 | 3423 | 3418 | 5: `rate-limit.test.ts:388`, `access-key.test.ts:264` and `:473`, over their 100 ms, `capture-budget.test.ts:960` and `:1490` |
+| `214e2fd`, the ids' bodies and the `Origin` headers built before they are timed (below) | eight loops and its series | 0.6 to 18.8 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:1490` |
+| the same | eight loops and its series | 13.5 to 18.0 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` |
+| the same | eight loops and its series | 13.1 to 18.5 | 3423 | 3419 | 4: `rate-limit.test.ts:388`, `access-key.test.ts:264`, over its 100 ms, `capture-budget.test.ts:960` and `:1490` |
+
+In the two runs at the bounds of the fix the file's cases of 1 MiB took
+450 and 486 ms for the bodies, 209 and 201 ms for the ids, 265 and 335 ms
+for the `Accept` values and 247 and 188 ms for the lists of whole ranges,
+each case all its values and their building. The file alone, at `5db9a6d`,
+whose checks are `82dc81b`'s, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in
+three runs of three, exit 0.
+
+Up to `f3f5f46` the ids case built each body inside the function
+`withinBound` times, so the bound held the body's `Buffer.from` as well as
+`parseMessage`, which the series above, on bodies built before, did not
+measure: #377's tester read the emoji id that way at 12 to 13.5 ms alone and
+up to 47.1 ms, the fastest of five, beside the suite and eight loops,
+against 50 ms. Since `214e2fd` each id's body, and the `Origin` case's
+16,384 headers, are built before `withinBound`, as the bodies case's are,
+and the bound holds `parseMessage` and `isAllowedOrigin` alone. On
+2026-11-04 from 03:54 to 04:07 MSK, on the same host, a script outside the
+tree timed both forms as the series above did, each value's fastest of five
+a round, of 1 MiB; beside the suite is beside a full run of it with the
+checks of `214e2fd` and eight loops, each series ending with its run. Min,
+median and max of the rounds, in ms:
+
+| beside | load | rounds | ids, built before | ids, built in the timing | `ownCopy` | `Origin` headers, built before | built in the timing | URLs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.5 to 0.6 | 20 | 3.45 / 3.96 / 6.55 | 9.94 / 10.59 / 16.06 | 0.63 / 0.71 / 4.01 | | 0.87 / 0.91 / 1.46 | 0.05 / 0.06 / 0.07 |
+| nothing, the third suite just ended | 10.5 to 9.7 | 20 | 3.69 / 3.78 / 5.75 | 9.90 / 11.49 / 14.06 | 0.50 / 0.61 / 3.65 | under 0.01 | 0.85 / 0.89 / 1.72 | 0.05 / 0.06 / 0.07 |
+| the suite and eight loops | 0.6 to 18.8 | 215 | 3.67 / 7.68 / 19.28 | 9.89 / 20.93 / 53.10 | 0.49 / 0.72 / 10.52 | | 0.85 / 1.01 / 4.14 | 0.05 / 0.06 / 0.14 |
+| the same | 13.5 to 18.0 | 225 | 3.55 / 7.46 / 22.47 | 9.97 / 20.63 / 50.49 | 0.48 / 0.68 / 8.46 | | 0.87 / 0.99 / 4.49 | 0.04 / 0.06 / 0.09 |
+| the same | 13.1 to 18.5 | 219 | 3.58 / 7.53 / 24.12 | 9.86 / 21.10 / 60.39 | 0.50 / 0.66 / 9.81 | under 0.01 | 0.86 / 1.02 / 4.69 | 0.05 / 0.06 / 0.12 |
+
+An empty cell was not measured in that series. `Origin` values and the
+protocol version read under 0.01 ms in every round. Of the 659 loaded
+rounds, the ids built before read over 15 ms in 22, over 20 ms in 2 and
+over 25 ms in none; built in the timing, over 50 ms in 4, each a failure of
+the case as it was timed until then. #377's tester read the emoji id,
+built before, at 26.9 ms in one of 80 rounds beside the suite and eight
+loops, and at most 19.7 ms in the other 79. `BOUND_MS` keeps 50 ms: 2.1
+times the 24.1 ms of these rounds and 1.9 times the tester's 26.9 ms, and
+under the 141 to 162 ms of the reading once per `Origin` header by 2.8 times
+or more. The three full runs of the suite at `214e2fd`, in the table
+above, took the ids case of 1 MiB, all eight ids and their building, in 69,
+87 and 100 ms, and the file passed in each. The file alone, with the checks
+of `214e2fd`, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in seven runs of
+seven, exit 0.
+
+The scripts are not kept in the tree.
+
 ### Watched, and left
 
 - `parseMessage` on `[` growing faster than its size up to 4 MiB, above: in
   V8's own JSON.parse, and `/mcp` takes a body of 1 MiB at most.
 - `capture-budget.test.ts:1490` in the loaded run above; not this issue's.
+- In #377's eight loaded runs, `rate-limit.test.ts:388` in all eight,
+  `capture-budget.test.ts:960` in six, `:1490` in five,
+  `access-key.test.ts:264` in two and `:473` in one, over their bounds on
+  time; not #377's.
+- In three more loaded runs, by #377's tester at `2c636d7`,
+  `capture-budget.test.ts:960` in three, `rate-limit.test.ts:388` in two,
+  `capture-budget.test.ts:1490` in one, and in one
+  `measure-ordinary-load.test.ts:1818`, `100000 nodes took 4758.5 ms`, over
+  their bounds on time; not #377's.
+- The 248.5 ms of one round of the `b3a644b` series, its `Accept` value not
+  named: the commas' or the parameters', the likelier, would be half the
+  500 ms they are held to; a list of whole ranges' would be over its 200 ms
+  by 1.24 times, and fail. In the 500 rounds after it that named the value,
+  no list read over 77.7 ms; in 40 rounds of #377's tester, the ranges of
+  21 characters read 132.1 ms once.
 
 ## F-25 — `keeps at most 64 KiB a wait: <shape>`
 
