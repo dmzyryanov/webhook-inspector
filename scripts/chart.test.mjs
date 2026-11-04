@@ -56,6 +56,16 @@
 // a value helm would split, and with production's CI/CD variables gives the
 // chart production's values, which render production's names. The Ingress
 // tests render production that way.
+//
+// And README.md's install commands (#395), read as text: every chart value
+// its fenced shell blocks and its prose set with a `--set…` flag, and every
+// key path its prose quotes alone, is a key of values.yaml - but what a helm
+// command of another chart, cert-manager's, is given; and every command of
+// its Install section but the variables it sets stands in "Installing on k3s
+// with the chart" as the same command, read for its continuation lines and
+// indentation alone. Each check is shown to fail on a mutated copy of the
+// README or of the values, and its readers to survive made-up input at
+// growing sizes.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -2622,5 +2632,778 @@ test('the backend is given the second site origin as APP_ALIAS_ORIGIN when there
       /aliasHost|aliasSecretName/,
       name,
     );
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/* README.md's install commands, held to the chart and to each other (#395). */
+/* ------------------------------------------------------------------------ */
+
+/** A fence of a fenced code block: its indentation, three or more backticks or tildes, and its info string. */
+const FENCE = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
+/** A line that is an ATX heading. */
+const HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
+/** The info words of a fenced block of shell commands. */
+const SHELL_BLOCKS = new Set(['bash', 'sh', 'shell']);
+
+/**
+ * `markdown` read as CommonMark reads its fenced code blocks: each block's
+ * info word, first line and lines, the fence's indentation removed, a fence
+ * left open running to the end; the prose, with every line of a block and
+ * its fences blank; and the lines that are headings outside the blocks.
+ */
+function readMarkdown(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const blocks = [];
+  const prose = [];
+  const headings = [];
+  let open = null;
+
+  lines.forEach((line, at) => {
+    const fence = FENCE.exec(line);
+
+    if (open) {
+      if (
+        fence &&
+        fence[2][0] === open.marker[0] &&
+        fence[2].length >= open.marker.length &&
+        fence[3].trim() === ''
+      ) {
+        open = null;
+      } else {
+        const indent = /^[ \t]*/.exec(line)[0].length;
+
+        open.block.lines.push(line.slice(Math.min(open.indent, indent)));
+      }
+      prose.push('');
+    } else if (fence && !(fence[2][0] === '`' && fence[3].includes('`'))) {
+      // A backtick fence's info string holds no backtick (CommonMark).
+      open = {
+        marker: fence[2],
+        indent: fence[1].length,
+        block: { info: fence[3].trim().split(/[ \t]/)[0], line: at + 1, lines: [] },
+      };
+      blocks.push(open.block);
+      prose.push('');
+    } else {
+      if (HEADING.test(line)) headings.push(at);
+      prose.push(line);
+    }
+  });
+
+  return { lines, blocks, prose: prose.join('\n'), headings };
+}
+
+/** The text of `markdown` under the heading line `heading`, which it has once, up to the next heading of any level. */
+function readmeSection(markdown, heading) {
+  const { lines, headings } = readMarkdown(markdown);
+  const found = headings.filter((at) => lines[at].trimEnd() === heading);
+
+  assert.equal(found.length, 1, `README.md has one "${heading}", not ${found.length}`);
+
+  const end = headings.find((at) => at > found[0]) ?? lines.length;
+
+  return lines.slice(found[0] + 1, end).join('\n');
+}
+
+/** Reserved words that open a compound command, which the matching done, fi or esac closes. */
+const OPENERS = new Set(['for', 'while', 'until', 'select', 'if', 'case']);
+const CLOSERS = new Set(['done', 'fi', 'esac']);
+/** Reserved words after which a command's first word comes. */
+const LEAD_INS = new Set(['do', 'then', 'else', 'elif', 'if', 'while', 'until', '!', '{']);
+/** The shell's operator characters, each ending a word. */
+const OPERATORS = new Set([';', '&', '|', '(', ')', '<', '>']);
+/** A here-document's operator and delimiter, where the regular expression's lastIndex is. */
+const HEREDOC = /<<-?[ \t]*(?:'([\w-]*)'|"([\w-]*)"|\\?([\w-]+))/y;
+
+/**
+ * The commands of a shell script, each read as the shell reads it to run
+ * it, and normalised for its continuation lines and indentation only: a
+ * line ending in a backslash is joined to the next, with one space between
+ * them where either side had white space and none where neither did; each
+ * line's indentation and trailing white space are removed and a comment is
+ * dropped. A line break inside quotes is kept, with the next line as it is.
+ * A for, while, until, select, if or case is one command with its lines up
+ * to the matching done, fi or esac, joined by line breaks, and the lines of
+ * a here-document stay, as they are, with the command that reads it. A
+ * quote, a compound command or a here-document left open runs to the end.
+ * Not read: `$'…'`, and quotes inside `$( )` inside double quotes.
+ */
+function shellCommands(script) {
+  const lines = script.split(/\r?\n/);
+  const commands = [];
+  // The command's lines read so far, the line being read, and the white
+  // space read outside quotes and not yet followed by anything: dropped at
+  // the end of a line, so that no string is ever trimmed whole.
+  let read = [];
+  let current = '';
+  let space = '';
+  let word = '';
+  let quote = '';
+  let depth = 0;
+  let atStart = true;
+  let joining = false;
+  let heredocs = [];
+
+  const endWord = () => {
+    if (!word) return;
+    if (atStart && OPENERS.has(word)) depth += 1;
+    else if (atStart && CLOSERS.has(word)) depth = Math.max(0, depth - 1);
+    atStart = atStart && LEAD_INS.has(word);
+    word = '';
+  };
+  const append = (characters) => {
+    if (current) current += space;
+    space = '';
+    current += characters;
+  };
+  const add = (characters) => {
+    append(characters);
+    word += characters;
+  };
+  const endLine = () => {
+    if (current) read.push(current);
+    current = '';
+    space = '';
+  };
+  const endCommand = () => {
+    endLine();
+
+    const command = read.join('\n').trimEnd();
+
+    if (command) commands.push(command);
+    read = [];
+  };
+
+  for (let row = 0; row < lines.length; row += 1) {
+    let line = lines[row];
+
+    if (joining) {
+      joining = false;
+      if (!quote) {
+        // Outside quotes a continuation with white space on either side is
+        // one space; with none, the two lines' words are one.
+        if (space || /^[ \t]/.test(line)) {
+          endWord();
+          space = ' ';
+        }
+        line = line.replace(/^[ \t]+/, '');
+      }
+    } else if (quote) {
+      current += '\n';
+    } else {
+      line = line.replace(/^[ \t]+/, '');
+      if (line === '') continue;
+    }
+
+    for (let at = 0; at < line.length; at += 1) {
+      const character = line[at];
+
+      if (quote === "'") {
+        add(character);
+        if (character === "'") quote = '';
+      } else if (character === '\\') {
+        if (at === line.length - 1) {
+          joining = true;
+        } else {
+          add(line.slice(at, at + 2));
+          at += 1;
+        }
+      } else if (quote === '"') {
+        add(character);
+        if (character === '"') quote = '';
+      } else if (character === "'" || character === '"') {
+        quote = character;
+        add(character);
+      } else if (character === '#' && word === '') {
+        break;
+      } else if (character === ' ' || character === '\t') {
+        endWord();
+        space += character;
+      } else if (OPERATORS.has(character)) {
+        endWord();
+        HEREDOC.lastIndex = at;
+
+        const heredoc =
+          character === '<' && line[at - 1] !== '<' && line[at + 2] !== '<'
+            ? HEREDOC.exec(line)
+            : null;
+
+        if (heredoc) {
+          heredocs.push(heredoc[1] ?? heredoc[2] ?? heredoc[3]);
+          append(heredoc[0]);
+          at += heredoc[0].length - 1;
+        } else {
+          append(character);
+        }
+        atStart = character !== '<' && character !== '>';
+      } else {
+        add(character);
+      }
+    }
+
+    if (quote || joining) continue;
+
+    endWord();
+    atStart = true;
+    endLine();
+    for (const delimiter of heredocs) {
+      for (row += 1; row < lines.length; row += 1) {
+        read.push(lines[row]);
+        if (lines[row].trim() === delimiter) break;
+      }
+    }
+    heredocs = [];
+    if (depth === 0) endCommand();
+  }
+  endCommand();
+
+  return commands;
+}
+
+/** The commands of the fenced shell blocks of `markdown`, in order. */
+const shellBlockCommands = (markdown) =>
+  readMarkdown(markdown)
+    .blocks.filter((block) => SHELL_BLOCKS.has(block.info))
+    .flatMap((block) => shellCommands(block.lines.join('\n')));
+
+/** A helm flag that sets a chart value, alone or with its assignment after `=`. */
+const SET_FLAG = /^(--set(?:-string|-file|-json|-literal)?)(?:=(.*))?$/;
+/** The chart's own path, as a command names it. */
+const OWN_CHART = /^(?:\.\/)?deploy\/helm\/qa-tools\/?$/;
+
+/**
+ * The chart values `command` sets: for each `<key>=<value>` of a SET_FLAG,
+ * split at the commas helm splits at (all but --set-json's and
+ * --set-literal's), its key without quotes, or the flag with what follows it
+ * where that is no `<key>=`; with `chart` null, or, for an assignment given
+ * to a helm command that does not name this chart, that command's words up
+ * to its first flag. Words are what white space separates.
+ */
+function setAssignments(command) {
+  const words = command.split(/\s+/).filter(Boolean);
+  const found = [];
+  let chart = null;
+
+  for (let at = 0; at < words.length; at += 1) {
+    if (words[at] === 'helm') {
+      const next = words.indexOf('helm', at + 1);
+      const own = words.slice(at, next === -1 ? words.length : next);
+      const flag = own.findIndex((word) => word.startsWith('-'));
+
+      chart = own.some((word) => OWN_CHART.test(word))
+        ? null
+        : own.slice(0, flag === -1 ? own.length : flag).join(' ');
+      continue;
+    }
+
+    const flag = SET_FLAG.exec(words[at]);
+
+    if (!flag) continue;
+
+    const [, name, inline] = flag;
+    const assignment = inline ?? words[at + 1] ?? '';
+
+    if (inline === undefined) at += 1;
+
+    const parts =
+      name === '--set-json' || name === '--set-literal'
+        ? [assignment]
+        : assignment.split(/(?<!\\),/);
+
+    for (const part of parts) {
+      const equals = part.indexOf('=');
+      const key = equals > 0 ? part.slice(0, equals).replace(/['"]/g, '') : '';
+
+      found.push({ key: key || `${name} ${part}`.trimEnd(), chart });
+    }
+  }
+
+  return found;
+}
+
+/** A `--set…` flag and its key in prose, as an inline code span gives it. */
+const PROSE_SET = /(?<![\w-])--set(?:-string|-file|-json|-literal)?(?:\s+|=)([^\s`'"=,]+)=/g;
+/** A key path quoted alone in prose: `a.b`, `a.b.c`. */
+const QUOTED_KEY = /`([A-Za-z][\w-]*(?:\.[\w-]+)+)`/g;
+
+/**
+ * The keys of the chart's values README.md names, by where it names them:
+ * the `--set…` assignments of its fenced shell blocks to this chart, those
+ * of its prose, and the key paths its prose quotes alone whose first key is
+ * a top-level key of `values`; and, apart, the assignments to another chart,
+ * each with that chart's command.
+ */
+function readmeKeys(readme, values) {
+  const { blocks, prose } = readMarkdown(readme);
+  const keys = { commands: [], prose: [], quoted: [], otherCharts: [] };
+
+  for (const block of blocks.filter((each) => SHELL_BLOCKS.has(each.info))) {
+    for (const command of shellCommands(block.lines.join('\n'))) {
+      for (const { key, chart } of setAssignments(command)) {
+        if (chart === null) keys.commands.push(key);
+        else keys.otherCharts.push(`${chart}: ${key}`);
+      }
+    }
+  }
+  for (const [, key] of prose.matchAll(PROSE_SET)) keys.prose.push(key);
+  for (const [, key] of prose.matchAll(QUOTED_KEY)) {
+    if (Object.hasOwn(values, key.split('.')[0])) keys.quoted.push(key);
+  }
+
+  return keys;
+}
+
+/**
+ * Whether `path` is a key of `values`: each dot steps into a map holding
+ * the next key, and what the last key holds - a value, an empty string,
+ * null, a list or a map - is not looked at. A list index or an escaped dot
+ * is no such path.
+ */
+function hasKey(values, path) {
+  let node = values;
+
+  for (const key of path.split('.')) {
+    if (node === null || typeof node !== 'object' || Array.isArray(node)) return false;
+    if (!Object.hasOwn(node, key)) return false;
+    node = node[key];
+  }
+
+  return true;
+}
+
+/** The keys README.md sets or quotes for this chart that are not keys of `values`, each once, in the README's order. */
+function missingKeys(readme, values) {
+  const { commands, prose, quoted } = readmeKeys(readme, values);
+
+  return [...new Set([...commands, ...prose, ...quoted])].filter((key) => !hasKey(values, key));
+}
+
+/** A command that only sets a shell variable: `NAME=` and a word, a quoted string or a `$( )` holding no parenthesis. */
+const ASSIGNMENT = /^[A-Za-z_]\w*=(?:\$\([^()\n]*\)|"[^"\n]*"|'[^'\n]*'|[^\s;&|()<>`'"]*)$/;
+
+/** The commands of README.md's Install section, but those setting the variables the rest use. */
+const installCommands = (readme) =>
+  shellBlockCommands(readmeSection(readme, '## Install')).filter(
+    (command) => !ASSIGNMENT.test(command),
+  );
+
+/** The commands of README.md's Install section that "Installing on k3s with the chart" does not give as they are. */
+function installCommandsMissing(readme) {
+  const full = new Set(
+    shellBlockCommands(readmeSection(readme, '## Installing on k3s with the chart')),
+  );
+
+  return installCommands(readme).filter((command) => !full.has(command));
+}
+
+const readme = () => readFileSync(join(ROOT, 'README.md'), 'utf8');
+const chartValues = () => parseYaml(readFileSync(VALUES, 'utf8'));
+
+/** `text` with the first, or the last, `from` replaced by `to`; `from` must be there. */
+function replaced(text, from, to, last = false) {
+  const at = last ? text.lastIndexOf(from) : text.indexOf(from);
+
+  assert.ok(at >= 0, `the test looks for ${JSON.stringify(from)}`);
+
+  return text.slice(0, at) + to + text.slice(at + from.length);
+}
+
+/** The Install section's release, as it reads once its continuation lines are joined. */
+const RELEASE =
+  'helm upgrade --install inspector deploy/helm/qa-tools --namespace inspector ' +
+  '--set-string images.registry=$REGISTRY --set-string images.tag=$TAG ' +
+  '--set-string ingress.host=$SITE_HOST --set-string receive.host=$RECEIVE_HOST ' +
+  '--set-string ingress.tls.issuer=$ISSUER --wait --timeout 10m';
+const PUSH_LOOP =
+  'for image in backend:$TAG frontend:$TAG postgres:16-pgcron-1; do docker push $REGISTRY/$image; done';
+
+test("README.md's install commands set only keys values.yaml has: every --set… of its shell blocks and of its prose, and every key path it quotes alone (#395, criterion 1)", () => {
+  const text = readme();
+  const values = chartValues();
+  const keys = readmeKeys(text, values);
+
+  assert.deepEqual(missingKeys(text, values), []);
+
+  // What is read: the five values of the Install section and of step 6, and
+  // the off-server copy's four, from the fenced commands; ...
+  for (const key of [
+    'images.registry',
+    'images.tag',
+    'ingress.host',
+    'receive.host',
+    'ingress.tls.issuer',
+  ]) {
+    assert.equal(keys.commands.filter((each) => each === key).length, 2, key);
+  }
+  for (const key of ['bucket', 'endpoint', 'region', 'recipientKey']) {
+    assert.ok(keys.commands.includes(`backup.offsite.${key}`), key);
+  }
+  // ... the ones the prose adds to a release; and the ones it quotes alone.
+  for (const key of ['backend.tcpRmem', 'images.pullSecret', 'alerts.heartbeatUrl']) {
+    assert.ok(keys.prose.includes(key), key);
+  }
+  for (const key of ['backend.trustedProxyCidrs', 'backup.hostPath', 'images.pullSecret']) {
+    assert.ok(keys.quoted.includes(key), key);
+  }
+  // cert-manager's value is its own chart's, the one of another chart.
+  const certManager = 'helm install cert-manager oci://quay.io/jetstack/charts/cert-manager';
+
+  assert.deepEqual(keys.otherCharts, [
+    `${certManager}: crds.enabled`,
+    `${certManager}: crds.enabled`,
+  ]);
+});
+
+test('the check of the keys fails, naming the key, on a mutated copy of README.md or of the values (#395, criterion 3)', () => {
+  const text = readme();
+  const values = chartValues();
+  const without = (path) => {
+    const copy = chartValues();
+    const keys = path.split('.');
+
+    delete keys.slice(0, -1).reduce((node, key) => node[key], copy)[keys.at(-1)];
+
+    return copy;
+  };
+
+  // A key renamed in one copy of the release, in the Install section or in
+  // step 6; in the off-server copy's lines, which name no helm command.
+  for (const last of [false, true]) {
+    assert.deepEqual(
+      missingKeys(
+        replaced(text, 'ingress.tls.issuer=$ISSUER', 'ingress.tls.clusterIssuer=$ISSUER', last),
+        values,
+      ),
+      ['ingress.tls.clusterIssuer'],
+    );
+  }
+  assert.deepEqual(
+    missingKeys(replaced(text, 'backup.offsite.region=', 'backup.offsite.zone='), values),
+    ['backup.offsite.zone'],
+  );
+  // A key renamed in the chart's values: set in prose, quoted, or both.
+  assert.deepEqual(missingKeys(text, without('backend.tcpRmem')), ['backend.tcpRmem']);
+  assert.deepEqual(missingKeys(text, without('backend.trustedProxyCidrs')), [
+    'backend.trustedProxyCidrs',
+  ]);
+  assert.deepEqual(missingKeys(text, without('images.pullSecret')), ['images.pullSecret']);
+  assert.deepEqual(missingKeys(text, without('images.tag')), ['images.tag']);
+
+  // cert-manager's value given to this chart is named.
+  assert.deepEqual(
+    missingKeys(
+      replaced(text, '--wait --timeout 10m', '--set crds.enabled=true --wait --timeout 10m'),
+      values,
+    ),
+    ['crds.enabled'],
+  );
+
+  // Each form of the flag; commas, as helm splits them; no `<key>=`; a key
+  // past a value; a fenced block of another language is not read.
+  const release = (flags) =>
+    `\`\`\`bash\nhelm upgrade --install x deploy/helm/qa-tools ${flags}\n\`\`\`\n`;
+
+  for (const [flags, missing] of [
+    ['--set-string=images.tagg=x', ['images.tagg']],
+    ['--set images.tag=x,images.nope=y', ['images.nope']],
+    ['--set-string images.tag=x\\,images.nope=y', []],
+    ['--set-json images.nope={"a":1,"b":2}', ['images.nope']],
+    ['--set-literal images.tag=a,b=c', []],
+    ['--set-file "backup.offsite.recipientKey=key file.asc"', []],
+    ["--set-string 'images.nope=x'", ['images.nope']],
+    ['--set-string images.tag', ['--set-string images.tag']],
+    ['--set-string =x', ['--set-string =x']],
+    ['--set', ['--set']],
+    ['--set-string images.tag.value=x', ['images.tag.value']],
+    ['--set-string images..tag=x', ['images..tag']],
+    ['--set-string images.list[0]=x', ['images.list[0]']],
+    ['--set-string images\\.tag=x', ['images\\.tag']],
+    ['--set-string __proto__.x=y --set-string constructor=z', ['__proto__.x', 'constructor']],
+    ['--set-string ingress.tls=x --set-string ingress.tls.secretName=', []],
+    ['--settings images.nope=x', []],
+  ]) {
+    assert.deepEqual(missingKeys(release(flags), values), missing, flags);
+  }
+  assert.deepEqual(
+    missingKeys(
+      '```text\nhelm upgrade --install x deploy/helm/qa-tools --set a.b=c\n```\n',
+      values,
+    ),
+    [],
+  );
+  assert.deepEqual(missingKeys('```sh\n--set-string images.nope=x\n```\n', values), [
+    'images.nope',
+  ]);
+  // Another chart's values are its own; this chart named in the same line
+  // of commands is still this chart.
+  assert.deepEqual(
+    missingKeys(
+      '```bash\nhelm install x repo/chart --set a.b=c && helm upgrade --install y ./deploy/helm/qa-tools/ --set d.e=f\n```\n',
+      values,
+    ),
+    ['d.e'],
+  );
+  // In prose: a flag with its key, quoted keys under a top-level key alone.
+  assert.deepEqual(
+    missingKeys(
+      'Add `--set-string images.nope=` or\n`--set\nalerts.nope=x`; `backend.nope`, `net.ipv4.tcp_rmem`, `llms.txt`, `--set-string`.\n',
+      values,
+    ),
+    ['images.nope', 'alerts.nope', 'backend.nope'],
+  );
+});
+
+test('every command of README.md\'s Install section, but the variables it sets, is given as it stands in "Installing on k3s with the chart" (#395, criterion 2)', () => {
+  const text = readme();
+  const commands = installCommands(text);
+
+  assert.deepEqual(installCommandsMissing(text), []);
+  // What is compared: the three builds, the push loop, the namespace, the
+  // database's Secret, the backup directory and the release.
+  assert.deepEqual(
+    commands.map((command) => command.split(' ').slice(0, 2).join(' ')),
+    [
+      'docker build',
+      'docker build',
+      'docker build',
+      'for image',
+      'kubectl create',
+      'kubectl -n',
+      'sudo install',
+      'helm upgrade',
+    ],
+  );
+  assert.equal(commands[3], PUSH_LOOP);
+  assert.equal(commands[6], 'sudo install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector');
+  assert.equal(commands[7], RELEASE);
+});
+
+test('the check of the Install section fails, naming the command, on a mutated copy of README.md, and reads continuation lines and indentation alone as the same command (#395, criterion 3)', () => {
+  const text = readme();
+  const step6 = text.lastIndexOf('helm upgrade --install inspector');
+
+  // A command edited in the Install section, or in the full section.
+  assert.deepEqual(installCommandsMissing(replaced(text, '--timeout 10m', '--timeout 5m')), [
+    RELEASE.replace('10m', '5m'),
+  ]);
+  assert.deepEqual(installCommandsMissing(replaced(text, '--timeout 10m', '--timeout 5m', true)), [
+    RELEASE,
+  ]);
+  assert.deepEqual(
+    installCommandsMissing(replaced(text, 'frontend:$TAG postgres', 'postgres', true)),
+    [PUSH_LOOP],
+  );
+  assert.deepEqual(
+    installCommandsMissing(replaced(text, 'kubectl create namespace inspector\n', '', true)),
+    ['kubectl create namespace inspector'],
+  );
+  const directory = 'sudo install -d -o 999 -g 999 -m 07';
+
+  assert.deepEqual(
+    installCommandsMissing(replaced(text, `${directory}00`, `${directory}55`, true)),
+    ['sudo install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector'],
+  );
+  // A command added to the Install section alone.
+  assert.deepEqual(
+    installCommandsMissing(
+      replaced(
+        text,
+        'kubectl create namespace inspector\n',
+        'kubectl create namespace inspector\nkubectl get pods\n',
+      ),
+    ),
+    ['kubectl get pods'],
+  );
+
+  // The release wrapped at other places and indented otherwise is the same
+  // command; so is the Install section's with its comment changed.
+  const end = text.indexOf('--timeout 10m', step6) + '--timeout 10m'.length;
+  const rewrapped =
+    text.slice(0, step6) +
+    'helm upgrade --install inspector \\\n' +
+    '         deploy/helm/qa-tools --namespace inspector --set-string images.registry=$REGISTRY \\\n' +
+    '\t--set-string images.tag=$TAG --set-string ingress.host=$SITE_HOST \\\n' +
+    '   --set-string receive.host=$RECEIVE_HOST --set-string ingress.tls.issuer=$ISSUER \\\n' +
+    '   --wait --timeout 10m' +
+    text.slice(end);
+
+  assert.deepEqual(installCommandsMissing(rewrapped), []);
+  assert.deepEqual(
+    installCommandsMissing(replaced(text, '# on the node itself', '# a comment of its own')),
+    [],
+  );
+  // A line break is read as the shell reads it: with no white space on
+  // either side, the two lines make one word, and another command.
+  assert.deepEqual(
+    installCommandsMissing(
+      replaced(
+        text,
+        'inspector \\\n     --set-string images.registry',
+        'inspector\\\n   --set-string images.registry',
+        true,
+      ),
+    ),
+    [RELEASE],
+  );
+
+  // A push loop over several lines is one command, compared whole.
+  const loop =
+    'for image in backend:$TAG frontend:$TAG postgres:16-pgcron-1; do\n  docker push $REGISTRY/$image\ndone';
+  const spread =
+    'for image in backend:$TAG frontend:$TAG postgres:16-pgcron-1; do\ndocker push $REGISTRY/$image\ndone';
+
+  assert.deepEqual(installCommandsMissing(replaced(text, PUSH_LOOP, loop)), [spread]);
+  assert.deepEqual(
+    installCommandsMissing(
+      replaced(replaced(text, PUSH_LOOP, loop), PUSH_LOOP, loop.replaceAll('\n', '\n      '), true),
+    ),
+    [],
+  );
+});
+
+test("the README's readers on made-up input built to break them, at growing sizes: fences, sections, shell commands, assignments and prose (#395)", () => {
+  // Fences: a longer fence closes only with as long a one, of its own
+  // character; an open fence runs to the end; a backtick in a backtick
+  // fence's info string makes no fence; the fence's indentation is removed.
+  assert.deepEqual(
+    readMarkdown('````bash\n```\nx\n~~~\n````\ny\n').blocks.map((each) => each.lines),
+    [['```', 'x', '~~~']],
+  );
+  assert.deepEqual(readMarkdown('~~~sh\na\n```').blocks, [
+    { info: 'sh', line: 1, lines: ['a', '```'] },
+  ]);
+  assert.deepEqual(readMarkdown('```ba`sh\na\n```\n').blocks, [{ info: '', line: 3, lines: [''] }]);
+  assert.deepEqual(readMarkdown('   ```bash\n     a\n  b\n```\n').blocks[0].lines, ['  a', 'b']);
+  assert.equal(readMarkdown('a\n```bash\n--set x=y\n```\nb').prose, 'a\n\n\n\nb');
+
+  // Sections: a heading inside a block ends nothing; a heading twice, or
+  // none, is refused.
+  assert.equal(
+    readmeSection('## A\n```bash\n## B\n```\nx\n### C\ny\n', '## A'),
+    '```bash\n## B\n```\nx',
+  );
+  assert.throws(() => readmeSection('## A\n## A\n', '## A'), /one "## A", not 2/);
+  assert.throws(() => readmeSection('```\n## A\n```\n', '## A'), /one "## A", not 0/);
+
+  // Shell commands.
+  for (const [script, commands] of [
+    ['a \\\n  b \\\n\tc', ['a b c']],
+    ['a\\\nb', ['ab']],
+    ['a\\\n  b', ['a b']],
+    ['a \\\\\nb', ['a \\\\', 'b']],
+    ['a \\\\\\\nb', ['a \\\\b']],
+    ['a # c \\\nb', ['a', 'b']],
+    ['a "# x" \'# y\' $# ${#z} b#c # d', ['a "# x" \'# y\' $# ${#z} b#c']],
+    ["a;# it's\nb", ['a;', 'b']],
+    ['a "x\n  y" b\nc', ['a "x\n  y" b', 'c']],
+    ["a 'x \\\ny' b", ["a 'x \\\ny' b"]],
+    ['a "x \\\n  y"', ['a "x   y"']],
+    [
+      'for i in 1 2\ndo\n  echo $i  # each\ndone\nnext',
+      ['for i in 1 2\ndo\necho $i\ndone', 'next'],
+    ],
+    ['if a; then\n  for x in y; do z; done\nfi', ['if a; then\nfor x in y; do z; done\nfi']],
+    ['echo for done\nb', ['echo for done', 'b']],
+    ['for x in "done"; do\n"done"\ndone', ['for x in "done"; do\n"done"\ndone']],
+    [
+      'case $x in\n  a) for y in z; do w; done;;\nesac',
+      ['case $x in\na) for y in z; do w; done;;\nesac'],
+    ],
+    [
+      'cat <<-EOF > f\n  a # not a comment\n  EOF\nb',
+      ['cat <<-EOF > f\n  a # not a comment\n  EOF', 'b'],
+    ],
+    [
+      "kubectl apply -f - <<'EOF'\nit's\nEOF\nnext",
+      ["kubectl apply -f - <<'EOF'\nit's\nEOF", 'next'],
+    ],
+    ['a <<< "x"\nb', ['a <<< "x"', 'b']],
+    ['\n\n  \n\t\n', []],
+    ['a\r\nb\r\n', ['a', 'b']],
+    ['while true; do', ['while true; do']],
+    ['a "open', ['a "open']],
+    ['a \\', ['a']],
+  ]) {
+    assert.deepEqual(shellCommands(script), commands, JSON.stringify(script));
+  }
+
+  // Assignments: the chart named by another helm command in one line.
+  assert.deepEqual(
+    setAssignments('helm template a b/c --set x=1 helm lint deploy/helm/qa-tools --set y=2'),
+    [
+      { key: 'x', chart: 'helm template a b/c' },
+      { key: 'y', chart: null },
+    ],
+  );
+  assert.deepEqual(setAssignments('--set-string a=b'), [{ key: 'a', chart: null }]);
+
+  const values = chartValues();
+
+  for (const size of [10, 1000, 100_000]) {
+    const many = (part, separator = '') => Array.from({ length: size }, () => part).join(separator);
+
+    // A fence of `size` backticks closed by one shorter is open to the end.
+    assert.equal(
+      readMarkdown(`${'`'.repeat(size)}bash\na\n${'`'.repeat(size - 1)}\n`).blocks[0].lines.length,
+      3,
+      `fence ${size}`,
+    );
+    assert.equal(readMarkdown(many('```bash\nx\n```\n')).blocks.length, size, `blocks ${size}`);
+    assert.equal(readMarkdown(many('#', ' ')).headings.length, 1, `heading ${size}`);
+    assert.equal(
+      readmeSection(`## A\n${many('x\n')}## B\n`, '## A').length,
+      size * 2 - 1,
+      `section ${size}`,
+    );
+
+    // Continuations, backslashes, comments, quotes, loops and here-documents.
+    assert.deepEqual(shellCommands(many('a \\\n')), [many('a', ' ')], `continued ${size}`);
+    assert.deepEqual(shellCommands(`${'\\'.repeat(size * 2)}\nb`), ['\\'.repeat(size * 2), 'b']);
+    assert.deepEqual(shellCommands(`${'\\'.repeat(size * 2 + 1)}\nb`), [
+      `${'\\'.repeat(size * 2)}b`,
+    ]);
+    assert.deepEqual(shellCommands(`a ${many('#')}\nb`), ['a', 'b'], `comment ${size}`);
+    assert.deepEqual(shellCommands(`'${many('x\n')}`), [`'${many('x\n')}`.trim()], `quote ${size}`);
+    assert.deepEqual(shellCommands(`"${many('\\"')}"\nb`), [`"${many('\\"')}"`, 'b']);
+    assert.equal(shellCommands(`${many('for x in y; do\n')}z\n${many('done\n')}`).length, 1);
+    assert.equal(shellCommands(`${many('for x in y; do\n')}z\n`).length, 1, `open loops ${size}`);
+    assert.equal(shellCommands(many('<<', ' ')).length, 1, `operators ${size}`);
+    assert.equal(shellCommands(`${many('<<a ')}\n${many('a\n')}b\n`).length, 2, `heredocs ${size}`);
+    assert.deepEqual(shellCommands(`cat <<${many('x')}\n${many('y\n')}`), [
+      `cat <<${many('x')}\n${many('y\n')}`.trimEnd(),
+    ]);
+
+    // Assignments and keys: long, many, odd.
+    assert.deepEqual(setAssignments(many('--set', ' ')).length, Math.ceil(size / 2));
+    assert.deepEqual(setAssignments(`--set ${many('=')}`), [
+      { key: `--set ${many('=')}`, chart: null },
+    ]);
+    assert.equal(setAssignments(`--set ${many('a=b', ',')}`).length, size, `commas ${size}`);
+    assert.equal(setAssignments(many('helm', ' ')).length, 0, `helm ${size}`);
+    assert.equal(hasKey(values, many('images', '.')), false, `depth ${size}`);
+    assert.deepEqual(
+      missingKeys(`\`\`\`bash\n--set ${many('a', '.')}=b\n\`\`\`\n`, values),
+      [many('a', '.')],
+      `path ${size}`,
+    );
+
+    // Prose: a flag followed by a long word with no `=`, a long run of
+    // spaces, a long quoted path, many backticks.
+    assert.deepEqual(missingKeys(`--set ${many('a')} b`, values), [], `prose ${size}`);
+    assert.deepEqual(missingKeys(`--set${many(' ')}images.nope=x`, values), ['images.nope']);
+    assert.deepEqual(missingKeys(`\`images${many('.a')}\``, values), [`images${many('.a')}`]);
+    assert.deepEqual(missingKeys(`\`images${many('.a')}`, values), [], `open span ${size}`);
+    assert.deepEqual(missingKeys(many('`'), values), [], `backticks ${size}`);
+
+    // Assignments a command of the Install section may be.
+    assert.equal(ASSIGNMENT.test(`X=$${many('a')} `), false, `assignment ${size}`);
+    assert.equal(ASSIGNMENT.test(`X=$(${many('a')}`), false, `assignment ${size}`);
+    assert.equal(ASSIGNMENT.test(`X=$(${many('a')})`), true, `assignment ${size}`);
+  }
+  assert.equal(ASSIGNMENT.test('TAG=$(git rev-parse --short HEAD)'), true);
+  assert.equal(ASSIGNMENT.test('X="a b"'), true);
+  for (const command of ['X=1 kubectl create x', 'X=$(a) b', 'X=a;b', 'X=$(a (b))', 'x y=1']) {
+    assert.equal(ASSIGNMENT.test(command), false, command);
   }
 });
