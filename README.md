@@ -40,16 +40,21 @@ Webhook Inspector runs on a [k3s](https://k3s.io) cluster from the Helm chart
 in `deploy/helm/qa-tools`: the backend, the frontend, PostgreSQL and a nightly
 backup, in one namespace. Before the commands below:
 
-- **The cluster:** k3s with the Traefik it packages, cert-manager, and this
-  repository's Traefik settings and certificate issuers, set up as step 1 of
+- **The cluster:** k3s 1.32 or newer with the Traefik it packages,
+  cert-manager, and this repository's Traefik settings and certificate
+  issuers, set up as step 1 of
   [Installing on k3s with the chart](#installing-on-k3s-with-the-chart) says.
+  The backend sets the sysctl `net.ipv4.tcp_rmem`, which the kubelet allows
+  from Kubernetes 1.32; an older cluster adds
+  `--set-string backend.tcpRmem=` to the release.
 - **Two host names** pointing at the server: the site's, and the receive
   host's, where sessions receive their webhooks.
 - **A registry** the cluster can pull images from.
 - **Where you run the commands:** this repository, Docker, `kubectl` and Helm
-  reaching the cluster, and `openssl`. Followed on a test cluster with
-  k3s 1.35, Helm 4.3, kubectl 1.37 and cert-manager 1.21
-  ([On a test cluster](#on-a-test-cluster)).
+  reaching the cluster, and `openssl`.
+
+These steps were followed on a test cluster with k3s 1.35, Helm 4.3,
+kubectl 1.37 and cert-manager 1.21 ([On a test cluster](#on-a-test-cluster)).
 
 Set the five values, then run the rest as it stands:
 
@@ -77,9 +82,11 @@ helm upgrade --install inspector deploy/helm/qa-tools --namespace inspector \
 ```
 
 The site then answers at `https://$SITE_HOST`, and a session receives its
-webhooks at `https://$RECEIVE_HOST/s/<session-id>`. A private registry needs
-its pull Secret, and the off-server copy of the backups, the heartbeat monitor
-and every other value are options: all are in the full section below.
+webhooks at `https://$RECEIVE_HOST/s/<session-id>`: open the site, create a
+session and send a `POST` to its receive URL to see it work. A private
+registry needs its pull Secret, and the off-server copy of the backups, the
+heartbeat monitor and every other value are options: all are in the full
+section below.
 
 ## Technology
 
@@ -303,7 +310,15 @@ The commands below use the five values the [Install](#install) section sets:
    ```
 
    For a private registry, a `docker-registry` Secret named `gitlab-registry`,
-   or the name you give `images.pullSecret`. A registry that takes no
+   or the name you give `images.pullSecret` (the test run below used a registry
+   without credentials, so it did not run this command):
+
+   ```bash
+   kubectl -n inspector create secret docker-registry gitlab-registry --docker-server=<registry host> \
+     --docker-username=<user> --docker-password=<token>
+   ```
+
+   A registry that takes no
    credentials needs none: add `--set-string images.pullSecret=` to the
    release, or every pod warns that it cannot find `gitlab-registry`
    (`FailedToRetrieveImagePullSecret`), and pulls without it.
@@ -331,9 +346,9 @@ The commands below use the five values the [Install](#install) section sets:
      --set-string ingress.tls.issuer=$ISSUER --wait --timeout 10m
    ```
 
-   Migrations run in the backend's init container on every upgrade. On the
-   first install it fails and is restarted until PostgreSQL answers, then
-   applies them all;
+   Migrations run in the backend's init container on every upgrade. While
+   PostgreSQL does not answer yet, as on the first install, it fails and is
+   restarted until it does, then applies them;
    `kubectl -n inspector logs deploy/inspector-backend -c migrate` lists what
    it applied. Every value is described in `deploy/helm/qa-tools/values.yaml`;
    the TLS and database Secrets are named after the release unless set. The
@@ -343,7 +358,9 @@ The commands below use the five values the [Install](#install) section sets:
    outside it sets its own range, or the receive host takes no webhook.
    `node scripts/check-deployment.mjs https://$SITE_HOST https://$RECEIVE_HOST`
    then checks the deployed site from outside, as CI does after each
-   deployment.
+   deployment. On a copy built without this site's contact address and legal
+   pages it stops at the Terms of Use (step 2); check such a copy by opening
+   the site, creating a session and sending a `POST` to its receive URL.
 
 Two options are off until configured:
 
@@ -418,17 +435,24 @@ docker exec k3d-$CLUSTER-server-0 install -d -o 999 -g 999 -m 0700 /var/backups/
   line is left out.
 - The values are `REGISTRY=localhost:15000`, `SITE_HOST=inspector.localhost`
   and `RECEIVE_HOST=hook.inspector.localhost`, names under `localhost`, which
-  resolve to the machine itself, and `ISSUER=selfsigned`. The registry takes
+  most systems resolve to the machine itself (where they do not, add both to
+  `/etc/hosts` as `127.0.0.1`), and `ISSUER=selfsigned`. The registry takes
   no credentials, so the pods warned `FailedToRetrieveImagePullSecret` until
   the release was run again with `--set-string images.pullSecret=` (step 3).
 - The site is at `https://inspector.localhost:18443/`. A webhook URL it gives
   names the receive host without a port, so a webhook goes to port 18443 of
   that URL. The certificates are self-signed with no issuer name, so neither
-  `curl --cacert` nor Node can trust them: `curl -k`, and
+  `curl --cacert` nor the check script, which needs both hosts, can trust
+  them: `curl -k`, and
   `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/check-deployment.mjs https://inspector.localhost:18443 https://hook.inspector.localhost:18443`,
   which stops at the Terms of Use, as step 2 says.
-- `k3d cluster delete $CLUSTER` removes the cluster, its registry and its
-  kubeconfig file; the images built stay in Docker until removed.
+- To remove it all, the cluster with its registry and kubeconfig file, the
+  registry settings file and the images built:
+
+  ```bash
+  k3d cluster delete $CLUSTER && rm -f $REGISTRIES && unset KUBECONFIG
+  docker image rm $REGISTRY/backend:$TAG $REGISTRY/frontend:$TAG $REGISTRY/postgres:16-pgcron-1
+  ```
 
 ### Deploying from GitLab CI
 
