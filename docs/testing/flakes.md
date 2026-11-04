@@ -1256,7 +1256,8 @@ slowest loaded fastest of five above, 184 ms, and 1.5 times the slowest
 loaded first run, 666 ms, while the mutation's calls took 63 s at best.
 `addressKey` keeps the file's checks of its own on hostile values, each
 held to 100 ms. The test passed in all five of F-27's loaded runs of
-the suite, in 7.0 to 9.9 s with the making of its keys.
+the suite, in 7.0 to 9.9 s with the making of its keys, and in the four
+of F-27's The lines, at `fa58d1d`, in 6.4 to 6.9 s.
 
 ## F-08 — `names the step in request.received and response.recorded, and none for the session response`
 
@@ -4640,14 +4641,19 @@ and its text form with `7836.5 ms for 2097152 characters`.
   `:1490` at `a801d46`, the base of the fix, each holding one wall-clock run
   of its flood to 5000 ms: `refusing the flood took too long` (`:972`) and
   `weighing the flood took too long` (`:1502`). Issue #378, from the review
-  of #363. At the fix `:978` and `:1513`, held through `withinBound` to
-  `FLOOD_BOUND_MS` (`:74`); at `c83acfd`, the same checks, a line before.
-- **Status**: fixed in the tests on `chore/flood-check-bounds-378`, at
-  `c83acfd`: each check holds the admissions of its flood alone, the fastest
-  of up to five runs, to 1500 ms. `capture-budget.ts` and
-  `testing/timing.ts` were not changed; VERSION kept. `rate-limit.test.ts`'s
-  `counts 100,000 distinct addresses quickly`, which failed beside them, was
-  changed in the same commit: F-07, After #378.
+  of #363. At the fix `:1001` and `:1564`, held through `withinBound` to
+  `FLOOD_BOUND_MS` (`:78`) on the lines of `LONG_LINE` (`:87`) and
+  `FLOOD_LINES` (`:97`); at `c83acfd`, `:977` and `:1512`. The first
+  message is not this entry's alone: `answer-budget.test.ts:222` gives it
+  too (Watched, and left).
+- **Status**: fixed in the tests on `chore/flood-check-bounds-378`. At
+  `c83acfd` each check held the admissions of its flood alone, the fastest
+  of up to five runs, to 1500 ms; at `fa58d1d`, after the review of
+  `98553bf`, it times them on lines longer than the product's, so that an
+  admission quadratic in the number of waiters fails both (The lines).
+  `capture-budget.ts` and `testing/timing.ts` were not changed; VERSION
+  kept. `rate-limit.test.ts`'s `counts 100,000 distinct addresses quickly`,
+  which failed beside them, was changed at `c83acfd`: F-07, After #378.
 
 ### The failure
 
@@ -4681,6 +4687,9 @@ span 1.6 to 2.3 times its own time, and one run decided: a load that slowed
 the file's process by more than that failed it, whatever the budget did.
 
 ### The measurement
+
+Of `c83acfd`'s form, on the product's lines; the longer lines the checks
+time since `fa58d1d` were measured the same way, under The lines.
 
 On 2026-11-04 from 05:10 to 05:41 MSK on the agents' Linux host, an AMD
 EPYC 7763 with 8 CPUs, Node v24.22.2. A `node:test` file outside the tree,
@@ -4778,41 +4787,206 @@ the flood, fails. Searching one address's line for each one refused costs
 about 60 ms more over the 100,000, and `:1490`'s sender has one waiter: no
 check tells it apart, and at the base's 5000 ms none did.
 
+The first two were the first round's own readings, and dearer than they
+need be: its every waiter also passes over each waiter of an address
+already seen, through a `Set`, and its sum the line makes an array of
+every waiter at each admission that must wait. Tighter readings of the
+same two, the review's, were caught reliably by neither check, and the
+comment on `FLOOD_BOUND_MS` at `98553bf`, which gave every waiter's 3.4 s
+as what looking at every waiter takes, held for the first round's reading
+alone: The lines.
+
+### The lines
+
+The review of `98553bf` found that an admission quadratic in the number of
+waiters did not fail the checks on every run. Its tester wrote two tighter
+readings into `capture-budget.ts`, `test-378-capture-budget.M1.ts` and
+`.M2.ts` in its scratchpad, not kept:
+
+- M1, every waiter: `admitWaiting` finds each address's first by looking at
+  every waiter of its line for the earliest, where it reads the line's
+  first;
+- M2, sum the line: whether one more fits is decided by summing the
+  address's line and, when that has room, every line, where `lineUsedBy`
+  and `lineUsed` are read.
+
+At `98553bf`, with M1 the file passed in three runs of three, and the two
+checks alone failed once in three, `:1513`, `took 1593.0 ms at best in 5
+runs`; its admissions took 252 to 312 ms at `:978` and 972 to 1373 ms at
+`:1513`, where they take 22 to 49 and 29 to 57 ms without it, timed by the
+tester's own script. With M2, `:1513` failed once in three, `took 1607.8
+ms at best`, and `:978` never. The base failed neither.
+
+The product's lines are too short to tell them apart. A waiting webhook
+weighs 16 KiB at least, `waitingWeight` of no header line, so an
+address's line of 16 MiB holds 1,024 of them at most and the process's of
+64 MiB 4,096; `:978`'s holds 1,008, and `:1513`'s four 4,032. On those,
+a run of M1, M2 or searching the line took 0.2 to 1.8 s alone - M1 0.25 to
+0.52 s at `:978` and 0.97 to 1.78 s at `:1513`, M2 0.43 to 0.60 s and 1.61
+to 1.68 s, by the tester's script and the correction's - on either side of
+1500 ms, while the admissions took up to 648 ms under load at best of
+five, and single runs of them up to 7.5 s: no bound passes the admissions
+under load and fails each of these alone.
+
+So since `fa58d1d` each check times its flood on lines longer than the
+product's, in a budget of its own, the bound kept:
+
+- `refuses 100,000 webhooks of one address at once quickly once its line
+  is full, and lets the others in` (`:1001`) fills one address's line of
+  `LONG_LINE`, 65,536 waiters, and refuses the 100,000 on it, run after run
+  on the same budget. The line is then asserted unchanged and left as it
+  is, its timers mocked: letting 65,536 of one address go takes seconds, as
+  `remove` takes each from the front of the line's array with `splice`,
+  which moves the rest - 0.8 s for a line of 33,272 in one measurement,
+  nothing for 1,024. The product's line follows, untimed, as at the base: the
+  100,000 answered `line-full`, another address waiting and let in.
+- `gives a flooder of 81 KiB webhooks on any number of connections no more
+  of the reserve than a light sender may hold, and leaves the rest to
+  another sender` (`:1564`) sends #242's flood to one budget whose lines,
+  an address's and the process's, are `FLOOD_LINES`, five, times the
+  product's: 5,041 waiting an address, 20,164 in all. Five keeps the
+  product's shape: the four lines leave the process's 15,360 bytes, less
+  than one more of the flood's webhooks or the light sender's 16 KiB, so
+  that its first waits and the rest are refused; two, three or four leave
+  room for more of the sender's. Every run sends its 100,000 to that budget,
+  and what all runs sent is answered and checked as one flood: after the
+  first run the sender holds what a light sender may and its first waits,
+  so each one more is refused at once, as 99,848 of the first run's are.
+
+The lengths: searching the line for each one refused looks at a waiter in
+0.4 ns, the cheapest look of the mutations, and takes about the bound on a
+line of 33,272, 1548 to 1648 ms, and nearly twice it on 65,536; M2 took
+3.1 s on 17,140. At `:1564` searching the line does not apply - the
+sender's line holds its first alone, and the search finds each refused at
+once - and M1 and M2 look at every line: on 20,164 they take 3.6 and more
+times the bound.
+
+On 2026-11-04 from 07:02 to 08:47 MSK on the same host, the same way as
+above: a `node:test` file outside the tree ran rounds of each check's
+timed part in `fa58d1d`'s form - the 65,536 waiting made, then their
+100,000 refused five times; #242's flood sent on the longer lines, then the
+light sender's 100,000 five times to that budget - the first run and the
+fastest of five. Under load is beside `node scripts/db.mjs task-test 378`,
+the full backend suite, and eight busy loops, `node -e 'for(;;){}'`, in the
+four runs of the suite below. The series made 1.1 million promises a round
+with no turn between rounds, and in the first two runs ran out of the test
+runner's map of them after 15 rounds, 127 and 156 s into the suite's three
+minutes; from the third it took a turn each round. Min, median and max of
+the rounds, in ms:
+
+| beside | load | rounds | `:1001`, the line made | `:1001`, first run | `:1001`, fastest of five | `:1564`, the flood sent | `:1564`, first run | `:1564`, fastest of five |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.0 to 1.8 | 10 | 161.1 / 213.1 / 256.1 | 180.1 / 249.6 / 809.0 | 155.8 / 182.6 / 236.1 | 53.7 / 87.6 / 155.6 | 173.1 / 210.8 / 610.2 | 173.1 / 188.1 / 281.6 |
+| the suite and eight loops | 1.9 to 20.8 | 66 | 272.8 / 573.1 / 2667.7 | 241.6 / 566.8 / 3161.0 | 205.6 / 429.6 / 917.0 | 54.1 / 207.4 / 569.6 | 255.3 / 706.4 / 1792.5 | 255.3 / 433.2 / 834.1 |
+
+The fastest of five was never over 1500 ms, 0 of 66 rounds (Wilson 95%
+0%–5.5%); single runs were, 14 of 330 at `:1001` and 32 of 330 at
+`:1564`, up to 3459.3 and 6966.5 ms, and with nothing beside them one of
+50 at `:1564`, 2522.5 ms. Under load the fastest of five came to 917 ms
+where it came to 648 ms on the product's lines at `c83acfd`; that the
+larger heap, 65,536 waiters and their timers kept, costs the collections
+more is an inference, not measured.
+
+The full suite under that load at `fa58d1d`, one run beside each loaded
+series above; whole tests in s, their reading included:
+
+| run | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | exit | `:1001` | `:1564` | F-07's |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1.9 to 17.0 | 3423 | 3423 | 0 | 0 | 10.2 | 5.9 | 6.4 |
+| 2 | 15.8 to 20.0 | 3423 | 3422 | 1: `measure-ordinary-load.test.ts:1818`, Watched, and left | 1 | 11.1 | 4.8 | 6.4 |
+| 3 | 15.2 to 20.1 | 3423 | 3422 | 1: the same | 1 | 9.5 | 5.1 | 6.9 |
+| 4 | 14.6 to 20.8 | 3423 | 3423 | 0 | 0 | 8.8 | 6.5 | 6.4 |
+
+Both checks passed in all four, 0 of 4 (Wilson 95% 0%–49.0%), and F-07's
+too.
+
+The mutations at `fa58d1d`'s checks, each written into `capture-budget.ts`
+for its runs and taken out after them with `git checkout --`, never
+committed: M1 and M2 as the review's tester wrote them, and the first
+round's four above. First the series' timed parts with nothing beside them,
+at a load of 1.0 to 1.4: the fastest of two runs, three for searching the
+line, in ms, and what the mutation adds to an admission a waiter; then the
+file, `node scripts/db.mjs task-test 378 --
+src/modules/webhook/capture-budget.test.ts`, or its two checks alone, by
+`--test-name-pattern`, for the three that take minutes a run, at a load of
+1.3 to 2.0 at their start - 12.1 at the first, the loaded runs' average
+still falling:
+
+| the mutation | `:1001`, 65,536 waiting | `:1564`, 20,164 waiting | the file or the two checks with it |
+| --- | --- | --- | --- |
+| none | 155.8 to 236.1, the ten rounds above | 173.1 to 281.6 | the file three times, twice before `fa58d1d` was committed and once after the mutations: `ℹ tests 50`, `ℹ pass 50`, exit 0 |
+| M1, every waiter | 21333, 3.2 ns | 8138, 3.9 ns | the file three times: `ℹ pass 48`, `ℹ fail 2`, exit 1, both checks `took … ms at best in 5 runs, over the 1500 ms bound`, `:1001` at 37128.3, 20229.5 and 37985.5, `:1564` at 10286.9, 8883.2 and 12445.2 |
+| M2, sum the line | 14067, 2.1 ns | 5473, 2.6 ns | the file three times: `ℹ pass 48`, `ℹ fail 2`, exit 1, both, `:1001` at 35286.2, 36957.8 and 13760.5, `:1564` at 10359.0, 10647.3 and 8145.9 |
+| search the line | 2753, 0.39 ns | 185, none: the sender's line holds its first | the file three times: `ℹ pass 49`, `ℹ fail 1`, exit 1, `:1001` at 2945.6, 2888.5 and 2971.8 |
+| every waiter, the first round's | 56754, 8.6 ns | 16524, 8.1 ns | the two checks once: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1, `:1001` at 75808.3, `:1564` at 18025.5, after 525 s |
+| sum the line, the first round's | 32693, 5.0 ns | 67949, 34 ns | the two checks once: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1, `:1001` at 27460.4, `:1564` at 71740.5, after 655 s |
+| every arrival | one run, 62273 | one run, 45738 | the two checks once: not ended within `task-test`'s 1800 s, `Interrupted while running`, exit 124, `:1001`'s five runs, each longer than the last, unfinished |
+
+So each fails every check it can on every run: searching the line, the
+cheapest, by 1.8 to 2.0 times at `:1001`; M1 and M2 by 3.6 to 25 times
+at either; every arrival, quadratic in the flood, by 41 and 30 times in
+its first run. With a mutation the tests take minutes - `:1001` took 202.6 s with M1
+in the first run of the file - and fail with the bound's message all the
+same: their timed runs are synchronous, so the suite's 120 s timeout, a
+timer, waits for them. Every arrival's five runs at `:1001`, on 65,536
+waiting and the flood of each run before, outlast `task-test`'s 30
+minutes, which ends the run with exit 124 instead.
+
 ### The fix
 
-In the tests only, `c83acfd`. Each check holds the 100,000 calls of `admit`
-of its flood to `FLOOD_BOUND_MS`, 1500 ms, through `withinBound`, and reads
-their answers afterwards, untimed. `:960` makes its runs on one budget:
-each webhook refused leaves the line before `admit` returns, so a run
-leaves the budget as it found it. `:1490` gives each run a budget of its
-own, flooded before the run is timed: a run takes a light sender's bytes of
-the reserve. `flooded()` is split for it, `floodSent()` building the budget
-and asserting #242's flood without waiting, and `flooded()` sorting its
-answers as before; the five budgets, 26,000 admissions, are built before
-the first run. A check over the bound fails with `withinBound`'s `took …
-ms at best in 5 runs, over the 1500 ms bound`, no longer with its own
-message. `withinBound` fits as it is: the checks are asynchronous, but
-what they time is not, and `:1490`'s mocked `setTimeout` only holds the
-waiters' 30 s, which no run waits for. `testing/timing.ts` was not
-changed.
+In the tests only, `c83acfd` and `fa58d1d`. Each check holds the 100,000
+calls of `admit` of its flood to `FLOOD_BOUND_MS`, 1500 ms, through
+`withinBound`, and reads their answers afterwards, untimed; since
+`fa58d1d` on the longer lines of a budget of its own, The lines. `:1001`
+makes its runs on one budget: each webhook refused leaves the line before
+`admit` returns, so a run leaves the budget as it found it. `:1564` makes
+them on one budget too, and checks what all of them sent as one flood; at
+`c83acfd` it gave each run a budget of its own, five built before the
+first run, as a run takes a light sender's bytes of the reserve.
+`flooded()` is split for it, `floodSent()` building a budget for a multiple
+of the product's lines and asserting #242's flood without waiting, and
+`flooded()` sorting its answers, at the product's lines, for the other
+checks. A check over the bound fails with `withinBound`'s `took … ms at
+best in 5 runs, over the 1500 ms bound`, no longer with its own message.
+`withinBound` fits as it is: the checks are asynchronous, but what they
+time is not, and the mocked `setTimeout` only holds the waiters' 30 s,
+which no run waits for. `testing/timing.ts` was not changed.
 
-1500 ms is 2.3 times the slowest fastest-of-five above, 648 ms, and 6.6
-times the slowest alone, 227 ms; the first quadratic reading, every waiter
-at `:1490`, takes 3.4 s, 2.3 times over it. 1000 ms would leave the loaded
-admissions 1.5 times, little room for a load that took them to 3.8 times
-their time alone; 2000 ms would leave every waiter at `:1490` 1.7 times.
-Each bound's comment in the file gives these numbers.
+1500 ms is 1.6 times the slowest loaded fastest-of-five on the longer
+lines, 917 ms, and 5.3 times the slowest alone, 282 ms; the cheapest
+quadratic reading, searching the line at `:1001`, took 2.75 to 2.97 s at
+best alone, 1.8 to 2.0 times the bound, and the cheaper of the review's two
+at `:1564`, M2, 5.5 s and more. 2000 ms would leave searching the line 1.4
+times, and 1000 ms the loaded admissions 1.1 times. At `c83acfd`, on the
+product's lines, the slowest loaded fastest-of-five was 648 ms. The
+comments on `FLOOD_BOUND_MS`, `LONG_LINE` and `FLOOD_LINES` give these
+numbers.
 
 ### Watched, and left
 
 - `access-key.test.ts:264`, `answers made-up headers of 1048576 characters
   at once`, `took 115.3 ms at best in 5 runs, over the 100 ms bound`, and
   `:473`, `answer made-up handshakes of 1048576 characters under both
-  prefixes at once`, `took 116.2 ms`, in the fourth loaded run; F-24's and
-  F-26's runs saw them too. #378 left them out of scope.
+  prefixes at once`, `took 116.2 ms`, in the fourth loaded run of
+  `c83acfd`; F-24's and F-26's runs saw them too, the four runs of
+  `fa58d1d` not. #378 left them out of scope.
+- `measure-ordinary-load.test.ts:1818`, `summarises hostile profiles of
+  growing size in linear time`, `100000 nodes took 4722.036921999999 ms`
+  and `5574.850466 ms` in the second and third runs of `fa58d1d`: one
+  wall-clock run a size, held to 2000 ms plus twenty times the run of the
+  size before. #377's tester saw it once (F-24); not seen in the five runs
+  of `c83acfd`. Out of #378's scope.
 - `request-wait.test.ts:900`, `answered after 5001 ms` in one of #355's
-  runs (F-26), was not seen in the five runs above.
-- Searching one address's line for each one refused is told apart by
-  neither check, above.
-- The whole tests still take 5.4 to 8.6 s under that load, the reading of
-  their answers untimed, far from the suite's 120 s timeout.
+  runs (F-26), was not seen in the nine runs above.
+- `answer-budget.test.ts:222`, in `refuses 100,000 answers of one full
+  address quickly, and keeps nothing of 100,000 addresses once they are
+  given back`, holds one wall-clock run of 100,000 refusals to 5000 ms with
+  the same message as the base's `:972`, `refusing the flood took too
+  long`: a failure of it would match this entry in a search, and is not
+  this entry's. Seen and not changed: its refusals are synchronous calls,
+  with no promise or turn to read, and the whole test, its 100,000
+  addresses too, took 0.38 to 0.74 s in the nine loaded runs above.
+- The whole tests take 8.8 to 11.1 s and 4.8 to 6.5 s under that load at
+  `fa58d1d`, where they took 6.2 to 8.6 s and 5.4 to 6.7 s at `c83acfd`,
+  the reading of their answers untimed: far from the suite's 120 s
+  timeout. Under a mutation of The lines they take minutes.

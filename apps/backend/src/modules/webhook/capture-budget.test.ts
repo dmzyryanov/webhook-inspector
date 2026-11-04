@@ -62,8 +62,8 @@ const MIB = 1024 * 1024;
  * times that and not the reading of the 100,000 answers, a promise and a
  * turn each, which the one run these checks held to 5 s until #378 timed
  * too: 2.1 to 3.1 s in the file's own runs, and up to 18 s beside the full
- * backend suite and eight busy loops (F-27). The admissions take 156 to
- * 282 ms alone and up to 648 ms under that load.
+ * backend suite and eight busy loops (F-27). The admissions, on the lines
+ * below, take 156 to 282 ms alone and up to 917 ms under that load.
  *
  * They are timed on lines longer than the product's, in budgets of their
  * own (`LONG_LINE`, `FLOOD_LINES`). An address's line holds 1,024 webhooks
@@ -71,9 +71,9 @@ const MIB = 1024 * 1024;
  * process's 4,096; on those, an admission that looks at every waiter took
  * 0.2 to 1.8 s alone, on either side of the bound. On the longer lines,
  * finding each address's first by looking at every waiter of its line
- * takes 21 s and 8.1 s, summing the line's weight at each admission 14 s
- * and 5.5 s, and searching an address's line for each one refused 2.8 s in
- * the first check: over the bound on every run (F-27).
+ * takes 20 to 38 s and 8.1 to 12 s, summing the line's weight 14 to 37 s
+ * and 5.5 to 11 s, and searching an address's line for each one refused
+ * 2.8 to 3.0 s in the first check: over the bound on every run (F-27).
  */
 const FLOOD_BOUND_MS = 1_500;
 
