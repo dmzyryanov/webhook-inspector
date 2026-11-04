@@ -409,8 +409,21 @@ describe('the line cut for monospace placeholders', () => {
     assert.deepEqual(textParts(''), []);
   });
 
+  /**
+   * Each size 4 times the last: a cut whose time grows with the square of
+   * the line, under its bound at one size, takes about 16 times as long at
+   * the next and fails there, not after minutes.
+   */
+  const LINE_SIZES = [1024, 4 * 1024, 16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024];
+  /**
+   * 4000 ms (#388): 3.4 times the slowest cut of a megabyte in loaded suites,
+   * 1182 ms, and 7 times under a cut that looks from every `{{` to the end of
+   * the line again, 29 s alone on 64 KiB of `{` (1.8 s on 16 KiB).
+   */
+  const LINE_LIMIT_MS = 4000;
+
   it('loses nothing of the line, and stands hostile lines at growing sizes in one pass', () => {
-    for (const size of [1024, 16 * 1024, 256 * 1024, 1024 * 1024]) {
+    for (const size of LINE_SIZES) {
       const shapes = [
         '{'.repeat(size),
         '{{'.repeat(size / 2),
@@ -429,7 +442,10 @@ describe('the line cut for monospace placeholders', () => {
           parts = textParts(line);
         });
 
-        assert.ok(took < 1000, `${size}: ${took} ms for ${JSON.stringify(line.slice(0, 12))}`);
+        assert.ok(
+          took < LINE_LIMIT_MS,
+          `${size}: ${took} ms for ${JSON.stringify(line.slice(0, 12))}`,
+        );
         assert.equal(parts.map((part) => part.text).join(''), line);
       }
     }
