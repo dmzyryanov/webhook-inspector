@@ -4993,3 +4993,15 @@ numbers.
   `fa58d1d`, where they took 6.2 to 8.6 s and 5.4 to 6.7 s at `c83acfd`,
   the reading of their answers untimed: far from the suite's 120 s
   timeout. Under a mutation of The lines they take minutes.
+- Each attempt `withinBound` makes of `:1564` sends 100,000 more webhooks
+  to the same budget, and every answer of every attempt is read afterwards,
+  untimed. The whole-test times above do not say how many attempts a run
+  took, and a run retried four or five times under the heaviest load was
+  not measured against the suite's 120 s timeout.
+- The bound and its margins were measured on the agents' server alone
+  (AMD EPYC 7763, 8 CPUs): 1500 ms is 1.6 times the slowest loaded fastest
+  of five, and the cheapest quadratic reading, search the line, took 1.8
+  to 2.2 times the bound in this change's runs. CI's `test` job passed in this change's merge
+  request pipeline at `a026eef`, these checks' times there not read; a
+  runner much slower or faster than the agents' server narrows one of
+  those margins.
