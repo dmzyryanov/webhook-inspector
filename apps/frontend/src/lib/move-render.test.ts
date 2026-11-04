@@ -15,6 +15,9 @@ import type { BuiltMove, MoveData } from './move-link.ts';
  * before `move-link.ts` is loaded, so `BUILT_MOVE` holds it; every module
  * that reads it is imported below that line. `move-link.test.ts` renders the
  * banner of a bundle built with no move.
+ *
+ * The page those tests open, `Page not found`, is read here too (#391): its
+ * request names the host of the address it was opened on, as in a browser.
  */
 
 /** Production's move, as `vite.config.ts` defines it; its day is a sample. */
@@ -196,6 +199,31 @@ describe('the arrival toast, rendered from main.tsx in a bundle built with the m
     assert.ok(
       banner.nextSibling instanceof FakeElement && banner.nextSibling.tagName === 'HEADER',
       'the banner is not drawn directly above the header',
+    );
+  });
+});
+
+/** The elements below `node` whose tag is `tagName`, in document order. */
+function byTag(node: FakeElement, tagName: string): FakeElement[] {
+  return node.childNodes.flatMap((child) =>
+    child instanceof FakeElement
+      ? [...(child.tagName === tagName ? [child] : []), ...byTag(child, tagName)]
+      : [],
+  );
+}
+
+describe('the page-not-found screen, rendered from main.tsx', () => {
+  it('draws the request it was opened with, as a browser does: its line and the address bar’s host (#391)', async () => {
+    const { root } = await start('https://qa-tools.ru/no/such/page', 'not-found');
+    const [title] = byTag(root, 'H1');
+    const [request, ...more] = byTag(root, 'PRE');
+
+    assert.equal(title?.textContent, 'Page not found');
+    assert.equal(more.length, 0);
+    // The `Host:` line is the fake location's `host`, read by the page.
+    assert.equal(
+      request?.textContent,
+      'GET /no/such/page HTTP/1.1\nHost: qa-tools.ru\n\nHTTP/1.1 404 Not Found',
     );
   });
 });
