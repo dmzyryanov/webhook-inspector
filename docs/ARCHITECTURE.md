@@ -1,8 +1,8 @@
-# QA Tools — Architecture
+# Webhook Inspector — Architecture
 
 ## Overview
 
-QA Tools v0.1 is a TypeScript monorepo deployed to a single k3s server using Helm.
+Webhook Inspector is a TypeScript monorepo deployed to a single k3s server using Helm.
 
 ```text
 Internet
@@ -976,7 +976,7 @@ that host, the backend's and the frontend's, until day X (whether the
 WebSocket's `101` carries it is not checked); on Ingresses of their own
 because a middleware annotation applies to every router of its Ingress, so
 `qa-tools.ru`'s two stay as they were. `qa-tools-alias` asks cert-manager for
-the host's certificate, the Secret `webhook-qa-tools-tls`, apart from
+the host's certificate, the Secret `ingress.tls.aliasSecretName` names, apart from
 `qa-tools-tls`. Its routers are ranked as the first host's: the frontend's `/`
 is 46 characters there, `/s/` 48, `/ws/` and `/mcp` 49, `/api/` 50.
 
@@ -989,7 +989,7 @@ connection. A sender's TCP FIN or TLS `close_notify` reaches the backend as a
 FIN, which aborts a request not yet answered: such a sender gets no answer, and
 a wait for a configured delay is cancelled (D105, D109, D187). Its HTTP layer — header rewriting, path normalisation,
 `readTimeout`, `Accept-Encoding` — never sees a webhook. Its certificate is a
-cert-manager `Certificate` of its own, into the Secret `hook-qa-tools-tls`,
+cert-manager `Certificate` of its own, into the Secret `receive.tlsSecretName` names,
 from the same ClusterIssuer; the HTTP-01 challenge is answered on `web`, where
 the entry point's redirect is kept at priority 100 so that cert-manager's
 solver route, whose rule is longer, wins. All of it is in
@@ -1129,8 +1129,10 @@ its rule lists, what its tests read, which the job checks by recording it
 (D241). Among the quick ones, since 1.19.15 (#375),
 `scripts/private-names.test.mjs` fails when a tracked file outside
 `CHANGELOG.md` names a file of the QA Tools project that is not published,
-or production's CI runner or hosting provider, naming the file, the line and
-the name; its allow-list holds `.gitignore`'s entries, the check's own list,
+or production's CI runners, hosting provider, backup bucket and directory or
+heartbeat host, a runner's build directory `runner-<token>-project-…`
+included (#397), naming the file, the line and the name; its allow-list
+holds `.gitignore`'s entries, the check's own list,
 the changelog check's test of a private path it refuses and, until #330
 moves them out of this repository, the operator's own texts with their test
 and the build check that refuses those names with its test, and an entry

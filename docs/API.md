@@ -1,4 +1,4 @@
-# QA Tools — API Contract
+# Webhook Inspector — API Contract
 
 This file is the normative contract: the order of the checks, the rationale and
 the decisions behind every answer. Its public projection is
@@ -15,8 +15,8 @@ The description covers every route under `/api` and the receiver `/s/{sessionId}
 It leaves out the probes, which are not public (D086), the MCP server `/mcp`,
 a JSON-RPC protocol whose own `tools/list` describes it (D203), and the WebSocket
 `/ws/{sessionId}`, which OpenAPI cannot express: its `info.description`
-describes the socket for clients on its own, without pointing here, since the
-repository is private (D155). Its `info.title` is `Webhook Inspector API`, the
+describes the socket for clients on its own, without pointing here, as a
+complete reference (D155). Its `info.title` is `Webhook Inspector API`, the
 service's own name, which `/docs` shows as its heading; its introduction names
 the service Webhook Inspector where it means the service — the API, whether it
 is up, what it sends and the address it answers on — and keeps QA Tools where

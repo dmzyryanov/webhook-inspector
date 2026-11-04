@@ -1,9 +1,9 @@
-# QA Tools — Product Specification
+# Webhook Inspector — Product Specification
 
 ## Product
 **Name:** Webhook Inspector, a service of the QA Tools platform: since v1.18.0 its interface, tab titles, `/docs`, the changelog, `llms.txt` and the API description's title name it so, and QA Tools stays the platform's and the operator's name (issue #322, D277)  
 **Domain:** `qa-tools.ru`; Webhook Inspector also answers on `webhook.qa-tools.ru` since v1.16.0, the same site closed to search, and moves there on day X, the date the changelog's 1.16.0 entry gives, when `qa-tools.ru` becomes the QA Tools platform's main page (#319, D275); since v1.17.0 a banner on the old address carries a browser's sessions there ([Moving to webhook.qa-tools.ru](#moving-to-webhookqa-toolsru), #321, D276)  
-**Version:** v0.1  
+**Version:** the one in `VERSION`, each version's changes in [`CHANGELOG.md`](../CHANGELOG.md); the specification began with v0.1, the version some sections below still name  
 **Initial tool:** Webhook Inspector
 
 Webhook Inspector is the QA Tools service for QA engineers and developers who test webhooks: generate a temporary URL and inspect incoming HTTP requests in real time. It is designed for the desktop first and usable on tablets and phones. The first version lets a user instantly generate a temporary HTTP endpoint, send requests to it, and inspect incoming requests in a browser in real time.

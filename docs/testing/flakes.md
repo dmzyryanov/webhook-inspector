@@ -5093,9 +5093,9 @@ numbers.
 
 On CI, in merge request pipeline 3020296935 of !6 (#344, head `d3b643f`,
 its backend that of `main` at `7c9c5cb`, 1.19.6), the retried `test` job
-17683749912, on 2026-11-03 at 01:22 UTC, on the project runner (its log:
-`runner-jqrma5oev-project-88390528-concurrent-0`, an AMD EPYC 9655, image
-`node:24-slim`):
+17683749912, on 2026-11-03 at 01:22 UTC, on the project runner (its log
+names it `runner-<token>-project-<project>-concurrent-0`, the token being the
+runner's; an AMD EPYC 9655, image `node:24-slim`):
 
 ```text
 ✖ holds at most the bound for a client that reads none of its answers, and delivers them all once it reads (1006.713077ms)
@@ -5179,14 +5179,13 @@ connections raise it, so that it changes from run to run and from one
 suite of the file to the next, is inferred, not traced.
 
 In this change's first merge request pipeline, 3027422805 at `ba00a11`,
-the `test` job 17737857125 ran on the same runner,
-`runner-jqrma5oev-project-88390528-concurrent-0`, in the same
-`node:24-slim` image, by its digest, as 17683749912, and the diagnostic
-line read in both suites `the kernel took 41 of 224 answers (tcp_wmem up
-to 4194304 bytes, tcp_rmem up to 6291456)`: Linux's defaults, with which
-the kernel cannot take 200 answers whole. If the runner's sizes were the
-same on 2026-11-03, and nothing records a change, the second way cannot
-have failed the case there.
+the `test` job 17737857125 ran on the same runner, by the name its log
+gives, in the same `node:24-slim` image, by its digest, as 17683749912,
+and the diagnostic line read in both suites `the kernel took 41 of 224
+answers (tcp_wmem up to 4194304 bytes, tcp_rmem up to 6291456)`: Linux's
+defaults, with which the kernel cannot take 200 answers whole. If the
+runner's sizes were the same on 2026-11-03, and nothing records a change,
+the second way cannot have failed the case there.
 
 ### The fix
 

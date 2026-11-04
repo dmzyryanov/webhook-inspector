@@ -309,8 +309,8 @@ delivery-checks:
     # variable QA_TOOLS_RUNNER_TAG and without it (D258). The private-names
     # test reads every tracked file and fails one outside CHANGELOG.md that
     # names a file of the QA Tools project that is not published, or
-    # production's CI runner or hosting provider, but where its list allows
-    # it (#375).
+    # production's CI runners, hosting provider, backup storage or heartbeat
+    # host, but where its list allows it (#375, #397).
     # Three bounds, each above the one inside it (#122, D190): every test has
     # 5 minutes (`--test-timeout`; the two backup files set the same), after
     # which it fails by name and its file goes on; the whole run has 25

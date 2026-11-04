@@ -875,32 +875,36 @@ function firstScript(job, marker) {
 const DEPLOY_SCRIPT = firstScript('deploy', 'helm upgrade --install');
 
 /**
- * Production's CI/CD variables as set and read back on 2026-11-03 (#367;
- * their record is the operator's, outside this repository), the runner's
- * own and the recipient key given as a stand-in's file: with these the deploy
- * job gives the chart production's values, the frontend image names
- * production's operator, and the jobs land on production's runners.
+ * Production's CI/CD variables (#367): every one it sets, with its public
+ * origins and operator settings as they are, and made-up values in place of
+ * the rest — the runners' tags, the Secrets' names, the database role and
+ * database, the backup's directory, bucket, endpoint and region, and the
+ * heartbeat's address — whose real values are the operator's record, outside
+ * this repository (#397); the runner's own and the recipient key given as a
+ * stand-in's file. With these the deploy job gives the chart each variable's
+ * value, the frontend image names production's operator, and the jobs land
+ * on the runners the tags name.
  */
 const PRODUCTION = Object.freeze({
   CI_REGISTRY_IMAGE: 'registry.gitlab.com/qa-tools-team/webhook-inspector',
   CI_COMMIT_SHA: 'a'.repeat(40),
-  QA_TOOLS_RUNNER_TAG: 'qa-tools-ci',
-  DEPLOY_RUNNER_TAG: 'qa-tools-vps',
+  QA_TOOLS_RUNNER_TAG: 'example-ci',
+  DEPLOY_RUNNER_TAG: 'example-deploy',
   DEPLOY_APP_ORIGIN: 'https://qa-tools.ru',
   DEPLOY_RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
   DEPLOY_APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
-  DEPLOY_ALIAS_TLS_SECRET: 'webhook-qa-tools-tls',
-  DEPLOY_RECEIVE_TLS_SECRET: 'hook-qa-tools-tls',
-  DEPLOY_POSTGRES_USER: 'qa_tools',
-  DEPLOY_POSTGRES_DATABASE: 'qa_tools',
-  DEPLOY_BACKUP_HOST_PATH: '/var/backups/qa-tools/nightly',
-  DEPLOY_BACKUP_BUCKET: 'qa-tools-backups',
-  DEPLOY_BACKUP_ENDPOINT: 'https://storage.yandexcloud.net',
-  DEPLOY_BACKUP_REGION: 'ru-central1',
-  DEPLOY_BACKUP_SECRET: 'qa-tools-offsite-backup',
+  DEPLOY_ALIAS_TLS_SECRET: 'second-host-tls',
+  DEPLOY_RECEIVE_TLS_SECRET: 'receive-host-tls',
+  DEPLOY_POSTGRES_USER: 'example_role',
+  DEPLOY_POSTGRES_DATABASE: 'example_data',
+  DEPLOY_BACKUP_HOST_PATH: '/srv/example-backups/nightly',
+  DEPLOY_BACKUP_BUCKET: 'example-offsite-copies',
+  DEPLOY_BACKUP_ENDPOINT: 'https://objects.example',
+  DEPLOY_BACKUP_REGION: 'example-region-2',
+  DEPLOY_BACKUP_SECRET: 'example-offsite-key',
   DEPLOY_BACKUP_RECIPIENT_KEY: RECIPIENT_PATH,
-  DEPLOY_HEARTBEAT_URL: 'https://hb.statuser.cloud',
-  DEPLOY_HEARTBEAT_SECRET: 'qa-tools-statuser',
+  DEPLOY_HEARTBEAT_URL: 'https://beats.example',
+  DEPLOY_HEARTBEAT_SECRET: 'example-heartbeat-tokens',
   DEPLOY_STATUS_PAGE_URL: 'https://status.qa-tools.ru/',
   DEPLOY_CONTACT_EMAIL: 'contact@qa-tools.ru',
   DEPLOY_OPERATOR_TEXTS: 'true',
@@ -971,7 +975,7 @@ const fileDocuments = (result, file) =>
 
 const PRODUCTION_RUN = deployJob(PRODUCTION);
 
-test("the deploy job gives helm production's values from the CI/CD variables, and the chart renders production's names with them (#367, criterion 3)", () => {
+test("the deploy job gives helm each of production's CI/CD variables, and the chart renders their values (#367, criterion 3)", () => {
   assert.deepEqual(PRODUCTION_RUN, {
     status: 0,
     output: '',
@@ -995,27 +999,27 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
       '--set-string',
       'ingress.aliasHost=webhook.qa-tools.ru',
       '--set-string',
-      'ingress.tls.aliasSecretName=webhook-qa-tools-tls',
+      'ingress.tls.aliasSecretName=second-host-tls',
       '--set-string',
-      'receive.tlsSecretName=hook-qa-tools-tls',
+      'receive.tlsSecretName=receive-host-tls',
       '--set-string',
-      'postgres.user=qa_tools',
+      'postgres.user=example_role',
       '--set-string',
-      'postgres.database=qa_tools',
+      'postgres.database=example_data',
       '--set-string',
-      'backup.hostPath=/var/backups/qa-tools/nightly',
+      'backup.hostPath=/srv/example-backups/nightly',
       '--set-string',
-      'backup.offsite.bucket=qa-tools-backups',
+      'backup.offsite.bucket=example-offsite-copies',
       '--set-string',
-      'backup.offsite.endpoint=https://storage.yandexcloud.net',
+      'backup.offsite.endpoint=https://objects.example',
       '--set-string',
-      'backup.offsite.region=ru-central1',
+      'backup.offsite.region=example-region-2',
       '--set-string',
-      'backup.offsite.existingSecret=qa-tools-offsite-backup',
+      'backup.offsite.existingSecret=example-offsite-key',
       '--set-string',
-      'alerts.heartbeatUrl=https://hb.statuser.cloud',
+      'alerts.heartbeatUrl=https://beats.example',
       '--set-string',
-      'alerts.existingSecret=qa-tools-statuser',
+      'alerts.existingSecret=example-heartbeat-tokens',
       '--set-file',
       `backup.offsite.recipientKey=${RECIPIENT_PATH}`,
       '--wait',
@@ -1039,12 +1043,12 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
     ],
     [
       { hosts: ['qa-tools.ru'], secretName: 'qa-tools-tls' },
-      { hosts: ['webhook.qa-tools.ru'], secretName: 'webhook-qa-tools-tls' },
+      { hosts: ['webhook.qa-tools.ru'], secretName: 'second-host-tls' },
     ],
   );
   assert.deepEqual(
     find(documents, 'Certificate', 'qa-tools-receive').spec.secretName,
-    'hook-qa-tools-tls',
+    'receive-host-tls',
   );
   assert.deepEqual(find(documents, 'Certificate', 'qa-tools-receive').spec.dnsNames, [
     'hook.qa-tools.ru',
@@ -1052,7 +1056,7 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
   assert.deepEqual(
     [envOf(backend).DATABASE_URL, envOf(backend).POSTGRES_PASSWORD.secretKeyRef.name],
     [
-      'postgres://qa_tools:$(POSTGRES_PASSWORD)@qa-tools-postgres:5432/qa_tools',
+      'postgres://example_role:$(POSTGRES_PASSWORD)@qa-tools-postgres:5432/example_data',
       'qa-tools-postgres',
     ],
   );
@@ -1062,10 +1066,10 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
   );
   assert.deepEqual(
     [envOf(postgres).POSTGRES_USER, envOf(postgres).POSTGRES_DB],
-    ['qa_tools', 'qa_tools'],
+    ['example_role', 'example_data'],
   );
-  assert.ok(postgres.args.includes('cron.database_name=qa_tools'));
-  assert.equal(backup.volumes[0].hostPath.path, '/var/backups/qa-tools/nightly');
+  assert.ok(postgres.args.includes('cron.database_name=example_data'));
+  assert.equal(backup.volumes[0].hostPath.path, '/srv/example-backups/nightly');
   assert.deepEqual(
     backup.initContainers.map((each) => each.name),
     ['db-backup-notify', 'db-backup-offsite'],
@@ -1075,7 +1079,7 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
       envOf(backup.initContainers[0]).NOTIFY_HEARTBEAT_URL,
       envOf(backup.initContainers[0]).NOTIFY_TOKEN.secretKeyRef.name,
     ],
-    ['https://hb.statuser.cloud', 'qa-tools-statuser'],
+    ['https://beats.example', 'example-heartbeat-tokens'],
   );
 
   const uploader = envOf(backup.initContainers[1]);
@@ -1087,9 +1091,9 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
       uploader.OFFSITE_REGION,
       uploader.OFFSITE_DATABASE,
     ],
-    ['qa-tools-backups', 'https://storage.yandexcloud.net', 'ru-central1', 'qa_tools'],
+    ['example-offsite-copies', 'https://objects.example', 'example-region-2', 'example_data'],
   );
-  assert.equal(uploader.OFFSITE_ACCESS_KEY_ID.secretKeyRef.name, 'qa-tools-offsite-backup');
+  assert.equal(uploader.OFFSITE_ACCESS_KEY_ID.secretKeyRef.name, 'example-offsite-key');
   assert.equal(
     find(documents, 'ConfigMap', 'qa-tools-db-backup').data['db-backup-recipient.asc'],
     readFileSync(RECIPIENT_PATH, 'utf8').trimEnd(),
@@ -1104,8 +1108,8 @@ test("the deploy job gives helm production's values from the CI/CD variables, an
     [
       'https://qa-tools.ru',
       'https://hook.qa-tools.ru',
-      'https://hb.statuser.cloud',
-      'qa-tools-statuser',
+      'https://beats.example',
+      'example-heartbeat-tokens',
     ],
   );
 });
@@ -1675,12 +1679,14 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
   for (const file of ['.gitlab-ci.yml', ...filesUnder('deploy')]) {
     const text = readFileSync(join(ROOT, file), 'utf8');
 
-    assert.doesNotMatch(text, /qa-tools\.ru|statuser|yandexcloud|qa-tools-backups/i, file);
-    assert.doesNotMatch(text, /qa-tools-ci|qa-tools-vps/, file);
+    assert.doesNotMatch(text, /qa-tools\.ru|statuser|yandexcloud/i, file);
+    assert.doesNotMatch(text, /qa-tools-ci/, file);
   }
   // The validate stage's `chart` job looks for those names in a render, so
   // it holds them as its pattern; not as runner tags.
-  assert.doesNotMatch(validate, /qa-tools-ci|qa-tools-vps/);
+  assert.doesNotMatch(validate, /qa-tools-ci/);
+  // Production's bucket and deploy runner's tag, which these patterns named
+  // too, scripts/private-names.test.mjs refuses in every tracked file (#397).
 
   // The address, from the variables, for the image builds and the smoke under
   // the names the backend reads; the test jobs' backend expects those unset,
@@ -2570,7 +2576,7 @@ test("the second site host: two Ingresses of its own with the first host's paths
     [aliasApi.hosts, aliasSite.hosts, aliasApi.tlsHosts, aliasSite.tlsHosts],
     [[aliasHost], [aliasHost], [aliasHost], [aliasHost]],
   );
-  assert.equal(aliasSite.secretName, 'webhook-qa-tools-tls');
+  assert.equal(aliasSite.secretName, 'second-host-tls');
   assert.equal(aliasApi.secretName, aliasSite.secretName);
   for (const first of [api, site]) {
     assert.deepEqual(first.hosts, [host]);
