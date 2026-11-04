@@ -24,12 +24,13 @@ const MINUTE = RATE_LIMIT_WINDOW_SECONDS * 1000;
 /**
  * Milliseconds a counter may take for 100,000 calls of distinct addresses,
  * the fastest of up to five runs (`withinBound`, D203): 1000. The calls take
- * 59 to 94 ms alone and up to 138 ms beside the full backend suite and eight
+ * 59 to 74 ms alone and up to 184 ms beside the full backend suite and eight
  * busy loops (F-07, After #378). Their keys are made before the counter is
- * timed: `addressKey` on the same addresses takes 2.7 to 3.2 s alone, and
- * held with the calls to the 5000 ms of before #378 failed under that load.
- * A counter that walks its whole map on every call, F-07's mutation, takes
- * 8.4 s for 40,000 and grows as their square: over the bound on every run.
+ * timed: with `addressKey` on the same addresses, as until #378, a run took
+ * 2.7 to 2.9 s alone and 3.6 to 7.1 s under that load, over the 5000 ms of
+ * then in 10 of 15 rounds. A counter that walks its whole map on every
+ * call, F-07's mutation, takes 8.4 s for 40,000 calls and 63 s for the
+ * 100,000: over the bound on every run.
  */
 const COUNTER_BOUND_MS = 1_000;
 

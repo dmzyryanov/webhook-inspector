@@ -61,14 +61,15 @@ const MIB = 1024 * 1024;
  * each webhook - admitted, waiting or refused - before it returns, so a run
  * times that and not the reading of the 100,000 answers, a promise and a
  * turn each, which the one run these checks held to 5 s until #378 timed
- * too: 1.1 to 5.4 s alone, up to 14 s beside the full backend suite and
+ * too: over 2 s alone and up to 18 s beside the full backend suite and
  * eight busy loops (F-27). The admissions take 138 to 227 ms alone and up to
- * 589 ms under that load. Choosing the next by looking at every waiter of
+ * 648 ms under that load. Choosing the next by looking at every waiter of
  * the line rather than each address's first takes 3.4 s or more on the
- * 4,033 waiters of #242's flood, and weighing the line by summing its
- * waiters 8.5 s: over the bound on every run. On one address's line of
- * 1,008 waiters the same take 1.0 and 0.4 s, and searching that line for
- * each one refused 0.2 s: under it, given up there.
+ * 4,033 waiters of #242's flood, weighing the line by summing its waiters
+ * 8.5 s, and walking every webhook ever sent at each admission 17 s: over
+ * the bound on every run. On one address's line of 1,008 waiters the first
+ * two take 1.0 and 0.4 s, and searching that line for each one refused
+ * 0.2 s: under it, given up there.
  */
 const FLOOD_BOUND_MS = 1_500;
 

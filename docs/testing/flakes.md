@@ -1005,11 +1005,16 @@ On the unchanged `scripts/db.mjs` the file holds 16 tests at `410a0dc` and at
 ## F-07 — `counts 100,000 distinct addresses quickly`
 
 - **Test**: `apps/backend/src/modules/limits/rate-limit.test.ts:383` at
-  `4e69009`, `:384` after the fix. Issue #161.
+  `4e69009`, `:384` after the fix, `:388` at `a801d46`. Issue #161; issue
+  #378.
 - **Status**: fixed in the test on `fix/rate-limit-timing-flake`, at `54f8bcf`.
   `rate-limit.ts` and `testing/timing.ts` were not changed, and the limiter was
   not at fault: the same loop takes about 1.6 s on its own, and the mutation
   below, which makes it quadratic, about a minute.
+- **Since #378**: `:401`, its keys made before the counter is timed, held to
+  `COUNTER_BOUND_MS`, 1000 ms, on `chore/flood-check-bounds-378` at
+  `c83acfd` (After #378). `rate-limit.ts` and `testing/timing.ts` were not
+  changed; VERSION kept.
 
 ### The failure
 
@@ -1204,6 +1209,54 @@ second timing pattern beside F-04's.
   count. Whether a failure in a lost tail would still fail the run was not
   checked. Issue #160 answered it and dropped the flag from the backend: see
   F-14.
+
+### After #378
+
+The check failed again under load once the agents' server ran several
+tasks' suites side by side: in #363's tester's run, `took 7149.9 ms at best
+in 5 runs, over the 5000 ms bound`; in one of #355's thirteen, `took
+5146.9 ms` (F-26); in all eight of #377's loaded runs and two of its
+tester's three (F-24, After #377). Nearly all of each run was the making of
+the keys: `addressKey` parses each of the 100,000 addresses with
+`ipaddr.js`, and the counter, which the check is for, took 2 to 3% of the
+run alone.
+
+On 2026-11-04 from 05:12 to 05:40 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2, a `node:test` file outside the tree
+ran rounds of five runs of the check as it was, the keys made and counted
+in each run, and five of the counter alone, its keys made before it. Under
+load is beside `node scripts/db.mjs task-test 378`, the full backend suite,
+eight busy loops, `node -e 'for(;;){}'`, and F-27's series, in F-27's five
+runs of the suite. Min, median and max of the rounds, in ms:
+
+| beside | load | rounds | as it was, first run | as it was, fastest of five | the counter alone, first run | fastest of five |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.4 to 2.1 | 4 | 2713.0 / 2871.1 / 3203.3 | 2666.2 / 2862.7 / 2930.0 | 67.5 / 78.6 / 94.4 | 58.7 / 64.7 / 73.8 |
+| the suite, eight loops and F-27's series | 1.5 to 23.1 | 15 | 5088.0 / 7220.3 / 10498.8 | 3580.2 / 6478.0 / 7052.0 | 101.5 / 230.4 / 666.0 | 64.5 / 112.5 / 183.9 |
+
+As it was, the fastest of five was over 5000 ms in 10 of the 15 loaded
+rounds, and 65 of its 75 runs were. The counter alone took 666 ms at most
+in a round's first run.
+
+The mutation above, `#dropEnded`'s `return` made `continue`, written into
+`rate-limit.ts` for a run and taken out after it, the keys made before, one
+run each with nothing beside it: 5,000 calls took 153.2 ms, 10,000
+535.5 ms, 20,000 1945.6 ms and 40,000 8369.1 ms, four times for each
+doubling; without it 6.3 to 21.6 ms up to 40,000 and 78.6 ms at 100,000.
+With it the file at the fix, `node scripts/db.mjs task-test 378 --
+src/modules/limits/rate-limit.test.ts`, at a load of 1.3 to 1.4, gave
+`ℹ tests 22`, `ℹ pass 21`, `ℹ fail 1`, exit 1: this test, `took 63388.7 ms
+at best in 5 runs, over the 1000 ms bound`, after 326 s; the file's three
+other tests of 100,000 addresses passed, as in F-07's mutation above.
+
+The fix, in `rate-limit.test.ts` only, `c83acfd`: the 100,000 keys are made
+before the counter is timed, and `withinBound` holds its 100,000 calls to
+`COUNTER_BOUND_MS`, 1000 ms (`:35`, the test at `:401`): 5.4 times the
+slowest loaded fastest of five above, 184 ms, and 1.5 times the slowest
+loaded first run, 666 ms, while the mutation's calls took 63 s at best.
+`addressKey` keeps the file's checks of its own on hostile values, each
+held to 100 ms. The test passed in all five of F-27's loaded runs of
+the suite, in 7.0 to 9.9 s with the making of its keys.
 
 ## F-08 — `names the step in request.received and response.recorded, and none for the session response`
 
@@ -4107,10 +4160,12 @@ The scripts are not kept in the tree.
 - `parseMessage` on `[` growing faster than its size up to 4 MiB, above: in
   V8's own JSON.parse, and `/mcp` takes a body of 1 MiB at most.
 - `capture-budget.test.ts:1490` in the loaded run above; not this issue's.
+  Since #378, F-27.
 - In #377's eight loaded runs, `rate-limit.test.ts:388` in all eight,
   `capture-budget.test.ts:960` in six, `:1490` in five,
   `access-key.test.ts:264` in two and `:473` in one, over their bounds on
-  time; not #377's.
+  time; not #377's. Since #378, F-27 and F-07, After #378, for the first
+  three.
 - In three more loaded runs, by #377's tester at `2c636d7`,
   `capture-budget.test.ts:960` in three, `rate-limit.test.ts:388` in two,
   `capture-budget.test.ts:1490` in one, and in one
@@ -4575,4 +4630,189 @@ and its text form with `7836.5 ms for 2097152 characters`.
   `src/modules/limits/rate-limit.test.ts:388`, `took 5146.9 ms at best in 5
   runs, over the 5000 ms bound`; and
   `src/modules/requests/request-wait.test.ts:900`, `answered after 5001 ms`.
-  Its load was the frontend suite's; not this entry's.
+  Its load was the frontend suite's; not this entry's. Since #378, F-27
+  for the two of `capture-budget.test.ts` and F-07, After #378, for
+  `rate-limit.test.ts:388`.
+
+## F-27 — `refuses 100,000 webhooks of one address at once quickly once its line is full, and lets the others in` and `gives a flooder of 81 KiB webhooks on any number of connections no more of the reserve than a light sender may hold, and leaves the rest to another sender`
+
+- **Test**: `apps/backend/src/modules/webhook/capture-budget.test.ts:960` and
+  `:1490` at `a801d46`, the base of the fix, each holding one wall-clock run
+  of its flood to 5000 ms: `refusing the flood took too long` (`:972`) and
+  `weighing the flood took too long` (`:1502`). Issue #378, from the review
+  of #363. At the fix `:978` and `:1513`, held through `withinBound` to
+  `FLOOD_BOUND_MS` (`:74`); at `c83acfd`, the same checks, a line before.
+- **Status**: fixed in the tests on `chore/flood-check-bounds-378`, at
+  `c83acfd`: each check holds the admissions of its flood alone, the fastest
+  of up to five runs, to 1500 ms. `capture-budget.ts` and
+  `testing/timing.ts` were not changed; VERSION kept. `rate-limit.test.ts`'s
+  `counts 100,000 distinct addresses quickly`, which failed beside them, was
+  changed in the same commit: F-07, After #378.
+
+### The failure
+
+Never in a run of the file alone; in whole runs of the backend suite on the
+agents' server while other work ran beside it:
+
+- #363's developer, F-24's measurement, on 2026-11-02: the suite beside
+  eight busy loops at a load of 9.5 to 17.2, `ℹ tests 3407`, `ℹ pass 3406`,
+  `ℹ fail 1`, `:1490` with `weighing the flood took too long`.
+- #363's tester under the same kind of load, up to about 18.5: 3,404
+  passed, 3 failed, both checks and `rate-limit.test.ts:388` (F-07).
+- #355's developer on 2026-11-03, thirteen runs beside the frontend suite at
+  a load of 2.1 to 20.7 (F-26, Watched, and left): `:960` in nine, `:1490`
+  in one.
+- #377's eight runs beside eight busy loops and a series on 2026-11-04
+  (F-24, After #377): `:960` in six, `:1490` in five; and #377's tester's
+  three: `:960` in three, `:1490` in one.
+
+### The mechanism
+
+One run of a span that held two things: the 100,000 calls of `admit`, each
+of which decides its webhook - admitted, left waiting or refused - before
+it returns, and the reading of the 100,000 answers through
+`settledOrPending`, a `Promise.race` and a `setImmediate` each, which the
+test needs only to see what each was answered. The reading is most of the
+span. In the file's own run at the base, with a line written after each
+span and taken out after the run, the spans took 2.2 and 2.7 s for `:960`
+and 2.1 and 3.1 s for `:1490`, alone; the admissions alone, timed the same
+way in the fix's form, 197 to 326 ms and 230 to 291 ms. So 5000 ms left the
+span 1.6 to 2.3 times its own time, and one run decided: a load that slowed
+the file's process by more than that failed it, whatever the budget did.
+
+### The measurement
+
+On 2026-11-04 from 05:10 to 05:41 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2. A `node:test` file outside the tree,
+so that the promises are made under the test runner as in the suite, ran
+rounds of both checks against the tree's `capture-budget.ts`: once the span
+the base timed, on a budget of its own, and then the fix's form, the
+100,000 admissions of `:960` five times on one budget and those of `:1490`
+five times, each on a budget flooded before; the first run and the fastest
+of the five, which `withinBound` holds to its bound when every run is over
+it. Under load is beside `node scripts/db.mjs task-test 378`, the full
+backend suite, eight busy loops, `node -e 'for(;;){}'`, and a series of
+F-07's check in a process of its own, in the five runs of the suite below.
+Min, median and max of the rounds, in ms:
+
+| beside | load | rounds | `:960`, the base's span | `:1490`, the base's span | `:960`, first run | `:960`, fastest of five | `:1490`, first run | `:1490`, fastest of five |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.6 to 2.1 | 10 | 1080.3 / 2296.9 / 5411.8 | 1548.7 / 1830.7 / 4666.5 | 138.5 / 164.7 / 248.9 | 138.5 / 155.7 / 172.1 | 158.4 / 194.3 / 282.6 | 147.9 / 169.0 / 227.1 |
+| the suite, eight loops and F-07's series | 1.5 to 24.3 | 38 | 2248.5 / 4250.0 / 16579.3 | 3067.4 / 4920.9 / 17976.2 | 223.1 / 524.3 / 883.7 | 188.1 / 342.6 / 647.5 | 291.2 / 568.1 / 1214.3 | 188.9 / 379.4 / 647.7 |
+
+Under load the base's span was over 5000 ms in 16 of the 38 rounds for
+`:960` and 18 for `:1490`; the fastest of five admissions never over
+648 ms. One run of the admissions alone was not enough either: of the 190
+loaded runs of each, 15 of `:960` and 17 of `:1490` took over 1500 ms, up
+to 5662.6 and 7534.3 ms, and with nothing beside them 3 of 50 of `:1490`, up
+to 2128.7 ms. Why is not measured; that the series' process, which keeps
+more of what each run leaves than the file's does, collects for longer is
+an inference. The base's span over 5000 ms with nothing beside it,
+5411.8 ms, was the series'; in the file's own runs, above, it took 2.1 to
+3.1 s.
+
+The full suite under that load, at the fix's checks, one run beside each
+loaded series above; whole tests in s, their reading and, for F-07's, the
+making of its keys included:
+
+| run | tree | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | `:960` | `:1490` | F-07's |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `c83acfd`'s checks before its commit, `FLOOD_BOUND_MS` at 5000 | 1.5 to 21.4 | 3423 | 3423 | 0 | 6.4 | 6.2 | 9.9 |
+| 2 | `c83acfd` | 4.1 to 20.9 | 3423 | 3423 | 0 | 7.9 | 5.4 | 8.1 |
+| 3 | `c83acfd` | 15.7 to 20.6 | 3423 | 3423 | 0 | 6.3 | 6.3 | 7.3 |
+| 4 | `c83acfd` | 15.5 to 21.4 | 3423 | 3421 | 2: `access-key.test.ts:264` and `:473`, over their 100 ms | 6.2 | 5.8 | 9.2 |
+| 5 | `c83acfd` | 15.7 to 19.4 | 3423 | 3423 | 0 | 8.6 | 6.7 | 7.0 |
+
+Both checks passed in all five, 0 of 5 (Wilson 95% 0%–43.4%); the
+fastest of five admissions in all 38 loaded rounds of the series was under
+1500 ms, 0 of 38 (0%–9.2%). At the base the same kind of load failed `:960`
+in nine of #355's thirteen runs and six of #377's eight.
+
+### The mutations
+
+Three of them undo what a comment in `createCaptureBudget` says the code
+avoids - choosing the next with more than one look an address, weighing
+one more waiter at a cost per waiter, a search of the line for each one
+refused - and a fourth makes the cost grow with the flood itself. Each
+was written into `capture-budget.ts` for a run and taken out after it with
+`git checkout --`, never committed:
+
+- every waiter: choosing the next looks at every waiter of every address's
+  line, each address's first found by passing over those of an address
+  already seen, where `admitWaiting` looks at each address's first alone;
+- sum the line: the line's weight is summed over its waiters, the address's
+  and the process's, at every admission that must wait, where it is kept
+  beside the queues;
+- search the line: a webhook the line has no room for is searched for from
+  the front of its address's line, where `remove` looks at the last first;
+- every arrival: each admission walks a list of every webhook the budget was
+  ever given, refused ones included, so that a flood of n costs n².
+
+The series above with nothing beside it, at a load of 1.0 to 1.8, two
+rounds of each, the fastest of five in ms; for every arrival, whose runs
+on one budget each take longer than the last, one run of each check, by a
+second file of the same kind at a load of 1.4 to 1.6. Then the file, the
+fix's checks, `node scripts/db.mjs task-test 378 --
+src/modules/webhook/capture-budget.test.ts`, after the loaded runs, at a
+load falling from 13.8 to 3.8, and for every arrival at 1.2 to 1.4:
+
+| the mutation | `:960` | `:1490` | the file with it |
+| --- | --- | --- | --- |
+| none, the ten rounds above | 138.5 to 172.1 | 147.9 to 227.1 | `ℹ tests 50`, `ℹ pass 50` |
+| every waiter | 956.0 and 1061.2 | 3448.9 and 3825.8 | `ℹ pass 49`, `ℹ fail 1`, exit 1: `:1490`, `took 3398.1 ms at best in 5 runs, over the 1500 ms bound`; `:960` passed |
+| sum the line | 382.3 and 366.8 | 8507.1 and 9076.2 | `ℹ pass 49`, `ℹ fail 1`, exit 1: `:1490`, `took 8794.2 ms at best in 5 runs, over the 1500 ms bound`; `:960` passed |
+| search the line | 220.0 and 218.0 | 156.5 and 203.1 | `ℹ pass 50`, exit 0 |
+| every arrival | one run, 18108.6 | one run, 34329.3 | the two checks alone, by `--test-name-pattern`: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1: `:960`, `took 16987.3 ms at best in 5 runs, over the 1500 ms bound`, after 1030 s, its later runs on the same budget slower; `:1490`, `took 31905.2 ms at best`, after 184 s |
+
+Every arrival grows as the flood's square: one run of `:960` took 399.6,
+1252.0, 4909.8 and 18108.6 ms for floods of 12,500, 25,000, 50,000 and
+100,000, and `:1490` 599.4, 2266.3, 7855.2 and 34329.3 ms.
+
+The line of one address in `:960` holds 1,008 waiters, as the line's
+16 MiB of these webhooks allows; the four lines of `:1490` hold 4,032 and
+its sender's first one more. Looking at every waiter takes six to eight
+times the admissions' own time at 1,008 waiters and 15 to 26 times at
+4,033; summing the line 2.4 times and 37 to 61 times. So `:1490` fails
+both and `:960` neither: given up there, where every arrival, quadratic in
+the flood, fails. Searching one address's line for each one refused costs
+about 60 ms more over the 100,000, and `:1490`'s sender has one waiter: no
+check tells it apart, and at the base's 5000 ms none did.
+
+### The fix
+
+In the tests only, `c83acfd`. Each check holds the 100,000 calls of `admit`
+of its flood to `FLOOD_BOUND_MS`, 1500 ms, through `withinBound`, and reads
+their answers afterwards, untimed. `:960` makes its runs on one budget:
+each webhook refused leaves the line before `admit` returns, so a run
+leaves the budget as it found it. `:1490` gives each run a budget of its
+own, flooded before the run is timed: a run takes a light sender's bytes of
+the reserve. `flooded()` is split for it, `floodSent()` building the budget
+and asserting #242's flood without waiting, and `flooded()` sorting its
+answers as before; the five budgets, 26,000 admissions, are built before
+the first run. A check over the bound fails with `withinBound`'s `took …
+ms at best in 5 runs, over the 1500 ms bound`, no longer with its own
+message. `withinBound` fits as it is: the checks are asynchronous, but
+what they time is not, and `:1490`'s mocked `setTimeout` only holds the
+waiters' 30 s, which no run waits for. `testing/timing.ts` was not
+changed.
+
+1500 ms is 2.3 times the slowest fastest-of-five above, 648 ms, and 6.6
+times the slowest alone, 227 ms; the first quadratic reading, every waiter
+at `:1490`, takes 3.4 s, 2.3 times over it. 1000 ms would leave the loaded
+admissions 1.5 times, little room for a load that took them to 3.8 times
+their time alone; 2000 ms would leave every waiter at `:1490` 1.7 times.
+Each bound's comment in the file gives these numbers.
+
+### Watched, and left
+
+- `access-key.test.ts:264`, `answers made-up headers of 1048576 characters
+  at once`, `took 115.3 ms at best in 5 runs, over the 100 ms bound`, and
+  `:473`, `answer made-up handshakes of 1048576 characters under both
+  prefixes at once`, `took 116.2 ms`, in the fourth loaded run; F-24's and
+  F-26's runs saw them too. #378 left them out of scope.
+- `request-wait.test.ts:900`, `answered after 5001 ms` in one of #355's
+  runs (F-26), was not seen in the five runs above.
+- Searching one address's line for each one refused is told apart by
+  neither check, above.
+- The whole tests still take 5.4 to 8.6 s under that load, the reading of
+  their answers untimed, far from the suite's 120 s timeout.
