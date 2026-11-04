@@ -1257,7 +1257,8 @@ loaded first run, 666 ms, while the mutation's calls took 63 s at best.
 `addressKey` keeps the file's checks of its own on hostile values, each
 held to 100 ms. The test passed in all five of F-27's loaded runs of
 the suite, in 7.0 to 9.9 s with the making of its keys, and in the four
-of F-27's The lines, at `fa58d1d`, in 6.4 to 6.9 s.
+loaded runs of the suite under F-27's The lines, at `fa58d1d`, in 6.4 to
+6.9 s.
 
 ## F-08 — `names the step in request.received and response.recorded, and none for the session response`
 
@@ -4985,7 +4986,9 @@ numbers.
   long`: a failure of it would match this entry in a search, and is not
   this entry's. Seen and not changed: its refusals are synchronous calls,
   with no promise or turn to read, and the whole test, its 100,000
-  addresses too, took 0.38 to 0.74 s in the nine loaded runs above.
+  addresses too, took 0.38 to 0.74 s by the suite's own reading of each
+  test's duration in the nine loaded runs of the suite above, the five of
+  the first round and the four under The lines.
 - The whole tests take 8.8 to 11.1 s and 4.8 to 6.5 s under that load at
   `fa58d1d`, where they took 6.2 to 8.6 s and 5.4 to 6.7 s at `c83acfd`,
   the reading of their answers untimed: far from the suite's 120 s
