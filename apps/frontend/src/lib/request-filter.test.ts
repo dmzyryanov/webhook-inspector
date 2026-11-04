@@ -313,7 +313,7 @@ describe('a repeated word', () => {
   const SIZES = [16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024];
   /**
    * 4000 ms (#388): 3.3 times the slowest call of loaded suites, 1222 ms,
-   * most of a call under load being the 1000 rows' times, formatted anew at
+   * most of a call under load being the 1000 rows' texts, built anew at
    * every size; 3.3 times under matching every repeat of the word against
    * every row, 13.3 s alone at a megabyte.
    */
