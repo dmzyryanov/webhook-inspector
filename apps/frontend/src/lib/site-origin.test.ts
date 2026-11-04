@@ -14,10 +14,27 @@ import {
   relayScriptText,
   siteFiles,
 } from '../../scripts/build-site-files.mjs';
+import {
+  CHANGELOG_SOURCE,
+  changelogFeed,
+  changelogMarkdown,
+  type ChangelogEntry,
+  feedEntryId,
+  hasNotice,
+  isNoticeParagraph,
+  pageText,
+  parseChangelog,
+  readChangelog,
+  readFeedEntries,
+  renderChangelogBody,
+  siteEntries,
+} from '../../scripts/changelog.mjs';
+import { MOVE_DAY_SENTENCE, moveDay, moveSetting } from '../../scripts/move-setting.mjs';
 import { sha256Hex } from '../../scripts/relay-script.mjs';
 import {
   isProduction,
   nameSite,
+  namesSecondOrigin,
   parseSiteOrigin,
   PRODUCTION_ORIGINS,
   relayApiOrigin,
@@ -113,6 +130,26 @@ const SOURCES = [
 
 /** What is left of `text` that names production, outside the names kept. */
 const leftOver = (text: string) => text.replace(KEPT_PRODUCTION_NAMES, '').match(/qa-tools\.ru/gi);
+
+/** An origin as a changelog names it, ending where `nameSite()` reads a name to end. */
+const MOVED_ORIGIN = String.raw`(https?:\/\/[\w.:[\]-]+)`;
+const ORIGIN_END = String.raw`(?![\w:-]|\.[\w-])`;
+
+/**
+ * The ways a changelog's notice of a move says where from and where to,
+ * matched where both sides are one origin: as 1.16.0's came out in a build
+ * with no second origin before #343, `on <origin> and redirect to <origin>`
+ * and `<origin> instead of <origin>`, and `from <origin> to <origin>`.
+ */
+const SAME_ORIGIN_MOVES = [
+  new RegExp(String.raw`\bon ${MOVED_ORIGIN} and redirect to \1${ORIGIN_END}`, 'g'),
+  new RegExp(String.raw`${MOVED_ORIGIN} instead of \1${ORIGIN_END}`, 'g'),
+  new RegExp(String.raw`\bfrom ${MOVED_ORIGIN} to \1${ORIGIN_END}`, 'gi'),
+];
+
+/** Every place `text` names one origin on both sides of a move. */
+const sameOriginMoves = (text: string) =>
+  SAME_ORIGIN_MOVES.flatMap((pattern) => [...text.matchAll(pattern)].map(([found]) => found));
 
 /**
  * The time, 5 s, each size of a hostile-text loop below is held to. Every
@@ -795,6 +832,272 @@ describe('the files the build writes from public/ and the description', () => {
 });
 
 /**
+ * The changelog of a build with no second origin (#343). Such a build names
+ * the site's own origin where `CHANGELOG.md` names production's second
+ * (D275), so 1.16.0's notice of the move came out saying that the site's
+ * addresses stop answering on its origin and redirect to the same one.
+ * `readChangelog()`, which every output built from the changelog reads - the
+ * page, `changelog.md`, both feeds and the dev server's copies of them -
+ * leaves out of such a build every Breaking, Deprecated or Notice paragraph
+ * that names production's second origin, and nothing else; a build with a
+ * second origin, or production's, reads the source as it did before.
+ */
+describe('the changelog of a build with no second origin (#343)', () => {
+  const source = readFileSync(CHANGELOG_SOURCE, 'utf8');
+  const written = parseChangelog(source);
+
+  /** Builds with no second origin: a copy, a local one, one on a port of production's host, and day X's site. */
+  const NO_SECOND = [OTHER, LOCAL, PORTED, DAY_X];
+
+  /** Whether `text` names production's second origin: whether a second origin of a copy's own would change it. */
+  const namesTheSecond = (text: string) =>
+    renameProduction(text, OTHER) !== renameProduction(text, OTHER_ALIAS);
+
+  /** Whether a paragraph, as written, is one a build with no second origin leaves out. */
+  const leftOut = (paragraph: string) => isNoticeParagraph(paragraph) && namesTheSecond(paragraph);
+
+  /** The changelog as a build for `origins` read it before #343: the whole source named, then read. */
+  const readBefore = (origins: SiteOrigins) => parseChangelog(nameSite(source, origins));
+
+  /** An entry with only the paragraphs `keep` keeps, marked by what is left. */
+  const keeping = (entry: ChangelogEntry, keep: (paragraph: string, at: number) => boolean) => {
+    const paragraphs = entry.paragraphs.filter(keep);
+
+    return {
+      ...entry,
+      paragraphs,
+      breaking: paragraphs.some((paragraph) => paragraph.startsWith('**Breaking:**')),
+      deprecated: paragraphs.some((paragraph) => paragraph.startsWith('**Deprecated:**')),
+      notice: paragraphs.some((paragraph) => paragraph.startsWith('**Notice:**')),
+    };
+  };
+
+  const notices = (entries: ChangelogEntry[]) =>
+    entries.flatMap((entry) => entry.paragraphs.filter(isNoticeParagraph));
+
+  it('leaves out every notice that names production’s second origin, 1.16.0’s among them, and changes nothing else', () => {
+    const dropped = written.flatMap((entry) =>
+      entry.paragraphs.filter(leftOut).map((paragraph) => `${entry.version} ${paragraph}`),
+    );
+
+    assert.ok(
+      dropped.some((line) =>
+        line.startsWith(
+          "1.16.0 **Deprecated:** Webhook Inspector's addresses on https://qa-tools.ru — the API",
+        ),
+      ),
+      dropped.join('\n'),
+    );
+
+    for (const origins of NO_SECOND) {
+      const before = readBefore(origins);
+      const expected = before.map((entry, index) =>
+        keeping(entry, (_, at) => !leftOut(written[index]?.paragraphs[at] ?? '')),
+      );
+
+      assert.equal(before.length, written.length);
+      assert.deepEqual(readChangelog(CHANGELOG_SOURCE, origins), expected, origins.app);
+    }
+  });
+
+  it('publishes no notice naming one origin on both sides of a move, in the text, the page or either feed', () => {
+    for (const origins of NO_SECOND) {
+      const entries = readChangelog(CHANGELOG_SOURCE, origins);
+      const move = entries.find((entry) => entry.version === '1.16.0');
+      const ids = (kind: 'all' | 'breaking') =>
+        readFeedEntries(changelogFeed(entries, kind)).map((entry) => entry.id);
+
+      // Before #343 the notice moved the site to itself twice over.
+      assert.deepEqual(
+        sameOriginMoves(notices(readBefore(origins)).join('\n')),
+        [
+          `on ${origins.app} and redirect to ${origins.app}`,
+          `${origins.app} instead of ${origins.app}`,
+        ],
+        origins.app,
+      );
+      assert.deepEqual(sameOriginMoves(notices(entries).join('\n')), [], origins.app);
+      for (const text of [
+        changelogMarkdown(entries),
+        pageText(renderChangelogBody(entries)),
+        changelogFeed(entries, 'all'),
+        changelogFeed(entries, 'breaking'),
+      ]) {
+        assert.deepEqual(sameOriginMoves(text), [], origins.app);
+        assert.ok(!MOVE_DAY_SENTENCE.test(text), origins.app);
+      }
+
+      // 1.16.0 is no longer marked, so the breaking feed leaves it out;
+      // 1.19.0's notice of the old names, which names no host, stays.
+      assert.ok(move);
+      assert.equal(hasNotice(move), false);
+      assert.equal(entries.find((entry) => entry.version === '1.19.0')?.deprecated, true);
+      assert.ok(!ids('breaking').includes(feedEntryId('1.16.0')), origins.app);
+      assert.ok(ids('breaking').includes(feedEntryId('1.19.0')), origins.app);
+      assert.ok(ids('all').includes(feedEntryId('1.16.0')), origins.app);
+      // A build with no second origin has no move, so nothing reads day X from it (D276).
+      assert.equal(moveSetting(origins), null);
+    }
+  });
+
+  it('keeps every notice in a build with a second origin of its own, naming the two apart', () => {
+    for (const origins of [OTHER_ALIAS, PORTED_ALL, PORTED_HTTP]) {
+      const entries = readChangelog(CHANGELOG_SOURCE, origins);
+
+      assert.deepEqual(entries, readBefore(origins), origins.app);
+      assert.deepEqual(sameOriginMoves(notices(entries).join('\n')), [], origins.app);
+    }
+
+    const move = readChangelog(CHANGELOG_SOURCE, OTHER_ALIAS).find(
+      (entry) => entry.version === '1.16.0',
+    );
+
+    assert.ok(move);
+    assert.equal(move.deprecated, true);
+    assert.ok(
+      move.paragraphs.some((paragraph) =>
+        paragraph.includes(
+          `they stop answering on ${OTHER.app} and redirect to ${OTHER_ALIAS.alias},`,
+        ),
+      ),
+    );
+    // The move banner still reads day X from the notice there.
+    assert.equal(moveSetting(OTHER_ALIAS)?.day, moveDay(written));
+  });
+
+  it('gives production’s entries as written, so a production build is byte for byte what it was', () => {
+    const entries = readChangelog(CHANGELOG_SOURCE, PRODUCTION_ORIGINS);
+
+    assert.deepEqual(entries, written);
+    assert.deepEqual(entries, readBefore(PRODUCTION_ORIGINS));
+    assert.equal(siteEntries(written, PRODUCTION_ORIGINS), written);
+    // Unset, the origins are production's.
+    assert.equal(siteEntries(written, siteOrigins({})), written);
+    assert.equal(entries.find((entry) => entry.version === '1.16.0')?.deprecated, true);
+    assert.ok(notices(entries).some((paragraph) => MOVE_DAY_SENTENCE.test(paragraph)));
+    // Every output is written from the entries alone.
+    const before = readBefore(PRODUCTION_ORIGINS);
+
+    assert.equal(changelogMarkdown(entries), changelogMarkdown(before));
+    assert.equal(renderChangelogBody(entries), renderChangelogBody(before));
+    for (const kind of ['all', 'breaking'] as const) {
+      assert.equal(changelogFeed(entries, kind), changelogFeed(before, kind), kind);
+    }
+  });
+
+  it('reads production’s second origin as the rename reads a name, and nothing longer, shorter or with a port', () => {
+    const named = [
+      'https://webhook.qa-tools.ru',
+      'https://webhook.qa-tools.ru/webhook-inspector-relay.mjs',
+      'wss://webhook.qa-tools.ru/ws/G4t',
+      'http://webhook.qa-tools.ru/',
+      'on `webhook.qa-tools.ru` too',
+      'they redirect to webhook.qa-tools.ru.',
+      '(https://webhook.qa-tools.ru)',
+      'https://qa-tools.ru and https://webhook.qa-tools.ru',
+    ];
+    const notNamed = [
+      '',
+      'https://qa-tools.ru',
+      'https://hook.qa-tools.ru/s/G4t',
+      'webhook.qa-tools.ru:8445',
+      'https://webhook.qa-tools.ru:8445/',
+      'my-webhook.qa-tools.ru',
+      'status.webhook.qa-tools.ru',
+      'contact@webhook.qa-tools.ru',
+      'tag:webhook.qa-tools.ru,2026:changelog/1.0.0',
+      'webhook.qa-tools.run',
+      'webhook.qa-tools.ru-next',
+      'webhook.qa-tools.ru.example',
+      'webhook.qa-tools-ru',
+      'webhook-qa-tools.ru',
+      // Not renamed either: the rename reads production's names as written.
+      'HTTPS://WEBHOOK.QA-TOOLS.RU',
+    ];
+
+    for (const text of named) {
+      assert.equal(namesSecondOrigin(text), true, text);
+      assert.equal(namesTheSecond(text), true, text);
+    }
+    for (const text of notNamed) {
+      assert.equal(namesSecondOrigin(text), false, text);
+      assert.equal(namesTheSecond(text), false, text);
+    }
+  });
+
+  it('scans hostile text at growing sizes in time linear in its length', () => {
+    // The largest text, at the last size: 2.9 MB, the second origin's address 100 000 times.
+    for (const size of [1000, 10_000, 100_000]) {
+      const started = process.hrtime.bigint();
+
+      for (const kept of [
+        'webhook.qa-tools.r'.repeat(size),
+        `${'webhook.'.repeat(size)}qa-tools.ru`,
+        `${'-'.repeat(size)}webhook.qa-tools.ru`,
+        `${'w'.repeat(size)}ebhook.qa-tools.ru`,
+        'webhook.qa-tools.ru:8445 '.repeat(size),
+        `webhook.qa-tools.ru${':8'.repeat(size)}`,
+        `webhook.qa-tools.ru${'-'.repeat(size)}`,
+        'qa-tools.ru hook.qa-tools.ru '.repeat(size),
+        `${'https://'.repeat(size)}qa-tools.ru`,
+      ]) {
+        assert.equal(namesSecondOrigin(kept), false, kept.slice(0, 40));
+      }
+      for (const found of [
+        `${'x '.repeat(size)}https://webhook.qa-tools.ru`,
+        'https://webhook.qa-tools.ru/ '.repeat(size),
+        `${'webhook.qa-tools.r'.repeat(size)} webhook.qa-tools.ru`,
+        `${'webhook.qa-tools.ru:8445 '.repeat(size)}wss://webhook.qa-tools.ru`,
+      ]) {
+        assert.equal(namesSecondOrigin(found), true, found.slice(0, 40));
+      }
+      withinBound(started, size);
+    }
+  });
+
+  for (const count of [10, 5_000]) {
+    it(`leaves the notices out of a changelog of ${count.toLocaleString('en')} versions, each with hostile names`, () => {
+      const nearMisses = 'webhook.qa-tools.r webhook.qa-tools.ru:8445 my-webhook.qa-tools.ru';
+      const versions = Array.from({ length: count }, (_, index) =>
+        [
+          `## 1.${count - index}.0`,
+          '2026-09-21',
+          `**Version ${count - index} at https://webhook.qa-tools.ru.** Also https://qa-tools.ru.`,
+          `**Deprecated:** ${nearMisses} and, from 2026-12-01, https://webhook.qa-tools.ru.`,
+          `**Notice:** ${nearMisses} on 2026-12-01.`,
+          `**Breaking:** on https://qa-tools.ru and \`wss://webhook.qa-tools.ru\`.`,
+          `Webhooks stay on https://hook.qa-tools.ru; ${nearMisses}; webhook.qa-tools.ru.`,
+        ].join('\n\n'),
+      );
+      const many = parseChangelog(`# Header\n\n${versions.join('\n\n')}\n`);
+      const started = process.hrtime.bigint();
+      const entries = siteEntries(many, OTHER);
+
+      withinBound(started, count);
+      assert.equal(entries.length, count);
+      for (const entry of entries) {
+        assert.equal(
+          entry.headline,
+          `Version ${entry.version.split('.')[1]} at https://inspector.example.`,
+        );
+        assert.equal(entry.lead, 'Also https://inspector.example.');
+        assert.deepEqual(entry.paragraphs, [
+          `**Notice:** ${nearMisses} on 2026-12-01.`,
+          `Webhooks stay on https://hook.inspector.example; ${nearMisses}; inspector.example.`,
+        ]);
+        assert.deepEqual([entry.breaking, entry.deprecated, entry.notice], [false, false, true]);
+      }
+      // With a second origin of the copy's own, every paragraph stays, named.
+      assert.deepEqual(
+        siteEntries(many, OTHER_ALIAS).map((entry) => entry.paragraphs.length),
+        many.map(() => 4),
+      );
+      assert.equal(readFeedEntries(changelogFeed(entries, 'breaking')).length, count);
+    });
+  }
+});
+
+/**
  * The build check's refusal of a build for another address that still names
  * production (issue #320, criterion 2), on trees written here: the configured
  * hosts are names the build may carry, even where they end in production's,
@@ -1218,6 +1521,27 @@ describe('a build for another address (issue #320, criterion 2)', () => {
       ),
     );
     assert.ok(description.info.description.includes(sha256Hex(relay)));
+  });
+
+  it('publishes no notice of production’s move in the changelog page, its text or either feed (#343)', () => {
+    for (const [path, text] of [
+      ['changelog.md', built('changelog.md')],
+      ['changelog/index.html', pageText(built('changelog/index.html'))],
+      ['changelog.xml', built('changelog.xml')],
+      ['changelog-breaking.xml', built('changelog-breaking.xml')],
+    ] as const) {
+      assert.ok(text.includes(OTHER.app), path);
+      assert.ok(!MOVE_DAY_SENTENCE.test(text), path);
+      assert.deepEqual(sameOriginMoves(text), [], path);
+    }
+
+    const ids = (feed: string) => readFeedEntries(built(feed)).map((entry) => entry.id);
+
+    // 1.16.0 stays, unmarked: the breaking feed leaves it out, 1.19.0's notice in.
+    assert.ok(ids('changelog.xml').includes(feedEntryId('1.16.0')));
+    assert.ok(!ids('changelog-breaking.xml').includes(feedEntryId('1.16.0')));
+    assert.ok(ids('changelog-breaking.xml').includes(feedEntryId('1.19.0')));
+    assert.ok(built('changelog/index.html').includes('<details class="version" id="v1.16.0">'));
   });
 });
 

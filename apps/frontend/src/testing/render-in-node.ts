@@ -13,17 +13,21 @@
  *   `main.tsx` imports some. A `.tsx` module is therefore imported with
  *   `await import(...)` after this one: a static import is loaded before any
  *   module of the file runs;
- * - it exports `installFakeBrowser`, a window, document and storage just
- *   large enough for `react-dom/client` to render a page into and for
- *   `main.tsx` to start on. It is no browser: no layout, no events, no CSS,
- *   and a timer it is given never runs.
+ * - it exports `installFakeBrowser`, a window, document, storage and
+ *   navigator just large enough for `react-dom/client` to render a page into
+ *   and for `main.tsx` to start on. It is no browser: no layout, no events,
+ *   no CSS, and a timer it is given never runs. Each member is one that
+ *   React, the router, `main.tsx` or a test uses, so a test that needs one
+ *   more adds it (#366); the navigator is an English browser's, whatever the
+ *   machine's locale.
  *
  * A server render needs only the first, with `react-dom/server`.
  *
  * Every test file runs in a process of its own, so what this module sets is
  * that file's alone. Like the backend's `src/testing/`, the directory holds
- * what tests use and the bundle never imports; its names keep it out of the
- * runner's discovery (`../exit-guard.ts` lists the patterns).
+ * what tests use and the bundle never imports, and its modules' names keep
+ * them out of the runner's discovery (`../exit-guard.ts` lists the
+ * patterns); `render-in-node.test.ts` is this module's own test.
  */
 import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
@@ -64,22 +68,12 @@ const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 export class FakeNode {
   readonly ownerDocument: FakeDocument | null;
   readonly nodeType: number;
-  readonly nodeName: string;
   parentNode: FakeNode | null = null;
   readonly childNodes: FakeNode[] = [];
 
-  constructor(ownerDocument: FakeDocument | null, nodeType: number, nodeName: string) {
+  constructor(ownerDocument: FakeDocument | null, nodeType: number) {
     this.ownerDocument = ownerDocument;
     this.nodeType = nodeType;
-    this.nodeName = nodeName;
-  }
-
-  get firstChild(): FakeNode | null {
-    return this.childNodes[0] ?? null;
-  }
-
-  get lastChild(): FakeNode | null {
-    return this.childNodes.at(-1) ?? null;
   }
 
   get nextSibling(): FakeNode | null {
@@ -130,68 +124,34 @@ export class FakeNode {
     return child;
   }
 
-  contains(node: FakeNode | null): boolean {
-    for (let at = node; at !== null; at = at.parentNode) {
-      if (at === this) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
+  // React listens at the root it renders into; no event is ever dispatched.
   addEventListener(): void {}
-
-  removeEventListener(): void {}
-
-  /**
-   * The node as an assertion's message prints it: its name alone. Inspected
-   * as it is, a node would print the whole document and every fiber React
-   * hangs on it, a message long enough to take the test file down with it.
-   */
-  [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return `${this.nodeName} node`;
-  }
 }
 
-/** A text node. */
+/** A text node: its text is its value. */
 export class FakeText extends FakeNode {
   nodeValue: string;
 
   constructor(ownerDocument: FakeDocument | null, nodeValue: string) {
-    super(ownerDocument, 3, '#text');
+    super(ownerDocument, 3);
     this.nodeValue = nodeValue;
-  }
-
-  get data(): string {
-    return this.nodeValue;
   }
 
   override get textContent(): string {
     return this.nodeValue;
-  }
-
-  override set textContent(text: string) {
-    this.nodeValue = text;
   }
 }
 
 /** An element: its tag, its attributes and a style that holds what is set on it. */
 export class FakeElement extends FakeNode {
   readonly tagName: string;
-  readonly namespaceURI: string;
   readonly attributes = new Map<string, string>();
-  readonly style = {
-    setProperty(): void {},
-    removeProperty(): void {},
-  };
+  /** React DOM looks in a `<div>`'s, as it loads, for the animation events' prefixed names. */
+  readonly style = {};
 
   constructor(ownerDocument: FakeDocument | null, name: string, namespaceURI = HTML_NAMESPACE) {
-    const tagName = namespaceURI === HTML_NAMESPACE ? name.toUpperCase() : name;
-
-    super(ownerDocument, 1, tagName);
-    this.tagName = tagName;
-    this.namespaceURI = namespaceURI;
+    super(ownerDocument, 1);
+    this.tagName = namespaceURI === HTML_NAMESPACE ? name.toUpperCase() : name;
   }
 
   getAttribute(name: string): string | null {
@@ -201,18 +161,6 @@ export class FakeElement extends FakeNode {
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, String(value));
   }
-
-  removeAttribute(name: string): void {
-    this.attributes.delete(name);
-  }
-
-  hasAttribute(name: string): boolean {
-    return this.attributes.has(name);
-  }
-
-  focus(): void {}
-
-  blur(): void {}
 
   /** Every element below this one, in document order, whose attribute `name` is `value`. */
   findAll(name: string, value: string): FakeElement[] {
@@ -234,14 +182,13 @@ export class FakeElement extends FakeNode {
 
 /** The document: it makes the nodes, and holds `<html>`, `<body>` and the page's root. */
 export class FakeDocument extends FakeNode {
+  /** The window the router takes, from the global `document`, as React DOM does. */
   readonly defaultView: FakeWindow;
   readonly documentElement: FakeElement;
   readonly body: FakeElement;
-  readonly activeElement = null;
-  title = '';
 
   constructor(defaultView: FakeWindow) {
-    super(null, 9, '#document');
+    super(null, 9);
     this.defaultView = defaultView;
     this.documentElement = this.appendChild(this.createElement('html'));
     this.body = this.documentElement.appendChild(this.createElement('body'));
@@ -264,7 +211,7 @@ export class FakeDocument extends FakeNode {
   }
 }
 
-/** The address bar: an address's parts, the address it was given changed by history alone. */
+/** The address bar: the address, its origin and its path, changed by history alone. */
 class FakeLocation {
   private url: URL;
 
@@ -284,82 +231,29 @@ class FakeLocation {
     return this.url.origin;
   }
 
-  get protocol(): string {
-    return this.url.protocol;
-  }
-
-  get host(): string {
-    return this.url.host;
-  }
-
-  get hostname(): string {
-    return this.url.hostname;
-  }
-
-  get port(): string {
-    return this.url.port;
-  }
-
   get pathname(): string {
     return this.url.pathname;
   }
-
-  get search(): string {
-    return this.url.search;
-  }
-
-  get hash(): string {
-    return this.url.hash;
-  }
-
-  // Nothing is opened or loaded again: there is no next page.
-  assign(): void {}
-
-  replace(): void {}
-
-  reload(): void {}
 }
 
-/** History of one entry: `replaceState` and `pushState` change the address and the state. */
+/** History of one entry, with no state: `replaceState` changes the address alone. */
 class FakeHistory {
   private readonly location: FakeLocation;
-  state: unknown = null;
-  readonly length = 1;
 
   constructor(location: FakeLocation) {
     this.location = location;
   }
 
-  replaceState(state: unknown, _title: string, url?: string | null): void {
-    this.state = state;
-
+  replaceState(_state: unknown, _title: string, url?: string | null): void {
     if (url !== undefined && url !== null && url !== '') {
       this.location.href = url;
     }
   }
-
-  pushState(state: unknown, title: string, url?: string | null): void {
-    this.replaceState(state, title, url);
-  }
-
-  back(): void {}
-
-  forward(): void {}
-
-  go(): void {}
 }
 
 /** An in-memory `localStorage`. */
 export class FakeStorage {
   readonly items = new Map<string, string>();
-
-  get length(): number {
-    return this.items.size;
-  }
-
-  key(index: number): string | null {
-    return [...this.items.keys()][index] ?? null;
-  }
 
   getItem(name: string): string | null {
     return this.items.get(name) ?? null;
@@ -368,17 +262,9 @@ export class FakeStorage {
   setItem(name: string, value: string): void {
     this.items.set(name, String(value));
   }
-
-  removeItem(name: string): void {
-    this.items.delete(name);
-  }
-
-  clear(): void {
-    this.items.clear();
-  }
 }
 
-/** The window: the address, history, storage, a desktop's media queries, and timers never run. */
+/** The window: address, history, storage, media queries that match nothing, timers never run. */
 export class FakeWindow {
   readonly location: FakeLocation;
   readonly history: FakeHistory;
@@ -386,6 +272,15 @@ export class FakeWindow {
   readonly document: FakeDocument;
   /** Checked by React for an iframe holding focus; nothing here is one. */
   readonly HTMLIFrameElement = class HTMLIFrameElement {};
+
+  /**
+   * An English browser's, whatever the locale of the machine running the
+   * suite (#366), as the browser suite's contexts are `en-US`: Node's own
+   * `navigator`, which `main.tsx` would otherwise read, follows the machine.
+   * React DOM looks in `userAgent` for Chrome or Firefox as it loads, to
+   * suggest its DevTools; it names neither.
+   */
+  readonly navigator = { userAgent: 'Node.js', languages: ['en-US'] };
 
   constructor(href: string) {
     this.location = new FakeLocation(href);
@@ -398,14 +293,11 @@ export class FakeWindow {
 
   removeEventListener(): void {}
 
-  matchMedia(media: string) {
+  /** No query matches - `matches` is unset, which reads as false - and none ever changes. */
+  matchMedia() {
     return {
-      media,
-      matches: false,
       addEventListener(): void {},
       removeEventListener(): void {},
-      addListener(): void {},
-      removeListener(): void {},
     };
   }
 
@@ -413,15 +305,13 @@ export class FakeWindow {
   setTimeout(): number {
     return 0;
   }
-
-  clearTimeout(): void {}
 }
 
 /**
- * Makes `window` and `document` this process's globals, at `href`, with an
- * empty `<div id="root">` in the body, and tells React it renders under
- * `act`. Called before `react-dom/client` or any page is imported: React DOM
- * decides at its load whether it has a DOM.
+ * Makes `window`, `document` and `navigator` this process's globals, at
+ * `href`, with an empty `<div id="root">` in the body, and tells React it
+ * renders under `act`. Called before `react-dom/client` or any page is
+ * imported: React DOM decides at its load whether it has a DOM.
  */
 export function installFakeBrowser(href: string): FakeWindow {
   const fake = new FakeWindow(href);
@@ -434,6 +324,12 @@ export function installFakeBrowser(href: string): FakeWindow {
     window: fake,
     document: fake.document,
     IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  // Node's own `navigator` has a getter and no setter: it is replaced, not assigned.
+  Object.defineProperty(globalThis, 'navigator', {
+    value: fake.navigator,
+    configurable: true,
+    writable: true,
   });
 
   return fake;

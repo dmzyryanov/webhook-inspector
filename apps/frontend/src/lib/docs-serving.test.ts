@@ -1,28 +1,55 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { GROUPED_CLIENTS } from '@scalar/types/snippetz';
-import { renderAboutPage } from '../../scripts/about.mjs';
-import {
-  BUILT_PAGES,
-  checkBuild,
-  COMMENTED_PAGES,
-  SCALAR_FREE_PAGES,
-  // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-} from '../../scripts/check-build.mjs';
-import { SECURITY_TXT_FILE, securityTxt } from '../../scripts/build-security-txt.mjs';
-import { productionRelayScriptText } from '../../scripts/build-site-files.mjs';
-import { changelogFeed, readChangelog } from '../../scripts/changelog.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
 import {
   CODE_SAMPLE_CLIENTS,
   HIDDEN_CLIENTS,
   OPENAPI_PATH,
   referenceConfiguration,
 } from '../docs/reference-config.ts';
-import { ABOUT_RU } from '../lib/about-copy-ru.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the pages and files the build check is given here are written for
+ * production (D274). The build's modules read the origins from the
+ * environment as they load, so they are imported once these are set, not
+ * with the static imports above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const { renderAboutPage } = await import('../../scripts/about.mjs');
+const {
+  BUILT_PAGES,
+  checkBuild,
+  COMMENTED_PAGES,
+  SCALAR_FREE_PAGES,
+  // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
+} = await import('../../scripts/check-build.mjs');
+const { SECURITY_TXT_FILE, securityTxt } = await import('../../scripts/build-security-txt.mjs');
+const { productionRelayScriptText, siteFiles } = await import('../../scripts/build-site-files.mjs');
+const { CHANGELOG_SOURCE, changelogFeed, readChangelog } =
+  await import('../../scripts/changelog.mjs');
+const { nameSite, PRODUCTION_ORIGINS, SITE_ORIGINS } =
+  await import('../../scripts/site-origin.mjs');
+const { ABOUT_RU } = await import('../lib/about-copy-ru.ts');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /**
  * The API reference at `/docs` (D155), without a browser: the nginx locations
@@ -189,7 +216,13 @@ describe('the build check', () => {
         ]),
     );
 
-  function build(files: Record<string, string | Buffer>) {
+  /**
+   * What the build check says of `files`: in this process, for production's
+   * origins, or for `origins`, run as the build runs it, in a process of its
+   * own whose environment names them, since the check reads the build's
+   * origins as it loads.
+   */
+  function build(files: Record<string, string | Buffer>, origins?: SiteOrigins) {
     const dist = mkdtempSync(join(tmpdir(), 'webhook-inspector-dist-'));
 
     for (const [name, text] of Object.entries(files)) {
@@ -198,7 +231,31 @@ describe('the build check', () => {
     }
 
     try {
-      return checkBuild(dist) as string[];
+      if (origins === undefined) {
+        return checkBuild(dist) as string[];
+      }
+
+      const run = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL('../../scripts/check-build.mjs', import.meta.url)), dist],
+        {
+          env: {
+            ...process.env,
+            APP_ORIGIN: origins.app,
+            RECEIVE_ORIGIN: origins.receive,
+            APP_ALIAS_ORIGIN: origins.alias ?? '',
+          },
+          encoding: 'utf8',
+        },
+      );
+      const problems = run.stderr
+        .split('\n')
+        .filter((line) => line.startsWith('  - '))
+        .map((line) => line.slice('  - '.length));
+
+      assert.equal(run.status, problems.length === 0 ? 0 : 1, run.stderr);
+
+      return problems;
     } finally {
       rmSync(dist, { recursive: true, force: true });
     }
@@ -228,41 +285,75 @@ describe('the build check', () => {
   // Amended by D255: eight pages, the about page in both languages, each as
   // the build writes it, since the check now reads its language, its
   // canonical address and its hreflang pair.
+  const eightPages = (): Record<string, string | Buffer> => ({
+    'index.html': homePage('../../index.html'),
+    'ru/index.html': homePage('../../ru/index.html'),
+    'docs/index.html': page(['docs-BBBBBBBB.js']),
+    'changelog/index.html': page(['changelog-DDDDDDDD.js']).replace(
+      '</html>',
+      '<details class="version" id="v0.1.0"></details></html>',
+    ),
+    'assets/changelog-DDDDDDDD.js': 'console.log("changelog")',
+    // The about page and its Russian twin load a stylesheet and no script (D211, D255).
+    'about/index.html': aboutPage('../../about/index.html'),
+    'ru/about/index.html': aboutPage('../../ru/about/index.html', ABOUT_RU),
+    'assets/about-EEEEEEEE.css': 'body { margin: 0; }',
+    // The Terms of Use and the Privacy Policy share a stylesheet and load no script (D217).
+    'terms/index.html':
+      '<html><head><title>Terms of Use — QA Tools</title><link rel="stylesheet" href="/assets/legal-FFFFFFFF.css"></head><body><main><h1>The rules</h1></main></body></html>',
+    'privacy/index.html':
+      '<html><head><title>Privacy Policy — QA Tools</title><link rel="stylesheet" href="/assets/legal-FFFFFFFF.css"></head><body><main><h1>What QA Tools keeps</h1></main></body></html>',
+    'assets/legal-FFFFFFFF.css': 'body { margin: 0; }',
+    'changelog.md': '# Webhook Inspector — Changelog\n',
+    // The two feeds the build writes from CHANGELOG.md (D212).
+    'changelog.xml': changelogFeed(readChangelog(), 'all'),
+    'changelog-breaking.xml': changelogFeed(readChangelog(), 'breaking'),
+    'assets/index-AAAAAAAA.js': 'console.log("app")',
+    'assets/docs-BBBBBBBB.js': 'import("./chunk-CCCCCCCC.js")',
+    'assets/chunk-CCCCCCCC.js': 'const c = "scalar-app";',
+    'llms.txt': '# Webhook Inspector',
+    'llms-full.txt': '# Webhook Inspector API — the complete guide for agents',
+    [SECURITY_TXT_FILE]: securityTxt(),
+    ...publicFiles(),
+  });
+
+  it('is run here for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('passes eight pages, the two home pages sharing the application and the others nothing, Scalar only on /docs', () => {
-    assert.deepEqual(
-      build({
-        'index.html': homePage('../../index.html'),
-        'ru/index.html': homePage('../../ru/index.html'),
-        'docs/index.html': page(['docs-BBBBBBBB.js']),
-        'changelog/index.html': page(['changelog-DDDDDDDD.js']).replace(
-          '</html>',
-          '<details class="version" id="v0.1.0"></details></html>',
-        ),
-        'assets/changelog-DDDDDDDD.js': 'console.log("changelog")',
-        // The about page and its Russian twin load a stylesheet and no script (D211, D255).
-        'about/index.html': aboutPage('../../about/index.html'),
-        'ru/about/index.html': aboutPage('../../ru/about/index.html', ABOUT_RU),
-        'assets/about-EEEEEEEE.css': 'body { margin: 0; }',
-        // The Terms of Use and the Privacy Policy share a stylesheet and load no script (D217).
-        'terms/index.html':
-          '<html><head><title>Terms of Use — QA Tools</title><link rel="stylesheet" href="/assets/legal-FFFFFFFF.css"></head><body><main><h1>The rules</h1></main></body></html>',
-        'privacy/index.html':
-          '<html><head><title>Privacy Policy — QA Tools</title><link rel="stylesheet" href="/assets/legal-FFFFFFFF.css"></head><body><main><h1>What QA Tools keeps</h1></main></body></html>',
-        'assets/legal-FFFFFFFF.css': 'body { margin: 0; }',
-        'changelog.md': '# Webhook Inspector — Changelog\n',
-        // The two feeds the build writes from CHANGELOG.md (D212).
-        'changelog.xml': changelogFeed(readChangelog(), 'all'),
-        'changelog-breaking.xml': changelogFeed(readChangelog(), 'breaking'),
-        'assets/index-AAAAAAAA.js': 'console.log("app")',
-        'assets/docs-BBBBBBBB.js': 'import("./chunk-CCCCCCCC.js")',
-        'assets/chunk-CCCCCCCC.js': 'const c = "scalar-app";',
-        'llms.txt': '# Webhook Inspector',
-        'llms-full.txt': '# Webhook Inspector API — the complete guide for agents',
-        [SECURITY_TXT_FILE]: securityTxt(),
-        ...publicFiles(),
-      }),
-      [],
-    );
+    assert.deepEqual(build(eightPages()), []);
+  });
+
+  it('passes the same eight pages built for another address, and refuses production’s there (D274)', () => {
+    // As a build for the copy writes them (#354): every text named for it,
+    // the feeds of the changelog it publishes, and the files from public/
+    // as build-site-files.mjs names them.
+    const entries = readChangelog(CHANGELOG_SOURCE, ANOTHER);
+    const another = {
+      ...Object.fromEntries(
+        Object.entries(eightPages()).map(([name, content]) => [
+          name,
+          typeof content === 'string' ? nameSite(content, ANOTHER) : content,
+        ]),
+      ),
+      'changelog.xml': nameSite(changelogFeed(entries, 'all'), ANOTHER),
+      'changelog-breaking.xml': nameSite(changelogFeed(entries, 'breaking'), ANOTHER),
+      ...siteFiles(ANOTHER),
+    };
+
+    assert.deepEqual(build(another, ANOTHER), []);
+
+    const refused = build(eightPages(), ANOTHER);
+
+    for (const problem of [
+      `the home page index.html does not have the one canonical ${ANOTHER.app}/`,
+      `the about page about/index.html does not have the one canonical ${ANOTHER.app}/about`,
+      `sitemap.xml does not list ${ANOTHER.app}/docs`,
+      `index.html names qa-tools.ru, though the build is for ${ANOTHER.app}`,
+    ]) {
+      assert.ok(refused.includes(problem), problem);
+    }
   });
 
   it('fails when the Russian home page reaches Scalar or loads a file of the API reference (D226)', () => {

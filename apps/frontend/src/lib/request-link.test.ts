@@ -210,6 +210,13 @@ describe('resolveRequestLink', () => {
     assert.equal(removesFragment({ kind: 'ignore' }), true);
     assert.equal(removesFragment({ kind: 'none' }), false);
   });
+
+  it('leaves a move link for the reading on arrival (#362), an outcome it never answers itself', () => {
+    assert.equal(removesFragment({ kind: 'move' }), false);
+    assert.deepEqual(resolveRequestLink(readRequestLink(`${PAGE}#move=e30`), listed), {
+      kind: 'ignore',
+    });
+  });
 });
 
 describe('afterLinkedOpening', () => {

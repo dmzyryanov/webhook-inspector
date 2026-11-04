@@ -1,8 +1,27 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import process from 'node:process';
 import { describe, it } from 'node:test';
-import { ABOUT_RU, ABOUT_RU_APPROVED_AGAINST } from './about-copy-ru.ts';
-import {
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
+import type { AboutCopy, AboutPart } from './about-copy.ts';
+import { ABOUT_ADDRESSES, ABOUT_LINK, aboutAddress } from './about-link.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the pages' texts are written for production (D274), and the hash below is
+ * of production's English. The copy modules read the origins from the
+ * environment as they load, so they are imported once these are set, not
+ * with the static imports above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const { ABOUT_RU, ABOUT_RU_APPROVED_AGAINST } = await import('./about-copy-ru.ts');
+const {
   ABOUT_DESCRIPTION,
   ABOUT_EN,
   ABOUT_EYEBROW,
@@ -12,11 +31,48 @@ import {
   ABOUT_TITLE,
   ABOUT_URL,
   aboutCopyText,
-  type AboutCopy,
-  type AboutPart,
-} from './about-copy.ts';
-import { ABOUT_ADDRESSES, ABOUT_LINK, aboutAddress } from './about-link.ts';
-import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
+} = await import('./about-copy.ts');
+const { nameSite, PRODUCTION_ORIGINS, SITE_ORIGINS } =
+  await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
+
+/**
+ * The two pages as a build for `origins` composes them: read in a Node
+ * process of its own, whose environment names them, since this one's names
+ * production's.
+ */
+function pagesBuiltFor(origins: SiteOrigins): [AboutCopy, AboutCopy] {
+  const module = (path: string) => JSON.stringify(new URL(path, import.meta.url).href);
+  const run = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `const { ABOUT_EN } = await import(${module('./about-copy.ts')});
+const { ABOUT_RU } = await import(${module('./about-copy-ru.ts')});
+process.stdout.write(JSON.stringify([ABOUT_EN, ABOUT_RU]));`,
+    ],
+    {
+      env: {
+        ...process.env,
+        APP_ORIGIN: origins.app,
+        RECEIVE_ORIGIN: origins.receive,
+        APP_ALIAS_ORIGIN: origins.alias ?? '',
+      },
+      encoding: 'utf8',
+    },
+  );
+
+  assert.equal(run.status, 0, run.stderr);
+
+  return JSON.parse(run.stdout) as [AboutCopy, AboutCopy];
+}
 
 /**
  * `/about` and `/ru/about` held in step (issue #170, D255). The Russian page
@@ -43,6 +99,10 @@ const shape = (page: AboutCopy) => ({
 });
 
 describe('the two about pages', () => {
+  it('are loaded for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('has the English page gather the constants /about is written from', () => {
     assert.deepEqual(ABOUT_EN, {
       lang: 'en',
@@ -62,8 +122,8 @@ describe('the two about pages', () => {
     assert.deepEqual(ABOUT_ADDRESSES, { en: '/about', ru: '/ru/about' });
     assert.equal(aboutAddress(ABOUT_EN.lang), ABOUT_EN.path);
     assert.equal(aboutAddress(ABOUT_RU.lang), ABOUT_RU.path);
-    assert.equal(ABOUT_EN.url, `${APP_ORIGIN}${ABOUT_EN.path}`);
-    assert.equal(ABOUT_RU.url, `${APP_ORIGIN}${ABOUT_RU.path}`);
+    assert.equal(ABOUT_EN.url, `${PRODUCTION_ORIGINS.app}${ABOUT_EN.path}`);
+    assert.equal(ABOUT_RU.url, `${PRODUCTION_ORIGINS.app}${ABOUT_RU.path}`);
     // Anything else is English's, as `homeAddress` reads a tag.
     for (const tag of ['', 'de', 'RU', 'ru-RU', 'toString', '__proto__']) {
       assert.equal(aboutAddress(tag), '/about', tag);
@@ -75,7 +135,7 @@ describe('the two about pages', () => {
     assert.deepEqual(shape(ABOUT_RU).story, shape(ABOUT_EN).story);
     assert.deepEqual(shape(ABOUT_EN).story, [
       ['text'],
-      ['text', `code ${APP_ORIGIN}/mcp `, 'text'],
+      ['text', `code ${PRODUCTION_ORIGINS.app}/mcp `, 'text'],
       ['text', 'mail contact@qa-tools.ru mailto:contact@qa-tools.ru', 'text'],
     ]);
     // Each address ends its paragraph with a full stop after it, in both.
@@ -137,5 +197,18 @@ describe('the two about pages', () => {
       sha256(aboutCopyText({ ...ABOUT_EN, lang: 'ru', path: '/x', url: 'https://example.com/' })),
       ABOUT_RU_APPROVED_AGAINST,
     );
+  });
+
+  it('are composed for another address as for production, but for the address, in both (D274)', () => {
+    const [english, russian] = pagesBuiltFor(ANOTHER);
+
+    // Each page's address and the MCP server's name the copy's site, and
+    // nothing else of either page changes; the mail address is kept.
+    assert.deepEqual(english, JSON.parse(nameSite(JSON.stringify(ABOUT_EN), ANOTHER)));
+    assert.deepEqual(russian, JSON.parse(nameSite(JSON.stringify(ABOUT_RU), ANOTHER)));
+    assert.equal(english.url, `${ANOTHER.app}/about`);
+    assert.equal(russian.url, `${ANOTHER.app}/ru/about`);
+    assert.deepEqual(shape(russian).story, shape(english).story);
+    assert.deepEqual(shape(english).story[1], ['text', `code ${ANOTHER.app}/mcp `, 'text']);
   });
 });

@@ -24,8 +24,12 @@ import { URL } from 'node:url';
  * `https://qa-tools.ru` and `https://hook.qa-tools.ru`. The build passes each
  * through `nameSite()` on its way into `dist/`, which names the configured
  * origins in their place; built for production, every file is byte for byte
- * the one it was. The places the code composes an address itself, such as the
- * feeds' links or the about page's MCP address, take `APP_ORIGIN` from here.
+ * the one it was. Built with no second origin, the changelog also leaves out
+ * every Breaking, Deprecated or Notice paragraph that names production's
+ * second origin, which such a build would name as the site's own (#343,
+ * `siteEntries()` of `changelog.mjs`). The places the code composes an
+ * address itself, such as the feeds' links or the about page's MCP address,
+ * take `APP_ORIGIN` from here.
  *
  * This module is read by the build and its tests only. Nothing the browser
  * loads imports it: it reads `process.env`.
@@ -230,6 +234,25 @@ export function renameProduction(text, origins) {
   };
 
   return text.replace(PRODUCTION_NAME, (_name, scheme, sub = '') => named[sub][scheme ?? 'host']);
+}
+
+/**
+ * Whether `text`, written for production, names production's second origin
+ * as `renameProduction()` reads a production name: `https://`, `wss://` or
+ * the host alone, `webhook.qa-tools.ru`, not inside a longer name nor with a
+ * port of its own. A build with no second origin names the site's own origin
+ * in its place (D275), so the changelog leaves out a notice that names it
+ * there (`siteEntries()` of `changelog.mjs`, #343). The scan is the
+ * rename's, linear in the text's length.
+ */
+export function namesSecondOrigin(text) {
+  for (const [, , sub] of text.matchAll(PRODUCTION_NAME)) {
+    if (sub === 'webhook.') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // Below the rename, which `siteOrigins()` runs, so that its pattern is set.

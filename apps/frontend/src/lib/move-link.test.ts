@@ -31,6 +31,7 @@ import {
   parseBuiltMove,
   parseMoveValue,
   readMoveFragment,
+  resolveRequestLinkUnlessMove,
   takeKeyUnlessMove,
   takeMoveFromAddress,
   type BuiltMove,
@@ -38,7 +39,14 @@ import {
   type MoveStorage,
 } from './move-link.ts';
 import { QUEUE_SECTION_KEY, RULES_SECTION_KEY } from './queue-section-open.ts';
-import { buildAccessLink, takeKeyFromAddress } from './request-link.ts';
+import {
+  buildAccessLink,
+  readRequestLink,
+  removesFragment,
+  resolveRequestLink,
+  takeKeyFromAddress,
+  withoutFragment,
+} from './request-link.ts';
 import {
   loadSessionList,
   MAX_LISTED_SESSIONS,
@@ -1005,6 +1013,205 @@ describe('a move link opened over a session page (#345)', () => {
     );
     // The arrival's reading runs before the first render, so before any page's.
     assert.ok(main.indexOf('takeMoveFromAddress(storage') < main.indexOf('createRoot(container)'));
+  });
+});
+
+/**
+ * Issue #362: a move link pasted over a session page while its first list
+ * load is in flight is still in the address when that load answers, and the
+ * page's one reading of a request link then (D182) leaves it for `main.tsx`'s
+ * reload, as its `hashchange` reading does since #345
+ * (`resolveRequestLinkUnlessMove`), rather than taking it out as a malformed
+ * request link. Every other fragment is read as `readRequestLink` and
+ * `resolveRequestLink` always have. The address bar here keeps what it was
+ * given, as the address is when that reload comes; where the page would
+ * remove the fragment, its `removeAddressFragment` is `withoutFragment`.
+ */
+describe('a move link pasted over a session page during its first list load (#362)', () => {
+  const PAGE = `https://webhook.qa-tools.ru/v/${id(1)}`;
+  const REQUEST = '3f2a1b4c-0000-4000-8000-000000000000';
+  const GONE = '3f2a1b4c-0000-4000-8000-0000000000ff';
+  const listed = [{ id: REQUEST }, { id: '3f2a1b4c-0000-4000-8000-000000000001' }];
+
+  /** A link's data: two sessions, the first private, a language and a section state. */
+  const carried = data({
+    sessions: [
+      { id: id(1), openedAt: 1_700_000_000_000 },
+      { id: id(2), openedAt: 1_700_000_000_001 },
+    ],
+    keys: [[id(1), key(1)]],
+    language: 'ru',
+    queueSection: true,
+  });
+
+  /** The address after the page's reading: the fragment removed only where it says so. */
+  function afterReading(href: string): string {
+    return removesFragment(resolveRequestLinkUnlessMove(href, listed))
+      ? withoutFragment(href)
+      : href;
+  }
+
+  afterEach(() => {
+    releaseAllAccessKeys();
+  });
+
+  it('leaves the link in the address, opening and saying nothing, for the reload that reads it', () => {
+    const href = `${PAGE}#move=${encodeMove(carried)}`;
+    const outcome = resolveRequestLinkUnlessMove(href, listed);
+
+    assert.deepEqual(outcome, { kind: 'move' });
+    assert.equal(removesFragment(outcome), false);
+    assert.equal(afterReading(href), href);
+
+    // The page loaded again: `main.tsx` reads the address it finds, as a link
+    // followed from the old address onto the home page is read.
+    const storage = memoryStorage();
+    const bar = addressBar(afterReading(href));
+    const arrival = takeMoveFromAddress(storage, bar);
+    const fresh = memoryStorage();
+    const home = addressBar(buildMoveLink('https://webhook.qa-tools.ru', carried));
+
+    assert.deepEqual(arrival, { sessions: 2, privateSessions: 1 });
+    assert.deepEqual(bar.replaced, [PAGE]);
+    assert.deepEqual(takeMoveFromAddress(fresh, home), arrival);
+    assert.deepEqual(storage.snapshot(), fresh.snapshot());
+    assert.deepEqual(loadAccessKeys(storage), new Map([[id(1), key(1)]]));
+  });
+
+  it('is the case the reading before took out: a move link read as a malformed request link', () => {
+    const href = `${PAGE}#move=${encodeMove(carried)}`;
+    const before = resolveRequestLink(readRequestLink(href), listed);
+
+    assert.deepEqual(before, { kind: 'ignore' });
+    assert.equal(removesFragment(before), true);
+
+    // Taken out then, the reload found nothing to read.
+    const storage = memoryStorage();
+
+    assert.equal(takeMoveFromAddress(storage, addressBar(withoutFragment(href))), null);
+    assert.deepEqual(storage.snapshot(), {});
+  });
+
+  it('leaves a refused link too, hostile ones at growing sizes, which the reload takes out changing nothing', () => {
+    const initial = {
+      [SESSION_LIST_KEY]: storedList([{ id: id(9), openedAt: 9 }]),
+      [ACCESS_KEYS_KEY]: storedKeys([[id(9), key(9)]]),
+    };
+
+    for (const value of [
+      '',
+      '%%%',
+      REQUEST,
+      `e30&key=${key(1)}`,
+      `e30#${REQUEST}`,
+      `${encodeMove(carried)}&request=${REQUEST}`,
+      'move='.repeat(200_000),
+      'A'.repeat(MAX_MOVE_FRAGMENT_LENGTH + 1),
+      'A'.repeat(5 * 1024 * 1024),
+    ]) {
+      const href = `${PAGE}#move=${value}`;
+      const started = performance.now();
+      const outcome = resolveRequestLinkUnlessMove(href, listed);
+
+      assert.ok(performance.now() - started < 500, value.slice(0, 40));
+      assert.deepEqual(outcome, { kind: 'move' }, value.slice(0, 40));
+      assert.equal(afterReading(href), href);
+
+      const storage = memoryStorage(initial);
+      const before = storage.snapshot();
+      const bar = addressBar(afterReading(href));
+
+      assert.equal(takeMoveFromAddress(storage, bar), null);
+      assert.deepEqual(bar.replaced, [PAGE]);
+      assert.deepEqual(storage.snapshot(), before);
+      assert.equal(accessKeyFor(id(1), null), null);
+    }
+  });
+
+  /** Criterion 2: `#<request-id>`, `#request=`, `#key=` and an unknown fragment as before (D182). */
+  it('reads every other fragment exactly as readRequestLink and resolveRequestLink do', () => {
+    for (const href of [
+      PAGE,
+      `${PAGE}#`,
+      `${PAGE}#${REQUEST}`,
+      `${PAGE}#${REQUEST.toUpperCase()}`,
+      `${PAGE}#${GONE}`,
+      `${PAGE}?move=e30#${REQUEST}`,
+      `${PAGE}#request=${REQUEST}`,
+      `${PAGE}#request=${REQUEST}&move=e30`,
+      buildAccessLink('https://webhook.qa-tools.ru', id(1), key(1)),
+      buildAccessLink('https://webhook.qa-tools.ru', id(1), key(1), REQUEST),
+      `${PAGE}#key=${key(1)}&move=e30`,
+      `${PAGE}#Move=e30`,
+      `${PAGE}#MOVE=e30`,
+      `${PAGE}#xmove=e30`,
+      `${PAGE}# move=e30`,
+      `${PAGE}#move`,
+      `${PAGE}#move:e30`,
+      `${PAGE}#%6Dove=e30`,
+      `${PAGE}?move=e30`,
+      `${PAGE}#x`,
+    ]) {
+      const outcome = resolveRequestLinkUnlessMove(href, listed);
+      const before = resolveRequestLink(readRequestLink(href), listed);
+
+      assert.deepEqual(outcome, before, href);
+      assert.notEqual(outcome.kind, 'move', href);
+      assert.equal(removesFragment(outcome), removesFragment(before), href);
+      assert.equal(
+        afterReading(href),
+        removesFragment(before) ? withoutFragment(href) : href,
+        href,
+      );
+    }
+
+    assert.deepEqual(resolveRequestLinkUnlessMove(PAGE, listed), { kind: 'none' });
+    assert.deepEqual(resolveRequestLinkUnlessMove(`${PAGE}#${REQUEST.toUpperCase()}`, listed), {
+      kind: 'open',
+      requestId: REQUEST,
+    });
+    assert.deepEqual(resolveRequestLinkUnlessMove(`${PAGE}#${GONE}`, listed), { kind: 'stale' });
+
+    for (const href of [
+      `${PAGE}#`,
+      `${PAGE}#request=${REQUEST}`,
+      buildAccessLink('https://webhook.qa-tools.ru', id(1), key(1), REQUEST),
+      `${PAGE}#Move=e30`,
+      `${PAGE}#x`,
+    ]) {
+      assert.deepEqual(resolveRequestLinkUnlessMove(href, listed), { kind: 'ignore' }, href);
+      assert.equal(afterReading(href), PAGE, href);
+    }
+  });
+
+  for (const size of [1024, 1024 * 1024, 5 * 1024 * 1024]) {
+    it(`takes a fragment of ${size} characters that is no move link out as malformed, as before, in bounded time`, () => {
+      for (const fragment of [
+        'x'.repeat(size),
+        `x${'move='.repeat(Math.ceil(size / 5))}`,
+        `${REQUEST}${'0'.repeat(size)}`,
+        `key=${key(1)}${'&'.repeat(size)}`,
+      ]) {
+        const href = `${PAGE}#${fragment}`;
+        const started = performance.now();
+
+        assert.deepEqual(resolveRequestLinkUnlessMove(href, listed), { kind: 'ignore' });
+        assert.ok(performance.now() - started < 500, fragment.slice(0, 40));
+        assert.equal(afterReading(href), PAGE);
+      }
+    });
+  }
+
+  it('is wired so (structural guard): the reading after the first list load goes through it', () => {
+    const page = readFileSync(new URL('../pages/SessionPage.tsx', import.meta.url), 'utf8');
+
+    assert.match(
+      page,
+      /linkRead\.current = true;\s*const link = resolveRequestLinkUnlessMove\(window\.location\.href, loadedRequests\);\s*if \(removesFragment\(link\)\) \{\s*removeAddressFragment\(\);/,
+    );
+    // No other reading of a request link, and no other removal of the fragment.
+    assert.doesNotMatch(page, /readRequestLink|resolveRequestLink\(/);
+    assert.equal(page.match(/removeAddressFragment\(\)/g)?.length, 1);
   });
 });
 

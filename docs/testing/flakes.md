@@ -567,10 +567,13 @@ test. Neither has frames left to count by then.
 ## F-04 — `answers made-up Accept values of 1048576 characters within 100 ms`
 
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:460` at `7018965`,
-  `:459` after the fix; the same `timed` bound holds every check of made-up
-  input in that file (100 ms, 1000 ms since #363: F-24) and in
-  `captured.test.ts` (200 ms). Branch `feat/mcp-server` (issue #116, D203);
-  never on `main`.
+  `:459` after the fix; the same `withinBound` rule holds every check of
+  made-up input in that file and in `captured.test.ts` (200 ms). That file's
+  bound was one, 100 ms, then 1000 ms since #363; since #377 each check has
+  the bound of its kind: 1000 ms for the made-up bodies, 500 ms for `Accept`
+  values of one character, or one parameter, repeated, 200 ms for `Accept`
+  lists of whole media ranges and 50 ms for the rest (F-24, After #377).
+  Branch `feat/mcp-server` (issue #116, D203); never on `main`.
 - **Status**: fixed in the tests, before review.
 
 ### The failure
@@ -1007,11 +1010,16 @@ On the unchanged `scripts/db.mjs` the file holds 16 tests at `410a0dc` and at
 ## F-07 — `counts 100,000 distinct addresses quickly`
 
 - **Test**: `apps/backend/src/modules/limits/rate-limit.test.ts:383` at
-  `4e69009`, `:384` after the fix. Issue #161.
+  `4e69009`, `:384` after the fix, `:388` at `a801d46`. Issue #161; issue
+  #378.
 - **Status**: fixed in the test on `fix/rate-limit-timing-flake`, at `54f8bcf`.
   `rate-limit.ts` and `testing/timing.ts` were not changed, and the limiter was
   not at fault: the same loop takes about 1.6 s on its own, and the mutation
   below, which makes it quadratic, about a minute.
+- **Since #378**: `:401`, its keys made before the counter is timed, held to
+  `COUNTER_BOUND_MS`, 1000 ms, on `chore/flood-check-bounds-378` at
+  `c83acfd` (After #378). `rate-limit.ts` and `testing/timing.ts` were not
+  changed; VERSION kept.
 
 ### The failure
 
@@ -1206,6 +1214,56 @@ second timing pattern beside F-04's.
   count. Whether a failure in a lost tail would still fail the run was not
   checked. Issue #160 answered it and dropped the flag from the backend: see
   F-14.
+
+### After #378
+
+The check failed again under load once the agents' server ran several
+tasks' suites side by side: in #363's tester's run, `took 7149.9 ms at best
+in 5 runs, over the 5000 ms bound`; in one of #355's thirteen, `took
+5146.9 ms` (F-26); in all eight of #377's loaded runs and two of its
+tester's three (F-24, After #377). Nearly all of each run was the making of
+the keys: `addressKey` parses each of the 100,000 addresses with
+`ipaddr.js`, and the counter, which the check is for, took 2 to 3% of the
+run alone.
+
+On 2026-11-04 from 05:12 to 05:40 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2, a `node:test` file outside the tree
+ran rounds of five runs of the check as it was, the keys made and counted
+in each run, and five of the counter alone, its keys made before it. Under
+load is beside `node scripts/db.mjs task-test 378`, the full backend suite,
+eight busy loops, `node -e 'for(;;){}'`, and F-27's series, in F-27's five
+runs of the suite. Min, median and max of the rounds, in ms:
+
+| beside | load | rounds | as it was, first run | as it was, fastest of five | the counter alone, first run | fastest of five |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.4 to 2.1 | 4 | 2713.0 / 2871.1 / 3203.3 | 2666.2 / 2862.7 / 2930.0 | 67.5 / 78.6 / 94.4 | 58.7 / 64.7 / 73.8 |
+| the suite, eight loops and F-27's series | 1.5 to 23.1 | 15 | 5088.0 / 7220.3 / 10498.8 | 3580.2 / 6478.0 / 7052.0 | 101.5 / 230.4 / 666.0 | 64.5 / 112.5 / 183.9 |
+
+As it was, the fastest of five was over 5000 ms in 10 of the 15 loaded
+rounds, and 65 of its 75 runs were. The counter alone took 666 ms at most
+in a round's first run.
+
+The mutation above, `#dropEnded`'s `return` made `continue`, written into
+`rate-limit.ts` for a run and taken out after it, the keys made before, one
+run each with nothing beside it: 5,000 calls took 153.2 ms, 10,000
+535.5 ms, 20,000 1945.6 ms and 40,000 8369.1 ms, four times for each
+doubling; without it 6.3 to 21.6 ms up to 40,000 and 78.6 ms at 100,000.
+With it the file at the fix, `node scripts/db.mjs task-test 378 --
+src/modules/limits/rate-limit.test.ts`, at a load of 1.3 to 1.4, gave
+`ℹ tests 22`, `ℹ pass 21`, `ℹ fail 1`, exit 1: this test, `took 63388.7 ms
+at best in 5 runs, over the 1000 ms bound`, after 326 s; the file's three
+other tests of 100,000 addresses passed, as in F-07's mutation above.
+
+The fix, in `rate-limit.test.ts` only, `c83acfd`: the 100,000 keys are made
+before the counter is timed, and `withinBound` holds its 100,000 calls to
+`COUNTER_BOUND_MS`, 1000 ms (`:35`, the test at `:401`): 5.4 times the
+slowest loaded fastest of five above, 184 ms, and 1.5 times the slowest
+loaded first run, 666 ms, while the mutation's calls took 63 s at best.
+`addressKey` keeps the file's checks of its own on hostile values, each
+held to 100 ms. The test passed in all five of F-27's loaded runs of
+the suite, in 7.0 to 9.9 s with the making of its keys, and in the four
+loaded runs of the suite under F-27's The lines, at `fa58d1d`, in 6.4 to
+6.9 s.
 
 ## F-08 — `names the step in request.received and response.recorded, and none for the session response`
 
@@ -3802,11 +3860,16 @@ Not this issue's; not filed by this entry.
 - **Test**: `apps/backend/src/modules/mcp/protocol.test.ts:260` at `bc8f7a8`,
   the base of the fix, and `:267` at the fix, `c3ffb2b`. Each of its ten
   made-up bodies is read by `parseMessage` through `timed`, `withinBound`
-  with the file's one bound, `BOUND_MS`, which every check of made-up input
-  in the file shares (F-04). Issue #363.
+  with the file's one bound then, `BOUND_MS`, which every check of made-up
+  input in the file shared (F-04). Issue #363. Since #377, `:304`, through
+  `withinBound` with a bound of its own, `BODIES_BOUND_MS`.
 - **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
   `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
-  `testing/timing.ts` were not changed; VERSION kept.
+  `testing/timing.ts` were not changed; VERSION kept. On
+  `chore/mcp-protocol-tight-bounds-377` the case keeps its 1000 ms and the
+  file's other checks of made-up input are held to tighter bounds, of 500,
+  200 and 50 ms (After #377); `protocol.ts` and `testing/timing.ts` were not
+  changed, VERSION kept.
 
 ### The failure
 
@@ -3935,11 +3998,193 @@ the full suite, `node scripts/db.mjs task-test 363`, with nothing of this
 entry's beside it, `ℹ tests 3407`, `ℹ pass 3407`, `ℹ fail 0`, exit 0, in
 112 s at a load of 2.2 to 10.0, the bodies case in 257 ms.
 
+### After #377
+
+One bound of 1000 ms, set for this case, left the file's other checks of
+made-up input room for a reading many times slower than their own (#377,
+from the review of #363). On `chore/mcp-protocol-tight-bounds-377` each is
+held, through `withinBound` as before, to the bound of its kind, near its
+own cost and with room for the load above. The test names carry their
+bound, now the ids' and `ownCopy`'s too; the bodies case's does not, nor
+the protocol version's, a test of five headers of which one is of 1 MiB:
+
+| bound | its checks | slowest alone | slowest under load | quadratic readings over it | given up |
+| --- | --- | --- | --- | --- | --- |
+| `BODIES_BOUND_MS`, 1000 ms | `parseMessage` on the made-up bodies, this case | 60 to 84 ms, `[` | 269 ms, `[` | from every byte, 7.8 s | one search per 41-byte batch element, 178 and 213 ms |
+| `ACCEPT_BOUND_MS`, 500 ms | `Accept` values of one character repeated - `,`, `;`, NUL - and one range with a parameter every four characters | 37 to 66 ms, the commas | 165 ms, the commas; 249 ms in one round whose value was not named | from every byte, 8.0 s; once per parameter, 1.9 and 2.0 s | none measured |
+| `ACCEPT_RANGES_BOUND_MS`, 200 ms | `Accept` lists of whole media ranges, 10 to 21 characters each | 16 to 21 ms, ranges of 21 characters | 78 ms, the same, in 500 rounds; 132 ms in one of 40 rounds of #377's tester | once per range: of 21 characters 364 and 377 ms, of 16 480 and 500 ms, of 10 753 and 756 ms | none measured |
+| `BOUND_MS`, 50 ms | ids, `ownCopy`, `Origin`, URLs and the protocol version | 3.5 to 6.6 ms, an id of emoji, its body built before it is timed; `ownCopy` 4.3 ms; the rest 0.1 ms or less | 24 ms, the ids, in 879 rounds, and 27 ms in one of 80 rounds of #377's tester; `ownCopy` 16 ms; the rest 0.14 ms or less | from every byte of 1 MiB, 7.8 to 16.5 s, and of the 16,384 `Origin` headers joined, 501 to 657 ms; once per URL parameter or escape, 1.9 to 2.9 s; once per origin repeated in one value, 280 to 467 ms; once per header of 16,384, the rest of them searched, 147 and 162 ms | none measured; but `Origin`, URLs and the protocol version, at 0.16 ms or less, are held some 300 times or more above their cost, so a slowdown of them short of that passes (inferred from these readings); of coarser URL readings, one search from every 32nd to every 256th character still fails it, 62 to 231 ms, and one from every 512th or coarser passes, as #377's tester measured |
+
+The `Accept` case of before is two since: its values of one character, or
+one parameter, repeated allocate a string for each, a million for the
+commas, and under load read up to 165 ms, where the lists of whole ranges
+read at most 78 ms in the 500 rounds below, and 132 ms in one round of
+#377's tester. One bound for both, first 250 ms, would have been 1.5
+times the loaded commas and under 1.5 times a reading once per range of 21
+characters; the `b3a644b` series below read 248.5 ms in one round.
+
+On 2026-11-04 from 02:36 to 03:07 MSK on the same host, an AMD EPYC 7763
+with 8 CPUs, Node v24.22.2, a script outside the tree built the file's
+made-up values of 1 MiB and, each round, ran each check five times on each
+value, keeping each value's fastest run and, for each kind, the slowest
+value's: the number `withinBound` holds to its bound when every run is over
+it. Under load is beside `node scripts/db.mjs task-test 377`, the full
+backend suite, and eight busy loops, `node -e 'for(;;){}'`, as above. Min,
+median and max of the rounds, in ms:
+
+| beside | load | rounds | bodies | `Accept`, every value | ids | `ownCopy` |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.6 to 0.8 | 20 | 63.1 / 67.8 / 83.7 | 45.7 / 49.2 / 55.5 | 3.7 / 4.2 / 5.5 | 0.5 / 0.7 / 1.0 |
+| nothing | 1.8 to 1.7 | 20 | 59.6 / 67.6 / 73.0 | 44.4 / 48.6 / 51.3 | 3.7 / 4.2 / 4.5 | 0.5 / 0.9 / 4.3 |
+| the suite at the base, `d9f3959`, and eight loops | 5.4 to 19.5 | 60 | 68.2 / 95.6 / 245.7 | 50.7 / 79.9 / 140.1 | 3.6 / 6.3 / 20.1 | 0.5 / 0.7 / 5.4 |
+| the suite at `b3a644b` and eight loops | 7.0 to 19.0 | 60 | 63.6 / 96.5 / 209.4 | 49.9 / 78.0 / 248.5 | 3.6 / 7.7 / 20.8 | 0.5 / 0.7 / 5.5 |
+| the suite at `82dc81b` and eight loops | 10.9 to 19.2 | 50 | 66.0 / 89.6 / 268.7 | 49.0 / 86.4 / 165.1 | 3.6 / 7.1 / 15.4 | 0.5 / 0.7 / 11.4 |
+| the same, and the `Accept` script below at once | 13.9 to 20.5 | 50 | 65.4 / 106.6 / 219.4 | 51.5 / 82.3 / 164.1 | 3.9 / 8.7 / 17.5 | 0.5 / 0.7 / 16.3 |
+
+`Origin` and the protocol version read under 0.01 ms in every round, and
+URLs 0.09 ms at most. The slowest `Accept` value of a round was the commas
+in 52 of the `b3a644b` series' 60 rounds, the parameters in 7 and the
+ranges of 21 characters in 1; that series did not keep each value's own
+maximum, so which value read 248.5 ms is not known. The series after it
+kept them, and a second script read the `Accept` values alone, each its
+fastest of five a round:
+
+| beside | load | rounds | `,` | the parameters | ranges of 21 | ranges of 10, and JSON | ranges of 16 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.9 to 1.8 | 20 | 36.7 / 38.6 / 65.6 | 25.1 / 27.0 / 29.3 | 16.3 / 17.8 / 20.7 | 7.3 / 8.1 / 10.1 | 4.6 / 5.5 / 7.4 |
+| eight loops | 12.9 to 12.3 | 20 | 38.0 / 57.5 / 98.6 | 24.7 / 28.0 / 55.9 | 15.8 / 18.9 / 38.4 | 7.6 / 9.3 / 19.3 | 4.8 / 6.3 / 13.0 |
+| the suite at `b3a644b` and eight loops | 12.6 to 18.6 | 150 | 36.2 / 54.3 / 148.9 | 24.0 / 40.1 / 150.7 | 16.5 / 31.0 / 75.9 | 7.2 / 12.6 / 36.9 | 4.6 / 7.8 / 26.0 |
+| eight loops, the suite at `82dc81b` just ended | 19.2 to 14.3 | 80 | 35.7 / 45.0 / 112.5 | 24.9 / 29.5 / 84.0 | 15.9 / 18.6 / 61.1 | 8.2 / 10.0 / 27.4 | 5.1 / 6.2 / 22.5 |
+| the suite at `82dc81b`, eight loops and the first script | 13.9 to 18.9 | 150 | 36.0 / 62.1 / 156.2 | 25.1 / 50.7 / 131.1 | 16.5 / 33.1 / 77.7 | 8.2 / 15.5 / 43.1 | 5.1 / 9.8 / 25.0 |
+
+`;` and NUL read 0.19 ms or less in every round. Of the lists of whole
+ranges, the highest of the 500 rounds beside the loops that named the
+value, 400 of them beside the suite too, was 77.7 ms, 2.6 times under
+200 ms. #377's tester, at `f3f5f46`, read the ranges of 21 characters at
+132.1 ms in one of 40 rounds beside the suite and eight loops, and at most
+67.2 ms in the other 39: 1.5 times under 200 ms.
+
+The quadratic readings were the same script's, one run each with nothing
+beside it, at a load of 0.5 to 1.3; each searches its value, as decoded
+text, from a set of places to the end for a character the value does not
+hold, with V8's `indexOf`, as F-24's reader above does from every `[`:
+
+| the reading, at 1 MiB | ms |
+| --- | --- |
+| from every byte: the body of an id of `x`; of an id of emoji, two-byte text | 7,791.8; 16,538.7 |
+| from every byte: `ownCopy`'s `x`; an `Origin` of the site's own repeated; a URL; `Accept`'s commas; the protocol version's header; the bodies case's `[` | 8,002.2; 8,348.5; 8,110.6; 8,010.0; 7,996.6; 7,767.6 |
+| from every byte of the 16,384 `Origin` headers joined, 344,062 characters | 656.5; 501 to 520 in the runs of #377's tester |
+| once per URL parameter `a=1&`; per escape `%3F` | 1,917.7 and 2,124.4; 2,520.2 and 2,892.2 |
+| once per `Accept` parameter `q=1;` | 1,889.8 and 1,989.5 |
+| once per `Accept` range of 10 characters; of 16; of 21 | 753.4 and 755.5; 480.2 and 499.8; 364.4 and 376.8 |
+| once per origin repeated in one `Origin` value: of 19 characters; of 27 | 381.5 and 466.7; 280.3 and 291.1 |
+| once per `Origin` header of 16,384, the rest of the array searched | 161.8 and 146.6 |
+| once per 41-byte element of the batch body | 177.7 and 212.7 |
+
+Every reading but the batch's is over its check's bound by 1.8 times or
+more: the ranges of 21 characters, the closest, by 1.8 times over 200 ms,
+and the `Origin` headers by 2.9 times over 50 ms. The batch's, 178 ms, is
+under the bodies case's 1000 ms, which `[` needs: given up, as before.
+
+The same readings, written into `protocol.ts` for a run and taken out
+after it, each switched on by an environment variable, were then run by
+the test itself, `node scripts/db.mjs task-test 377 --
+src/modules/mcp/protocol.test.ts`, with the checks of `82dc81b` and nothing
+beside it:
+
+| the reading in `protocol.ts` | `ℹ tests 41` | what failed, at 1 MiB |
+| --- | --- | --- |
+| from every byte, in `parseMessage`, `ownCopy`, `isAllowedOrigin`, `hasQueryString`, `acceptsJson` and `declaredProtocolVersion` | `ℹ pass 33`, `ℹ fail 8` | every case of made-up input of 1 MiB, the bodies, the ids, `ownCopy`, `Origin`, URLs, both `Accept` cases and the protocol version: `took 7292.6` to `7854.1 ms at best in 5 runs, over the` 50, 200, 500 or `1000 ms bound`; none at 1 or 64 KiB |
+| once per `Accept` range longer than 8 characters, and once per `Origin` header, the rest of them searched | `ℹ pass 39`, `ℹ fail 2` | `Origin`: `took 140.7 ms at best in 5 runs, over the 50 ms bound`; the lists of whole ranges, on ranges of 16 characters: `took 480.6 ms at best in 5 runs, over the 200 ms bound` |
+| once per `Accept` range longer than 16 characters, and once per origin repeated in one `Origin` value | `ℹ pass 39`, `ℹ fail 2` | `Origin`: `took 421.2 ms at best in 5 runs, over the 50 ms bound`; the lists of whole ranges, on ranges of 21 characters: `took 440.8 ms at best in 5 runs, over the 200 ms bound` |
+| once per element of a batch, before JSON.parse, twice | `ℹ pass 41`, `ℹ fail 0`, twice | nothing: the bodies case in 390 and 376 ms, against 178 to 191 ms without it |
+
+A first placing of the batch's reading, after JSON.parse, never ran: the
+batch body of 1 MiB ends inside an element, as `fill` cuts it, and is a
+parse error, not a batch.
+
+The full suite under load, each run exit 1 on failures of other files'
+bounds on time, none in this file:
+
+| the tree | beside it | load | `ℹ tests` | `ℹ pass` | `ℹ fail`, all in other files |
+| --- | --- | --- | --- | --- | --- |
+| the base, `d9f3959`, the bound 1000 ms | eight loops and the first loaded series | 2.7 to 18.6 | 3420 | 3417 | 3: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` and `:1490` |
+| `b3a644b`, `Accept` at 250 ms and the rest at 50 ms | eight loops and a series | 3.3 to 17.7 | 3420 | 3418 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` |
+| `b3a644b` | eight loops and the `Accept` script | 11.9 to 18.8 | 3420 | 3417 | 3: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` and `:1490` |
+| `82dc81b`, the bounds of the fix | eight loops and a series | 10.0 to 18.3 | 3423 | 3422 | 1: `rate-limit.test.ts:388` |
+| `82dc81b` | eight loops and both scripts at once | 13.5 to 19.7 | 3423 | 3418 | 5: `rate-limit.test.ts:388`, `access-key.test.ts:264` and `:473`, over their 100 ms, `capture-budget.test.ts:960` and `:1490` |
+| `214e2fd`, the ids' bodies and the `Origin` headers built before they are timed (below) | eight loops and its series | 0.6 to 18.8 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:1490` |
+| the same | eight loops and its series | 13.5 to 18.0 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` |
+| the same | eight loops and its series | 13.1 to 18.5 | 3423 | 3419 | 4: `rate-limit.test.ts:388`, `access-key.test.ts:264`, over its 100 ms, `capture-budget.test.ts:960` and `:1490` |
+
+In the two runs at the bounds of the fix the file's cases of 1 MiB took
+450 and 486 ms for the bodies, 209 and 201 ms for the ids, 265 and 335 ms
+for the `Accept` values and 247 and 188 ms for the lists of whole ranges,
+each case all its values and their building. The file alone, at `5db9a6d`,
+whose checks are `82dc81b`'s, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in
+three runs of three, exit 0.
+
+Up to `f3f5f46` the ids case built each body inside the function
+`withinBound` times, so the bound held the body's `Buffer.from` as well as
+`parseMessage`, which the series above, on bodies built before, did not
+measure: #377's tester read the emoji id that way at 12 to 13.5 ms alone and
+up to 47.1 ms, the fastest of five, beside the suite and eight loops,
+against 50 ms. Since `214e2fd` each id's body, and the `Origin` case's
+16,384 headers, are built before `withinBound`, as the bodies case's are,
+and the bound holds `parseMessage` and `isAllowedOrigin` alone. On
+2026-11-04 from 03:54 to 04:07 MSK, on the same host, a script outside the
+tree timed both forms as the series above did, each value's fastest of five
+a round, of 1 MiB; beside the suite is beside a full run of it with the
+checks of `214e2fd` and eight loops, each series ending with its run. Min,
+median and max of the rounds, in ms:
+
+| beside | load | rounds | ids, built before | ids, built in the timing | `ownCopy` | `Origin` headers, built before | built in the timing | URLs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.5 to 0.6 | 20 | 3.45 / 3.96 / 6.55 | 9.94 / 10.59 / 16.06 | 0.63 / 0.71 / 4.01 | | 0.87 / 0.91 / 1.46 | 0.05 / 0.06 / 0.07 |
+| nothing, the third suite just ended | 10.5 to 9.7 | 20 | 3.69 / 3.78 / 5.75 | 9.90 / 11.49 / 14.06 | 0.50 / 0.61 / 3.65 | under 0.01 | 0.85 / 0.89 / 1.72 | 0.05 / 0.06 / 0.07 |
+| the suite and eight loops | 0.6 to 18.8 | 215 | 3.67 / 7.68 / 19.28 | 9.89 / 20.93 / 53.10 | 0.49 / 0.72 / 10.52 | | 0.85 / 1.01 / 4.14 | 0.05 / 0.06 / 0.14 |
+| the same | 13.5 to 18.0 | 225 | 3.55 / 7.46 / 22.47 | 9.97 / 20.63 / 50.49 | 0.48 / 0.68 / 8.46 | | 0.87 / 0.99 / 4.49 | 0.04 / 0.06 / 0.09 |
+| the same | 13.1 to 18.5 | 219 | 3.58 / 7.53 / 24.12 | 9.86 / 21.10 / 60.39 | 0.50 / 0.66 / 9.81 | under 0.01 | 0.86 / 1.02 / 4.69 | 0.05 / 0.06 / 0.12 |
+
+An empty cell was not measured in that series. `Origin` values and the
+protocol version read under 0.01 ms in every round. Of the 659 loaded
+rounds, the ids built before read over 15 ms in 22, over 20 ms in 2 and
+over 25 ms in none; built in the timing, over 50 ms in 4, each a failure of
+the case as it was timed until then. #377's tester read the emoji id,
+built before, at 26.9 ms in one of 80 rounds beside the suite and eight
+loops, and at most 19.7 ms in the other 79. `BOUND_MS` keeps 50 ms: 2.1
+times the 24.1 ms of these rounds and 1.9 times the tester's 26.9 ms, and
+under the 141 to 162 ms of the reading once per `Origin` header by 2.8 times
+or more. The three full runs of the suite at `214e2fd`, in the table
+above, took the ids case of 1 MiB, all eight ids and their building, in 69,
+87 and 100 ms, and the file passed in each. The file alone, with the checks
+of `214e2fd`, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in seven runs of
+seven, exit 0.
+
+The scripts are not kept in the tree.
+
 ### Watched, and left
 
 - `parseMessage` on `[` growing faster than its size up to 4 MiB, above: in
   V8's own JSON.parse, and `/mcp` takes a body of 1 MiB at most.
 - `capture-budget.test.ts:1490` in the loaded run above; not this issue's.
+  Since #378, F-27.
+- In #377's eight loaded runs, `rate-limit.test.ts:388` in all eight,
+  `capture-budget.test.ts:960` in six, `:1490` in five,
+  `access-key.test.ts:264` in two and `:473` in one, over their bounds on
+  time; not #377's. Since #378, F-27 and F-07, After #378, for the first
+  three.
+- In three more loaded runs, by #377's tester at `2c636d7`,
+  `capture-budget.test.ts:960` in three, `rate-limit.test.ts:388` in two,
+  `capture-budget.test.ts:1490` in one, and in one
+  `measure-ordinary-load.test.ts:1818`, `100000 nodes took 4758.5 ms`, over
+  their bounds on time; not #377's.
+- The 248.5 ms of one round of the `b3a644b` series, its `Accept` value not
+  named: the commas' or the parameters', the likelier, would be half the
+  500 ms they are held to; a list of whole ranges' would be over its 200 ms
+  by 1.24 times, and fail. In the 500 rounds after it that named the value,
+  no list read over 77.7 ms; in 40 rounds of #377's tester, the ranges of
+  21 characters read 132.1 ms once.
 
 ## F-25 — `keeps at most 64 KiB a wait: <shape>`
 
@@ -4177,3 +4422,592 @@ that the next reading over the bound names its space. The base's
 that each head is under 16 KiB, the `431` and `200 []` answers and the
 `waits.size === 0` at the end stay, now checked in each round. The change
 and body tests are unchanged.
+
+## F-26 — `reads 5242880 characters of nesting, garbage or an unclosed value as nothing`, in `access-keys.test.ts` and `session-list.test.ts`
+
+- **Test**: `apps/frontend/src/lib/access-keys.test.ts:627` and
+  `apps/frontend/src/lib/session-list.test.ts:691` at `bbcf33b`, the base of
+  the fix: the last size of the suites `parseAccessKeys: hostile values at
+  growing sizes` and `parseSessionList: hostile values at growing sizes`,
+  each of whose parses `timed` held to `LIMIT_MS`, 1500 ms, in one
+  wall-clock run (`:593` and `:661`). With them, `access-keys.test.ts:479`,
+  `reads old and new values of 5242880 characters, hostile or full, in
+  bounded time`, which reads the same 5 MiB of nesting, its four calls and
+  the building of its values held to 3000 ms (`:493`). Issue #355.
+- **Status**: changed in the tests on `chore/hostile-size-test-margin-355`,
+  at `33c7c8c` and `9bef555`: nesting stops at 2 MiB, `NESTING_MAX`, in tests
+  of its own, `reads <size> characters of nesting as nothing`
+  (`access-keys.test.ts:663`, `session-list.test.ts:712` at `9bef555`);
+  every other hostile value still goes on to 5 MiB, in `reads <size>
+  characters of garbage or an unclosed value as nothing` (`:656`, `:704`).
+  `LIMIT_MS` is 3000 ms in both (`:615`, `:667`), 2500 ms at `33c7c8c`. The
+  sibling, now `reads full or garbage old and new values of 5242880
+  characters, and 2097152 of nesting, in bounded time`
+  (`access-keys.test.ts:498`), times its reads and not the building of its
+  values, and holds them to 5000 ms (`:516`). The parsers were not changed;
+  VERSION kept.
+
+### The failure
+
+Six times in whole runs of the frontend suite on the agents' server, each
+time with other suites running beside it, and never in a run of the file
+alone:
+
+- `access-keys.test.ts`, `1651.1 ms for 5242896 characters`: the developer
+  of #342 on 2026-11-01, at `386a9a02` in qa-tools, before the move (#326),
+  one of two whole-suite runs; the file alone passed, 47 of 47.
+- `session-list.test.ts`, `1682.7 ms for 5242896 characters`: F-07's
+  frontend run at `4e69009` in qa-tools, left there under Watched, and left.
+- `access-keys.test.ts`, `1510.7 ms`, and `session-list.test.ts`,
+  `2027.6 ms for 5242880 characters`: the developer and the tester of #343
+  on 2026-11-03 at `9eb6deeb`, in one of two whole-suite runs each.
+- Both at once in this entry's first run at the base, on 2026-11-03 at
+  18:37 MSK, `npm test -w @webhook-inspector/frontend` beside
+  `node scripts/db.mjs task-test 355`, the 1-minute load average rising from
+  2.2 to 14.4: `ℹ tests 2453`, `ℹ pass 2443`, `ℹ fail 2`, `ℹ cancelled 8`
+  (the 8 cancelled are llms.test.ts's, Watched, and left):
+
+  ```text
+  test at src/lib/access-keys.test.ts:627:5
+  ✖ reads 5242880 characters of nesting, garbage or an unclosed value as nothing (1754.708436ms)
+    AssertionError [ERR_ASSERTION]: 1752.6 ms for 5242880 characters
+
+  test at src/lib/session-list.test.ts:691:5
+  ✖ reads 5242880 characters of nesting, garbage or an unclosed value as nothing (2036.188074ms)
+    AssertionError [ERR_ASSERTION]: 2032.6 ms for 5242880 characters
+  ```
+
+  The sibling passed in that run, in 2473.7 ms of its 3000.
+
+### The mechanism
+
+A bound with little room over V8's own time, as in F-24. Of the four values
+of the test, two are nesting: `[` then as many `]`, alone and as `items`.
+V8's JSON.parse builds an array for each `[`, 2,621,440 arrays one in
+another at 5 MiB, and the parsers then read `items` and no deeper: the time
+is the JSON.parse's. It grows faster than the length. One parse of `[` then
+`]` by `parseAccessKeys`, the fastest of five, took 60 ms at 1 MiB, 144 ms
+at 2 MiB, 486 ms at 4 MiB and 774 ms at 5 MiB: 60, 72, 122 and 155 ms a
+MiB. At 5 MiB a parse took 0.69 to 1.06 s alone, half the bound and more,
+and 2.0 s with the suite's other files beside it and another suite beside
+them. Every other hostile value of the two blocks took 85.2 ms at most
+alone at 5 MiB.
+
+### The measurement
+
+On 2026-11-03 on the agents' Linux host, an AMD EPYC 7763 with 8 CPUs, Node
+v24.22.2. The script, outside the tree, builds each value of the two blocks
+as the tests do and times one call of `parseAccessKeys` or
+`parseSessionList` on it, five rounds; min / median / max in ms, alone at a
+load of 0.7 to 1.3, and beside `node scripts/db.mjs task-test 355` at 11.6
+to 9.8:
+
+| value | 1 MiB alone | 2 MiB alone | 4 MiB alone | 5 MiB alone | 2 MiB loaded | 5 MiB loaded |
+| --- | --- | --- | --- | --- | --- | --- |
+| `parseAccessKeys`, nesting | 60.1 / 93.0 / 175.2 | 144.1 / 151.5 / 209.6 | 486.0 / 513.6 / 546.2 | 774.0 / 800.1 / 956.0 | 193.8 / 223.8 / 279.5 | 1087.7 / 1129.5 / 1349.0 |
+| `parseAccessKeys`, nesting as `items` | 53.3 / 54.2 / 64.2 | 152.4 / 159.7 / 161.2 | 547.6 / 595.9 / 685.4 | 716.2 / 730.8 / 1063.0 | 179.6 / 204.1 / 231.8 | 998.1 / 1113.5 / 1133.0 |
+| `parseSessionList`, nesting | 73.4 / 96.8 / 146.1 | 151.6 / 162.6 / 210.3 | 474.0 / 502.0 / 512.8 | 691.7 / 724.8 / 805.6 | 160.6 / 181.5 / 275.3 | 729.5 / 817.0 / 893.8 |
+| `parseSessionList`, nesting as `items` | 95.9 / 100.8 / 105.7 | 143.1 / 164.0 / 169.1 | 481.2 / 499.7 / 714.6 | 718.4 / 760.6 / 794.5 | 155.8 / 190.0 / 206.1 | 855.4 / 912.6 / 1045.3 |
+| `parseAccessKeys`, entries, the slowest other value | 9.1 / 10.5 / 12.3 | 17.9 / 19.8 / 20.5 | 46.5 / 49.2 / 59.5 | 49.9 / 56.9 / 64.2 | 23.1 / 28.3 / 31.1 | 85.0 / 95.1 / 121.4 |
+| `parseSessionList`, entries, the slowest other value | 19.0 / 24.0 / 28.3 | 25.9 / 27.3 / 31.9 | 54.3 / 56.0 / 72.1 | 73.5 / 75.0 / 85.2 | 26.0 / 46.9 / 105.7 | 74.1 / 95.9 / 116.7 |
+
+In the whole suite the load is heavier than beside one other suite, since
+the suite's own files run side by side. Sixteen whole runs of the frontend
+suite at the fix's sizes, each beside the backend suite,
+`node scripts/db.mjs task-test 355`, two frontend runs to a backend run,
+the 1-minute load average between 3.9 and 19.2, each run 47 to 53 s:
+
+- ten with `LIMIT_MS` still 1500 and the sibling as at the base but for its
+  nesting: every test of both blocks and the sibling passed in all ten. The
+  2 MiB nesting test, two parses, took 497 to 760 ms in `access-keys.test.ts`
+  and 452 to 1270 ms in `session-list.test.ts`; the sibling at 5 MiB 891 to
+  1615 ms.
+- six more of the same tree with a line written after each timed parse,
+  not committed: the slowest single parse was 750.6 ms, `parseSessionList`
+  on 2 MiB of `[` then `]`; `parseAccessKeys` on the same, 472.9 ms. Of the
+  5 MiB values, the entries were the slowest, 323.6 and 504.6 ms; every
+  other one took 240 ms or less. The sibling's reads took 844 to 1390 ms,
+  the building of its full value before them 159 to 323 ms more.
+
+Each of those sixteen runs exited 1 on llms.test.ts (Watched, and left), and
+three of them failed `request-filter.test.ts:307` besides.
+
+### The mutations
+
+Two quadratic forms of each parser, applied in the worktree and reverted,
+never committed. The items form keeps the entries in an array and looks for
+each id with `findIndex` before adding it, as a list replacing the `Map`
+might; the text form, before JSON.parse, looks from each `[` for a `]` after
+it, `raw.indexOf(']', i + 1)`, quadratic in the depth of nesting. One run
+each, alone, in ms:
+
+| form | value | 64 KiB | 1 MiB | 2 MiB | 5 MiB |
+| --- | --- | --- | --- | --- | --- |
+| `parseAccessKeys`, items | entries | 3.3 and 9.4 | 639.8 and 707.5 | 2527.0 and 2554.6 | 38020.2 and 39107.9 |
+| `parseAccessKeys`, text | nesting | 12.8 and 17.7 | 1769.2 and 1779.7 | 8085.6 and 8214.1 | |
+| `parseAccessKeys`, text | nesting as `items` | 7.4 and 7.7 | 1755.2 and 1772.5 | 7899.5 and 7985.7 | |
+| `parseSessionList`, items | entries | 13.6 | 1676.3 | 5020.5 | 108484.0 |
+| `parseSessionList`, text | nesting | | 1793.5 | 9231.5 | |
+| `parseSessionList`, text | nesting as `items` | | 1768.0 | 7559.9 | |
+
+From 1 to 2 MiB the time grows 3.0 to 5.1 times, and from 2 to 5 MiB 15
+and 22 times, where n² gives 4 and 6.25.
+
+Against the tests at `33c7c8c`, with `LIMIT_MS` at 2500 ms, each form
+applied in turn and its file run
+alone, `npm test -w @webhook-inspector/frontend -- src/lib/<name>.test.ts`,
+at a load of 1.3 to 1.6; the parser was put back with `git checkout --`
+after each:
+
+| form | the file | what failed |
+| --- | --- | --- |
+| `parseAccessKeys`, items | 49 of 51 passed, exit 1, 138 s | `reads 5242880 characters of entries as at most 100 keys`, `46295.0 ms for 5504957 characters`; the sibling at 5 MiB, `5242880 characters took too long`, in 85.7 s |
+| `parseAccessKeys`, text | 49 of 51, exit 1, 24 s | `reads 2097152 characters of nesting as nothing`, `8916.7 ms for 2097152 characters`; the sibling at 5 MiB, `5242880 characters took too long`, in 8.4 s |
+| `parseSessionList`, items | 56 of 57, exit 1, 77 s | `reads 5242880 characters of entries as at most 50 sessions`, `72483.2 ms for 5723307 characters` |
+| `parseSessionList`, text | 56 of 57, exit 1, 13 s | `reads 2097152 characters of nesting as nothing`, `8087.1 ms for 2097152 characters` |
+
+Each form fails its block, at the largest size only: the items form
+passes at 1 MiB, the text form at 1 MiB of nesting.
+
+### The fix
+
+In the tests only. Nesting stops at 2 MiB, where V8 takes a fifth of what
+it takes at 5 MiB, and a scan quadratic in the depth already takes 7.6 s or
+more; the other values, whose time is the parsers' own, still go on to the
+5 MiB a key of `localStorage` can hold at most, where a parse quadratic in
+the entries takes 38 to 46 s (`parseAccessKeys`) and 72 to 108 s
+(`parseSessionList`). `LIMIT_MS` is 3000 ms: 4.0 times the slowest loaded
+parse above, 750.6 ms, and 2.5 times under the fastest quadratic parse of
+a value at its largest size, 7.6 s alone, 7.8 s or more in the test runs.
+A bound of 1500 ms keeps 2.0 times over that loaded parse, which the load
+had made five times its 151.6 ms alone; the 2 MiB nesting passed at it in
+all sixteen runs above, but with less room than the load took. 2500 ms,
+the first value of the fix,
+`33c7c8c`, kept 3.3 times; in the runs at it below, at a load of up to
+20.7, the two parses of `access-keys.test.ts`'s 2 MiB nesting test took
+1330 ms together, and `9bef555` set 3000 ms. The items form of either parser
+at 1 MiB, 0.6 to 1.7 s, passes under every one of these bounds; at 5 MiB it
+fails them all. The sibling's time starts once its values are built and
+holds its four calls of `removedAccessKeys`, six parses, to 5000 ms, 3.6
+times their slowest loaded time above; the block holds each parse to its
+3000 ms.
+
+Every test of both blocks and the sibling passed in all 26 whole runs of
+the frontend suite at the fix's sizes, each beside the backend suite as
+above: the sixteen above, at 1500 ms; six at `33c7c8c`, at 2500 ms, at a
+load of 2.1 to 20.7; and four at `9bef555`, at 3000 ms, at 6.8 to 19.0;
+each `ℹ tests 2461`, in 47 to 57 s. In the last ten the 2 MiB nesting test,
+two parses, took 435 to 1330 ms in `access-keys.test.ts` and 487 to
+1347 ms in `session-list.test.ts`; the sibling, the building of its values
+in the test's time though not in its bound's, 828 to 2261 ms. So 0 of 26
+failed, Wilson 95% 0%–12.9%. No series was run before the fix: the six
+failures above were observed in whole runs, not counted against a number of
+runs, and this entry's one run at the base failed both files.
+
+Against `9bef555`, at 3000 ms, the four quadratic forms fail the same
+tests as at `33c7c8c`, at a load of 1.4 to 2.2, 49 of 51 and 56 of 57
+passing, exit 1: `parseAccessKeys`' items form with `41752.7 ms for
+5504957 characters` and the sibling in 130.9 s, its text form with
+`8082.3 ms for 2097152 characters` and the sibling in 8.5 s;
+`parseSessionList`'s items form with `95706.8 ms for 5723307 characters`
+and its text form with `7836.5 ms for 2097152 characters`.
+
+### Watched, and left
+
+- `llms.test.ts:640`, `the recipe’s waiting step, run with a stand-in for
+  curl (D200)`, failed its `before` hook in every whole run of this entry,
+  `jq must be installed`, `spawnSync jq ENOENT`, and its eight tests were
+  cancelled: the agents' server had no `jq` on 2026-11-03. The tests require
+  it and never skip, by their comment; CI's `test` job installs it. Not this
+  entry's; each of these runs exited 1 on it alone.
+- Two flakes of this entry's kind in other files of the frontend suite,
+  each a one-run bound of 1000 ms on 1 MiB, outside #355's scope: of the 26
+  loaded runs at the fix, `request-filter.test.ts:307`, `costs the list
+  nothing: a megabyte of one word over 1000 rows`, failed in four, `1096.0`,
+  `1100.0`, `1045.0` and `1222.1 ms for 1048576 characters`; and
+  `response-template.test.ts:412`, `loses nothing of the line, and stands
+  hostile lines at growing sizes in one pass`, in two, `1048576:
+  1182.378455 ms` and `1048576: 1114.422662 ms for "{{{{{{{{{{{{"`.
+- The backend suite beside them, 13 runs, failed
+  `src/modules/webhook/capture-budget.test.ts:960`, `refuses 100,000
+  webhooks of one address at once quickly once its line is full, and lets
+  the others in`, `refusing the flood took too long`, in nine; and once
+  each `src/modules/sessions/access-key.test.ts:473`, `took 108.1 ms at best
+  in 5 runs, over the 100 ms bound`; `capture-budget.test.ts:1490`, F-24's,
+  `weighing the flood took too long`;
+  `src/modules/limits/rate-limit.test.ts:388`, `took 5146.9 ms at best in 5
+  runs, over the 5000 ms bound`; and
+  `src/modules/requests/request-wait.test.ts:900`, `answered after 5001 ms`.
+  Its load was the frontend suite's; not this entry's. Since #378, F-27
+  for the two of `capture-budget.test.ts` and F-07, After #378, for
+  `rate-limit.test.ts:388`.
+
+## F-27 — `refuses 100,000 webhooks of one address at once quickly once its line is full, and lets the others in` and `gives a flooder of 81 KiB webhooks on any number of connections no more of the reserve than a light sender may hold, and leaves the rest to another sender`
+
+- **Test**: `apps/backend/src/modules/webhook/capture-budget.test.ts:960` and
+  `:1490` at `a801d46`, the base of the fix, each holding one wall-clock run
+  of its flood to 5000 ms: `refusing the flood took too long` (`:972`) and
+  `weighing the flood took too long` (`:1502`). Issue #378, from the review
+  of #363. At the fix `:1001` and `:1564`, held through `withinBound` to
+  `FLOOD_BOUND_MS` (`:78`) on the lines of `LONG_LINE` (`:87`) and
+  `FLOOD_LINES` (`:97`); at `c83acfd`, `:977` and `:1512`. The first
+  message is not this entry's alone: `answer-budget.test.ts:222` gives it
+  too (Watched, and left).
+- **Status**: fixed in the tests on `chore/flood-check-bounds-378`. At
+  `c83acfd` each check held the admissions of its flood alone, the fastest
+  of up to five runs, to 1500 ms; at `fa58d1d`, after the review of
+  `98553bf`, it times them on lines longer than the product's, so that an
+  admission quadratic in the number of waiters fails both (The lines).
+  `capture-budget.ts` and `testing/timing.ts` were not changed; VERSION
+  kept. `rate-limit.test.ts`'s `counts 100,000 distinct addresses quickly`,
+  which failed beside them, was changed at `c83acfd`: F-07, After #378.
+
+### The failure
+
+Never in a run of the file alone; in whole runs of the backend suite on the
+agents' server while other work ran beside it:
+
+- #363's developer, F-24's measurement, on 2026-11-02: the suite beside
+  eight busy loops at a load of 9.5 to 17.2, `ℹ tests 3407`, `ℹ pass 3406`,
+  `ℹ fail 1`, `:1490` with `weighing the flood took too long`.
+- #363's tester under the same kind of load, up to about 18.5: 3,404
+  passed, 3 failed, both checks and `rate-limit.test.ts:388` (F-07).
+- #355's developer on 2026-11-03, thirteen runs beside the frontend suite at
+  a load of 2.1 to 20.7 (F-26, Watched, and left): `:960` in nine, `:1490`
+  in one.
+- #377's eight runs beside eight busy loops and a series on 2026-11-04
+  (F-24, After #377): `:960` in six, `:1490` in five; and #377's tester's
+  three: `:960` in three, `:1490` in one.
+
+### The mechanism
+
+One run of a span that held two things: the 100,000 calls of `admit`, each
+of which decides its webhook - admitted, left waiting or refused - before
+it returns, and the reading of the 100,000 answers through
+`settledOrPending`, a `Promise.race` and a `setImmediate` each, which the
+test needs only to see what each was answered. The reading is most of the
+span. In the file's own run at the base, with a line written after each
+span and taken out after the run, the spans took 2.2 and 2.7 s for `:960`
+and 2.1 and 3.1 s for `:1490`, alone; the admissions alone, timed the same
+way in the fix's form, 197 to 326 ms and 230 to 291 ms. So 5000 ms left the
+span 1.6 to 2.3 times its own time, and one run decided: a load that slowed
+the file's process by more than that failed it, whatever the budget did.
+
+### The measurement
+
+Of `c83acfd`'s form, on the product's lines; the longer lines the checks
+time since `fa58d1d` were measured the same way, under The lines.
+
+On 2026-11-04 from 05:10 to 05:41 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2. A `node:test` file outside the tree,
+so that the promises are made under the test runner as in the suite, ran
+rounds of both checks against the tree's `capture-budget.ts`: once the span
+the base timed, on a budget of its own, and then the fix's form, the
+100,000 admissions of `:960` five times on one budget and those of `:1490`
+five times, each on a budget flooded before; the first run and the fastest
+of the five, which `withinBound` holds to its bound when every run is over
+it. Under load is beside `node scripts/db.mjs task-test 378`, the full
+backend suite, eight busy loops, `node -e 'for(;;){}'`, and a series of
+F-07's check in a process of its own, in the five runs of the suite below.
+Min, median and max of the rounds, in ms:
+
+| beside | load | rounds | `:960`, the base's span | `:1490`, the base's span | `:960`, first run | `:960`, fastest of five | `:1490`, first run | `:1490`, fastest of five |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.6 to 2.1 | 10 | 1080.3 / 2296.9 / 5411.8 | 1548.7 / 1830.7 / 4666.5 | 138.5 / 164.7 / 248.9 | 138.5 / 155.7 / 172.1 | 158.4 / 194.3 / 282.6 | 147.9 / 169.0 / 227.1 |
+| the suite, eight loops and F-07's series | 1.5 to 24.3 | 38 | 2248.5 / 4250.0 / 16579.3 | 3067.4 / 4920.9 / 17976.2 | 223.1 / 524.3 / 883.7 | 188.1 / 342.6 / 647.5 | 291.2 / 568.1 / 1214.3 | 188.9 / 379.4 / 647.7 |
+
+Under load the base's span was over 5000 ms in 16 of the 38 rounds for
+`:960` and 18 for `:1490`; the fastest of five admissions never over
+648 ms. One run of the admissions alone was not enough either: of the 190
+loaded runs of each, 15 of `:960` and 17 of `:1490` took over 1500 ms, up
+to 5662.6 and 7534.3 ms, and with nothing beside them 3 of 50 of `:1490`, up
+to 2128.7 ms. Why is not measured; that the series' process, which keeps
+more of what each run leaves than the file's does, collects for longer is
+an inference. The base's span over 5000 ms with nothing beside it,
+5411.8 ms, was the series'; in the file's own runs, above, it took 2.1 to
+3.1 s.
+
+The full suite under that load, at the fix's checks, one run beside each
+loaded series above; whole tests in s, their reading and, for F-07's, the
+making of its keys included:
+
+| run | tree | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | `:960` | `:1490` | F-07's |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `c83acfd`'s checks before its commit, `FLOOD_BOUND_MS` at 5000 | 1.5 to 21.4 | 3423 | 3423 | 0 | 6.4 | 6.2 | 9.9 |
+| 2 | `c83acfd` | 4.1 to 20.9 | 3423 | 3423 | 0 | 7.9 | 5.4 | 8.1 |
+| 3 | `c83acfd` | 15.7 to 20.6 | 3423 | 3423 | 0 | 6.3 | 6.3 | 7.3 |
+| 4 | `c83acfd` | 15.5 to 21.4 | 3423 | 3421 | 2: `access-key.test.ts:264` and `:473`, over their 100 ms | 6.2 | 5.8 | 9.2 |
+| 5 | `c83acfd` | 15.7 to 19.4 | 3423 | 3423 | 0 | 8.6 | 6.7 | 7.0 |
+
+Both checks passed in all five, 0 of 5 (Wilson 95% 0%–43.4%); the
+fastest of five admissions in all 38 loaded rounds of the series was under
+1500 ms, 0 of 38 (0%–9.2%). At the base the same kind of load failed `:960`
+in nine of #355's thirteen runs and six of #377's eight.
+
+### The mutations
+
+Three of them undo what a comment in `createCaptureBudget` says the code
+avoids - choosing the next with more than one look an address, weighing
+one more waiter at a cost per waiter, a search of the line for each one
+refused - and a fourth makes the cost grow with the flood itself. Each
+was written into `capture-budget.ts` for a run and taken out after it with
+`git checkout --`, never committed:
+
+- every waiter: choosing the next looks at every waiter of every address's
+  line, each address's first found by passing over those of an address
+  already seen, where `admitWaiting` looks at each address's first alone;
+- sum the line: the line's weight is summed over its waiters, the address's
+  and the process's, at every admission that must wait, where it is kept
+  beside the queues;
+- search the line: a webhook the line has no room for is searched for from
+  the front of its address's line, where `remove` looks at the last first;
+- every arrival: each admission walks a list of every webhook the budget was
+  ever given, refused ones included, so that a flood of n costs n².
+
+The series above with nothing beside it, at a load of 1.0 to 1.8, two
+rounds of each, the fastest of five in ms; for every arrival, whose runs
+on one budget each take longer than the last, one run of each check, by a
+second file of the same kind at a load of 1.4 to 1.6. Then the file, the
+fix's checks, `node scripts/db.mjs task-test 378 --
+src/modules/webhook/capture-budget.test.ts`, after the loaded runs, at a
+load falling from 13.8 to 3.8, and for every arrival at 1.2 to 1.4:
+
+| the mutation | `:960` | `:1490` | the file with it |
+| --- | --- | --- | --- |
+| none, the ten rounds above | 138.5 to 172.1 | 147.9 to 227.1 | `ℹ tests 50`, `ℹ pass 50` |
+| every waiter | 956.0 and 1061.2 | 3448.9 and 3825.8 | `ℹ pass 49`, `ℹ fail 1`, exit 1: `:1490`, `took 3398.1 ms at best in 5 runs, over the 1500 ms bound`; `:960` passed |
+| sum the line | 382.3 and 366.8 | 8507.1 and 9076.2 | `ℹ pass 49`, `ℹ fail 1`, exit 1: `:1490`, `took 8794.2 ms at best in 5 runs, over the 1500 ms bound`; `:960` passed |
+| search the line | 220.0 and 218.0 | 156.5 and 203.1 | `ℹ pass 50`, exit 0 |
+| every arrival | one run, 18108.6 | one run, 34329.3 | the two checks alone, by `--test-name-pattern`: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1: `:960`, `took 16987.3 ms at best in 5 runs, over the 1500 ms bound`, after 1030 s, its later runs on the same budget slower; `:1490`, `took 31905.2 ms at best`, after 184 s |
+
+Every arrival grows as the flood's square: one run of `:960` took 399.6,
+1252.0, 4909.8 and 18108.6 ms for floods of 12,500, 25,000, 50,000 and
+100,000, and `:1490` 599.4, 2266.3, 7855.2 and 34329.3 ms.
+
+The line of one address in `:960` holds 1,008 waiters, as the line's
+16 MiB of these webhooks allows; the four lines of `:1490` hold 4,032 and
+its sender's first one more. Looking at every waiter takes six to eight
+times the admissions' own time at 1,008 waiters and 15 to 26 times at
+4,033; summing the line 2.4 times and 37 to 61 times. So `:1490` fails
+both and `:960` neither: given up there, where every arrival, quadratic in
+the flood, fails. Searching one address's line for each one refused costs
+about 60 ms more over the 100,000, and `:1490`'s sender has one waiter: no
+check tells it apart, and at the base's 5000 ms none did.
+
+The first two were the first round's own readings, and dearer than they
+need be: its every waiter also passes over each waiter of an address
+already seen, through a `Set`, and its sum the line makes an array of
+every waiter at each admission that must wait. Tighter readings of the
+same two, the review's, were caught reliably by neither check, and the
+comment on `FLOOD_BOUND_MS` at `98553bf`, which gave every waiter's 3.4 s
+as what looking at every waiter takes, held for the first round's reading
+alone: The lines.
+
+### The lines
+
+The review of `98553bf` found that an admission quadratic in the number of
+waiters did not fail the checks on every run. Its tester wrote two tighter
+readings into `capture-budget.ts`, `test-378-capture-budget.M1.ts` and
+`.M2.ts` in its scratchpad, not kept:
+
+- M1, every waiter: `admitWaiting` finds each address's first by looking at
+  every waiter of its line for the earliest, where it reads the line's
+  first;
+- M2, sum the line: whether one more fits is decided by summing the
+  address's line and, when that has room, every line, where `lineUsedBy`
+  and `lineUsed` are read.
+
+At `98553bf`, with M1 the file passed in three runs of three, and the two
+checks alone failed once in three, `:1513`, `took 1593.0 ms at best in 5
+runs`; its admissions took 252 to 312 ms at `:978` and 972 to 1373 ms at
+`:1513`, where they take 22 to 49 and 29 to 57 ms without it, timed by the
+tester's own script. With M2, `:1513` failed once in three, `took 1607.8
+ms at best`, and `:978` never. The base failed neither.
+
+The product's lines are too short to tell them apart. A waiting webhook
+weighs 16 KiB at least, `waitingWeight` of no header line, so an
+address's line of 16 MiB holds 1,024 of them at most and the process's of
+64 MiB 4,096; `:978`'s holds 1,008, and `:1513`'s four 4,032. On those,
+a run of M1, M2 or searching the line took 0.2 to 1.8 s alone - M1 0.25 to
+0.52 s at `:978` and 0.97 to 1.78 s at `:1513`, M2 0.43 to 0.60 s and 1.61
+to 1.68 s, by the tester's script and the correction's - on either side of
+1500 ms, while the admissions took up to 648 ms under load at best of
+five, and single runs of them up to 7.5 s: no bound passes the admissions
+under load and fails each of these alone.
+
+So since `fa58d1d` each check times its flood on lines longer than the
+product's, in a budget of its own, the bound kept:
+
+- `refuses 100,000 webhooks of one address at once quickly once its line
+  is full, and lets the others in` (`:1001`) fills one address's line of
+  `LONG_LINE`, 65,536 waiters, and refuses the 100,000 on it, run after run
+  on the same budget. The line is then asserted unchanged and left as it
+  is, its timers mocked: letting 65,536 of one address go takes seconds, as
+  `remove` takes each from the front of the line's array with `splice`,
+  which moves the rest - 0.8 s for a line of 33,272 in one measurement,
+  nothing for 1,024. The product's line follows, untimed, as at the base: the
+  100,000 answered `line-full`, another address waiting and let in.
+- `gives a flooder of 81 KiB webhooks on any number of connections no more
+  of the reserve than a light sender may hold, and leaves the rest to
+  another sender` (`:1564`) sends #242's flood to one budget whose lines,
+  an address's and the process's, are `FLOOD_LINES`, five, times the
+  product's: 5,041 waiting an address, 20,164 in all. Five keeps the
+  product's shape: the four lines leave the process's 15,360 bytes, less
+  than one more of the flood's webhooks or the light sender's 16 KiB, so
+  that its first waits and the rest are refused; two, three or four leave
+  room for more of the sender's. Every run sends its 100,000 to that budget,
+  and what all runs sent is answered and checked as one flood: after the
+  first run the sender holds what a light sender may and its first waits,
+  so each one more is refused at once, as 99,848 of the first run's are.
+
+The lengths: searching the line for each one refused looks at a waiter in
+0.4 ns, the cheapest look of the mutations, and takes about the bound on a
+line of 33,272, 1548 to 1648 ms, and nearly twice it on 65,536; M2 took
+3.1 s on 17,140. At `:1564` searching the line does not apply - the
+sender's line holds its first alone, and the search finds each refused at
+once - and M1 and M2 look at every line: on 20,164 they take 3.6 and more
+times the bound.
+
+On 2026-11-04 from 07:02 to 08:47 MSK on the same host, the same way as
+above: a `node:test` file outside the tree ran rounds of each check's
+timed part in `fa58d1d`'s form - the 65,536 waiting made, then their
+100,000 refused five times; #242's flood sent on the longer lines, then the
+light sender's 100,000 five times to that budget - the first run and the
+fastest of five. Under load is beside `node scripts/db.mjs task-test 378`,
+the full backend suite, and eight busy loops, `node -e 'for(;;){}'`, in the
+four runs of the suite below. The series made 1.1 million promises a round
+with no turn between rounds, and in the first two runs ran out of the test
+runner's map of them after 15 rounds, 127 and 156 s into the suite's three
+minutes; from the third it took a turn each round. Min, median and max of
+the rounds, in ms:
+
+| beside | load | rounds | `:1001`, the line made | `:1001`, first run | `:1001`, fastest of five | `:1564`, the flood sent | `:1564`, first run | `:1564`, fastest of five |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 1.0 to 1.8 | 10 | 161.1 / 213.1 / 256.1 | 180.1 / 249.6 / 809.0 | 155.8 / 182.6 / 236.1 | 53.7 / 87.6 / 155.6 | 173.1 / 210.8 / 610.2 | 173.1 / 188.1 / 281.6 |
+| the suite and eight loops | 1.9 to 20.8 | 66 | 272.8 / 573.1 / 2667.7 | 241.6 / 566.8 / 3161.0 | 205.6 / 429.6 / 917.0 | 54.1 / 207.4 / 569.6 | 255.3 / 706.4 / 1792.5 | 255.3 / 433.2 / 834.1 |
+
+The fastest of five was never over 1500 ms, 0 of 66 rounds (Wilson 95%
+0%–5.5%); single runs were, 14 of 330 at `:1001` and 32 of 330 at
+`:1564`, up to 3459.3 and 6966.5 ms, and with nothing beside them one of
+50 at `:1564`, 2522.5 ms. Under load the fastest of five came to 917 ms
+where it came to 648 ms on the product's lines at `c83acfd`; that the
+larger heap, 65,536 waiters and their timers kept, costs the collections
+more is an inference, not measured.
+
+The full suite under that load at `fa58d1d`, one run beside each loaded
+series above; whole tests in s, their reading included:
+
+| run | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | exit | `:1001` | `:1564` | F-07's |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1.9 to 17.0 | 3423 | 3423 | 0 | 0 | 10.2 | 5.9 | 6.4 |
+| 2 | 15.8 to 20.0 | 3423 | 3422 | 1: `measure-ordinary-load.test.ts:1818`, Watched, and left | 1 | 11.1 | 4.8 | 6.4 |
+| 3 | 15.2 to 20.1 | 3423 | 3422 | 1: the same | 1 | 9.5 | 5.1 | 6.9 |
+| 4 | 14.6 to 20.8 | 3423 | 3423 | 0 | 0 | 8.8 | 6.5 | 6.4 |
+
+Both checks passed in all four, 0 of 4 (Wilson 95% 0%–49.0%), and F-07's
+too.
+
+The mutations at `fa58d1d`'s checks, each written into `capture-budget.ts`
+for its runs and taken out after them with `git checkout --`, never
+committed: M1 and M2 as the review's tester wrote them, and the first
+round's four above. First the series' timed parts with nothing beside them,
+at a load of 1.0 to 1.4: the fastest of two runs, three for searching the
+line, in ms, and what the mutation adds to an admission a waiter; then the
+file, `node scripts/db.mjs task-test 378 --
+src/modules/webhook/capture-budget.test.ts`, or its two checks alone, by
+`--test-name-pattern`, for the three that take minutes a run, at a load of
+1.3 to 2.0 at their start - 12.1 at the first, the loaded runs' average
+still falling:
+
+| the mutation | `:1001`, 65,536 waiting | `:1564`, 20,164 waiting | the file or the two checks with it |
+| --- | --- | --- | --- |
+| none | 155.8 to 236.1, the ten rounds above | 173.1 to 281.6 | the file three times, twice before `fa58d1d` was committed and once after the mutations: `ℹ tests 50`, `ℹ pass 50`, exit 0 |
+| M1, every waiter | 21333, 3.2 ns | 8138, 3.9 ns | the file three times: `ℹ pass 48`, `ℹ fail 2`, exit 1, both checks `took … ms at best in 5 runs, over the 1500 ms bound`, `:1001` at 37128.3, 20229.5 and 37985.5, `:1564` at 10286.9, 8883.2 and 12445.2 |
+| M2, sum the line | 14067, 2.1 ns | 5473, 2.6 ns | the file three times: `ℹ pass 48`, `ℹ fail 2`, exit 1, both, `:1001` at 35286.2, 36957.8 and 13760.5, `:1564` at 10359.0, 10647.3 and 8145.9 |
+| search the line | 2753, 0.39 ns | 185, none: the sender's line holds its first | the file three times: `ℹ pass 49`, `ℹ fail 1`, exit 1, `:1001` at 2945.6, 2888.5 and 2971.8 |
+| every waiter, the first round's | 56754, 8.6 ns | 16524, 8.1 ns | the two checks once: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1, `:1001` at 75808.3, `:1564` at 18025.5, after 525 s |
+| sum the line, the first round's | 32693, 5.0 ns | 67949, 34 ns | the two checks once: `ℹ tests 2`, `ℹ pass 0`, `ℹ fail 2`, exit 1, `:1001` at 27460.4, `:1564` at 71740.5, after 655 s |
+| every arrival | one run, 62273 | one run, 45738 | the two checks once: not ended within `task-test`'s 1800 s, `Interrupted while running`, exit 124, `:1001`'s five runs, each longer than the last, unfinished |
+
+So each fails every check it can on every run: searching the line, the
+cheapest, by 1.8 to 2.0 times at `:1001`; M1 and M2 by 3.6 to 25 times
+at either; every arrival, quadratic in the flood, by 41 and 30 times in
+its first run. With a mutation the tests take minutes - `:1001` took 202.6 s with M1
+in the first run of the file - and fail with the bound's message all the
+same: their timed runs are synchronous, so the suite's 120 s timeout, a
+timer, waits for them. Every arrival's five runs at `:1001`, on 65,536
+waiting and the flood of each run before, outlast `task-test`'s 30
+minutes, which ends the run with exit 124 instead.
+
+### The fix
+
+In the tests only, `c83acfd` and `fa58d1d`. Each check holds the 100,000
+calls of `admit` of its flood to `FLOOD_BOUND_MS`, 1500 ms, through
+`withinBound`, and reads their answers afterwards, untimed; since
+`fa58d1d` on the longer lines of a budget of its own, The lines. `:1001`
+makes its runs on one budget: each webhook refused leaves the line before
+`admit` returns, so a run leaves the budget as it found it. `:1564` makes
+them on one budget too, and checks what all of them sent as one flood; at
+`c83acfd` it gave each run a budget of its own, five built before the
+first run, as a run takes a light sender's bytes of the reserve.
+`flooded()` is split for it, `floodSent()` building a budget for a multiple
+of the product's lines and asserting #242's flood without waiting, and
+`flooded()` sorting its answers, at the product's lines, for the other
+checks. A check over the bound fails with `withinBound`'s `took … ms at
+best in 5 runs, over the 1500 ms bound`, no longer with its own message.
+`withinBound` fits as it is: the checks are asynchronous, but what they
+time is not, and the mocked `setTimeout` only holds the waiters' 30 s,
+which no run waits for. `testing/timing.ts` was not changed.
+
+1500 ms is 1.6 times the slowest loaded fastest-of-five on the longer
+lines, 917 ms, and 5.3 times the slowest alone, 282 ms; the cheapest
+quadratic reading, searching the line at `:1001`, took 2.75 to 2.97 s at
+best alone, 1.8 to 2.0 times the bound, and the cheaper of the review's two
+at `:1564`, M2, 5.5 s and more. 2000 ms would leave searching the line 1.4
+times, and 1000 ms the loaded admissions 1.1 times. At `c83acfd`, on the
+product's lines, the slowest loaded fastest-of-five was 648 ms. The
+comments on `FLOOD_BOUND_MS`, `LONG_LINE` and `FLOOD_LINES` give these
+numbers.
+
+### Watched, and left
+
+- `access-key.test.ts:264`, `answers made-up headers of 1048576 characters
+  at once`, `took 115.3 ms at best in 5 runs, over the 100 ms bound`, and
+  `:473`, `answer made-up handshakes of 1048576 characters under both
+  prefixes at once`, `took 116.2 ms`, in the fourth loaded run of
+  `c83acfd`; F-24's and F-26's runs saw them too, the four runs of
+  `fa58d1d` not. #378 left them out of scope.
+- `measure-ordinary-load.test.ts:1818`, `summarises hostile profiles of
+  growing size in linear time`, `100000 nodes took 4722.036921999999 ms`
+  and `5574.850466 ms` in the second and third runs of `fa58d1d`: one
+  wall-clock run a size, held to 2000 ms plus twenty times the run of the
+  size before. #377's tester saw it once (F-24); not seen in the five runs
+  of `c83acfd`. Out of #378's scope.
+- `request-wait.test.ts:900`, `answered after 5001 ms` in one of #355's
+  runs (F-26), was not seen in the nine runs above.
+- `answer-budget.test.ts:222`, in `refuses 100,000 answers of one full
+  address quickly, and keeps nothing of 100,000 addresses once they are
+  given back`, holds one wall-clock run of 100,000 refusals to 5000 ms with
+  the same message as the base's `:972`, `refusing the flood took too
+  long`: a failure of it would match this entry in a search, and is not
+  this entry's. Seen and not changed: its refusals are synchronous calls,
+  with no promise or turn to read, and the whole test, its 100,000
+  addresses too, took 0.38 to 0.74 s by the suite's own reading of each
+  test's duration in the nine loaded runs of the suite above, the five of
+  the first round and the four under The lines.
+- The whole tests take 8.8 to 11.1 s and 4.8 to 6.5 s under that load at
+  `fa58d1d`, where they took 6.2 to 8.6 s and 5.4 to 6.7 s at `c83acfd`,
+  the reading of their answers untimed: far from the suite's 120 s
+  timeout. Under a mutation of The lines they take minutes.
+- Each attempt `withinBound` makes of `:1564` sends 100,000 more webhooks
+  to the same budget, and every answer of every attempt is read afterwards,
+  untimed. The whole-test times above do not say how many attempts a run
+  took, and a run retried four or five times under the heaviest load was
+  not measured against the suite's 120 s timeout.
+- The bound and its margins were measured on the agents' server alone
+  (AMD EPYC 7763, 8 CPUs): 1500 ms is 1.6 times the slowest loaded fastest
+  of five, and the cheapest quadratic reading, search the line, took 1.8
+  to 2.2 times the bound in this change's runs. CI's `test` job passed in this change's merge
+  request pipeline at `a026eef`, these checks' times there not read; a
+  runner much slower or faster than the agents' server narrows one of
+  those margins.

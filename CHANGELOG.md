@@ -99,6 +99,13 @@ How to write an entry (issue #97, D184):
   `Notice`, and shows it under `Breaking only`; the breaking feed carries it. Like
   Breaking, it is never the headline: the build refuses an entry that opens
   with it.
+- **Addresses.** Write production's addresses: a build for another address
+  names its own in their place, and in `webhook.qa-tools.ru`'s its second
+  address, or its own where it has none (D274, D275). A build with no second address
+  leaves out every Breaking, Deprecated or Notice paragraph that names
+  `webhook.qa-tools.ru`, which would announce a move from its address to the
+  same one, as 1.16.0's notice of the move did; such a paragraph is
+  production's alone (#343).
 - **Markup.** Paragraphs separated by blank lines, `code` in backticks and
   `**bold**`; nothing else is interpreted, and the page escapes the rest, so
   `<session-id>` shows as written. The build fails when an entry has no date
@@ -106,15 +113,55 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
-## 1.19.11
+## 1.19.15
 
-2026-11-03
+2026-11-04
 
 **Nothing changes on this site; the inspector's source no longer refers to
 files of ours that are not published with it.** Its documentation describes
 the server it runs on in general terms, its comments and tests say in place
 what they need, and an automated check keeps such references from coming
 back. Every page and address answers exactly as before. (#375)
+
+## 1.19.14
+
+2026-11-03
+
+**Nothing changes on this site; the inspector's checks of what its pages draw
+now give the same result whatever language the computer running them is set
+to.** Every address answers exactly as before. (#366)
+
+## 1.19.13
+
+2026-11-03
+
+**The link that carries your sessions to webhook.qa-tools.ru is now read when
+it is pasted into a tab whose session page is still loading its requests.**
+Before, in some browsers, that page could take the link out of the address as
+its requests arrived, before the link was read, and the sessions and keys it
+carried did not arrive. (#362)
+
+## 1.19.12
+
+2026-11-03
+
+**A request saved with Download JSON is now named after the service:
+`webhook-inspector-request-<short id>.json`, e.g.
+`webhook-inspector-request-2b906b8.json`.** The short id is the one its row
+in the list shows, as before, and the file's content is unchanged. (#349)
+
+## 1.19.11
+
+2026-11-03
+
+**Nothing changes on this site; a copy of the inspector built for an address
+of its own, with no second address, no longer publishes this site's notice of
+its move.** Such a copy names its own address wherever this changelog names
+one of this site's, so the notice in the entry for 1.16.0 came out saying
+that the copy's addresses would stop answering and redirect to the same
+address. The copy's changelog page, its text and both its feeds now leave
+that notice out, so its feed of breaking changes and deprecations no longer
+lists 1.16.0. Every address here answers exactly as before. (#343)
 
 ## 1.19.10
 
@@ -254,7 +301,11 @@ longer taken, the relay script is served only as `webhook-inspector-relay.mjs`
 and reads only `WEBHOOK_INSPECTOR_ACCESS_KEY`, and the default answer's
 `message` reads `Captured by Webhook Inspector`. The relay script sends the
 User-Agent `webhook-inspector-relay` from this release, where it sent the
-User-Agent `qa-tools-relay`: nothing in the service reads it. (#334, D279)
+User-Agent `qa-tools-relay`: nothing in the service reads it. Under either
+name, the script's messages that named it start with the same new name,
+`webhook-inspector-relay:` before an error in its arguments or key and
+`webhook-inspector-relay stopped:` before a failure that stops it, where they
+started with the old one. (#334, #357, D279)
 
 ## 1.18.2
 

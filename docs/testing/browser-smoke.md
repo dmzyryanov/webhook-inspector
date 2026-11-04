@@ -159,7 +159,7 @@ What it pins:
 - **`Download JSON`** from the request actions, from `Body`, just before
   `Copy as cURL` so that no toast is up yet (D185): it is the first item after the menu's divider; choosing it closes
   the menu, the browser's download event names the file
-  `qa-tools-request-<first 7 characters of the id>.json`, and the file,
+  `webhook-inspector-request-<first 7 characters of the id>.json`, and the file,
   parsed, deep-equals the detail API's answer for that request, `response`
   included. No `/api/` request is made while it is chosen and no toast
   appears. At 375 px the `Request actions` sheet has the same item after its

@@ -2,29 +2,48 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import { describe, it } from 'node:test';
-// @ts-expect-error -- a plain ES module with no declarations; the build runs it.
-import { checkBuild, LEGAL_CLAIMS, legalPageProblems } from '../../scripts/check-build.mjs';
-import {
-  LEGAL_PLACEHOLDER,
-  legalPagesPlugin,
-  legalTemplate,
-  renderLegalBody,
-  renderLegalPage,
-} from '../../scripts/legal.mjs';
 import { escapeText, keptRuns, siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
+import type { SiteOrigins } from '../../scripts/site-origin.mjs';
 import { CHANGELOG_LINK } from './changelog-link.ts';
-import {
-  LEGAL_PAGES,
-  type LegalPage,
-  type LegalPart,
-  legalLineText,
-  privacyPage,
-  STABILITY_POLICY_HREF,
-  termsPage,
-} from './legal-copy.ts';
+import type { LegalPage, LegalPart } from './legal-copy.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
 import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+
+/**
+ * Production's origins, whatever the shell running the tests holds (#354):
+ * the templates and the pages pinned here are written for production
+ * (D274). The build's modules read the origins from the environment as they
+ * load, so they are imported once these are set, not with the static imports
+ * above, which would load them first.
+ */
+Object.assign(process.env, {
+  APP_ORIGIN: 'https://qa-tools.ru',
+  RECEIVE_ORIGIN: 'https://hook.qa-tools.ru',
+  APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
+});
+
+const {
+  checkBuild,
+  LEGAL_CLAIMS,
+  legalPageProblems,
+  productionNamesLeft,
+  // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
+} = await import('../../scripts/check-build.mjs');
+const { LEGAL_PLACEHOLDER, legalPagesPlugin, legalTemplate, renderLegalBody, renderLegalPage } =
+  await import('../../scripts/legal.mjs');
+const { LEGAL_PAGES, legalLineText, privacyPage, STABILITY_POLICY_HREF, termsPage } =
+  await import('./legal-copy.ts');
+const { PRODUCTION_ORIGINS, SITE_ORIGINS, siteOriginPlugin } =
+  await import('../../scripts/site-origin.mjs');
+
+/** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
+const ANOTHER: SiteOrigins = {
+  app: 'https://inspector.example',
+  receive: 'https://hook.inspector.example',
+  alias: null,
+};
 
 /** The two pages as production's build writes them (issue #369). */
 const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
@@ -61,6 +80,10 @@ const PAGES = LEGAL_PAGES.map((page) => {
 });
 
 describe('the pages', () => {
+  it('are built here for production’s origins, whatever the shell running the tests holds (#354)', () => {
+    assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
+  });
+
   it('are written to terms/index.html and privacy/index.html, each linked from the footer', () => {
     assert.deepEqual(LEGAL_PAGES.map(legalTemplate), ['terms/index.html', 'privacy/index.html']);
     assert.deepEqual(
@@ -463,6 +486,22 @@ describe('the dev server and the build', () => {
     // Amended by D274: and the plugin that names the build's origins, last.
     assert.match(config, /plugins: \[legalPagesPlugin\(\), siteOriginPlugin\(\)\]/);
     assert.match(read('../../tsconfig.json'), /"vite\.legal\.config\.ts"/);
+  });
+
+  it('name another address on both pages of a build for it, and no address of production’s (D274)', () => {
+    // What that last plugin makes of each page in a build for the copy (#354).
+    const named = siteOriginPlugin(ANOTHER).transformIndexHtml.handler;
+
+    for (const { page, html } of PAGES) {
+      const built = named(html);
+
+      assert.equal(built.split('rel="canonical"').length - 1, 1, page.path);
+      assert.ok(
+        built.includes(`<link rel="canonical" href="${ANOTHER.app}${page.path}" />`),
+        page.path,
+      );
+      assert.deepEqual(productionNamesLeft(built, ANOTHER), [], page.path);
+    }
   });
 });
 

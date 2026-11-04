@@ -23,6 +23,7 @@ import {
   relaySection,
   sha256Hex,
 } from '../../scripts/relay-script.mjs';
+import { PRODUCTION_ORIGINS } from '../../scripts/site-origin.mjs';
 import { EXCLUDED_HEADER_NAMES, isExcludedHeader } from './curl-command.ts';
 import { receivedBodyBytes } from './received-body.ts';
 
@@ -310,12 +311,13 @@ describe('one script under both names, webhook-inspector-relay.mjs and qa-tools-
   const directory = mkdtempSync(join(tmpdir(), 'webhook-inspector-relay-names-'));
   const oldFile = join(directory, OLD_RELAY_SCRIPT_NAME);
 
-  writeFileSync(oldFile, siteFiles()[OLD_RELAY_SCRIPT_NAME] ?? '');
+  // Production's build, whatever origins the shell running the tests holds (#354).
+  const files = siteFiles(PRODUCTION_ORIGINS);
+
+  writeFileSync(oldFile, files[OLD_RELAY_SCRIPT_NAME] ?? '');
   after(() => rmSync(directory, { recursive: true, force: true }));
 
   it('is written by production’s build as its source, byte for byte, under either name, with the SHA-256 /docs gives', () => {
-    const files = siteFiles();
-
     assert.equal(RELAY_SCRIPT_NAME, 'webhook-inspector-relay.mjs');
     assert.equal(OLD_RELAY_SCRIPT_NAME, 'qa-tools-relay.mjs');
     assert.ok(scriptBytes.equals(sourceBytes));
