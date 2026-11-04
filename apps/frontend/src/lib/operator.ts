@@ -48,9 +48,6 @@ export interface OperatorWithTexts extends Operator {
   readonly texts: true;
 }
 
-/** The three settings, by the names the build reads. */
-export const OPERATOR_SETTINGS = ['STATUS_PAGE_URL', 'CONTACT_EMAIL', 'OPERATOR_TEXTS'] as const;
-
 /** A build with none of the settings: no status page, no contact, no operator's texts. */
 export const NO_OPERATOR: Operator = Object.freeze({
   statusPageUrl: null,

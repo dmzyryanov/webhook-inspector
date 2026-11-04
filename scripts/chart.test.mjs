@@ -1702,9 +1702,11 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
   assert.doesNotMatch(deploy, /extends:/);
   assert.match(deploy, /^ {2}tags:\n {4}- \$DEPLOY_RUNNER_TAG$/m);
   assert.match(deploy, /^ {2}environment:\n {4}name: production\n {4}url: \$DEPLOY_APP_ORIGIN$/m);
-  assert.ok(
-    DEPLOY_SCRIPT.indexOf('Not deployed:') < DEPLOY_SCRIPT.indexOf('helm upgrade --install'),
-  );
+
+  // Its check stops before helm upgrade: its commands, not its comments.
+  const commands = uncommented(DEPLOY_SCRIPT);
+
+  assert.ok(commands.indexOf('Not deployed:') < commands.indexOf('helm upgrade --install'));
   assert.match(validate, /^variables:\n {2}QA_TOOLS_RUNNER_TAG: 'saas-linux-small-amd64'$/m);
 });
 
@@ -1837,6 +1839,34 @@ const notBuilt = (names) => ({
   docker: [],
 });
 
+test("the pipeline's checks read its settings and commands, not its comments, which may say anything in any wrapping (#379)", () => {
+  assert.equal(
+    uncommented(
+      [
+        '# docker build, Not built: and STATUS_PAGE_URL: in a comment',
+        'check',
+        '    #   docker build --pull $BUILD_ARGS -f ',
+        '\t# helm upgrade --install',
+        'docker build --pull $BUILD_ARGS -f x',
+        '',
+      ].join('\n'),
+    ),
+    'check\ndocker build --pull $BUILD_ARGS -f x\n',
+  );
+
+  // Every comment of the pipeline wrapped again, and saying what the checks
+  // look for: what they read is the same.
+  const pipeline = readFileSync(PIPELINE, 'utf8');
+  const rewrapped = pipeline.replace(
+    /^( *)# (.*)$/gm,
+    (_, indent, words) =>
+      `${indent}# docker build STATUS_PAGE_URL: Not built: helm upgrade --install\n${indent}#\n${indent}# ${words}`,
+  );
+
+  assert.notEqual(rewrapped, pipeline);
+  assert.equal(uncommented(rewrapped), uncommented(pipeline));
+});
+
 /** PRODUCTION without the variables `names`. */
 const productionWithout = (...names) =>
   Object.fromEntries(Object.entries(PRODUCTION).filter(([name]) => !names.includes(name)));
@@ -1846,9 +1876,14 @@ test("the frontend image's address and operator: its build takes production's fr
   const pipeline = readFileSync(PIPELINE, 'utf8');
   const frontend = pipelineKey(pipeline, 'image:frontend');
 
+  // Read outside the comments, which may say anything in any wrapping.
   for (const [variable, name] of OPERATOR_VARIABLES) {
     assert.match(frontend, new RegExp(`^ {4}${name}: \\$${variable}$`, 'm'), name);
-    assert.equal(pipeline.split(`${name}:`).length - 1, 1, `the pipeline sets ${name} elsewhere`);
+    assert.equal(
+      uncommented(pipeline).split(`${name}:`).length - 1,
+      1,
+      `the pipeline sets ${name} elsewhere`,
+    );
   }
   // What the build checks on main: the two origins need a value; the second
   // origin and the operator's settings must be set, empty for none.
@@ -1879,11 +1914,14 @@ test("the frontend image's address and operator: its build takes production's fr
   }
 
   // The check comes before either build, and the image builds twice at
-  // most: once in a merge request, once on main.
-  assert.equal(IMAGE_SCRIPT.split('docker build --pull $BUILD_ARGS -f ').length - 1, 2);
-  assert.equal(IMAGE_SCRIPT.split('docker build').length - 1, 2);
+  // most: once in a merge request, once on main. The script's commands,
+  // not its comments.
+  const commands = uncommented(IMAGE_SCRIPT);
+
+  assert.equal(commands.split('docker build --pull $BUILD_ARGS -f ').length - 1, 2);
+  assert.equal(commands.split('docker build').length - 1, 2);
   for (const call of ['docker build', 'registry_has "$IMAGE']) {
-    assert.ok(IMAGE_SCRIPT.indexOf('Not built:') < IMAGE_SCRIPT.indexOf(call), call);
+    assert.ok(commands.indexOf('Not built:') < commands.indexOf(call), call);
   }
 
   // The Dockerfile takes each argument before the build that reads it.

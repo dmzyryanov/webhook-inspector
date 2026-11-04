@@ -133,6 +133,56 @@ const PRODUCTION_NAMES =
 /** What a page's markup reads as, its tags left out. */
 const text = (markup: string) => markup.replace(/<[^>]*>/g, '');
 
+/** Runs of a timed check, of which the fastest is read. */
+const TIMED_RUNS = 5;
+
+/**
+ * The fastest of `TIMED_RUNS` runs of `run`, in milliseconds, as the suites
+ * read a bound on time elsewhere (docs/testing/flakes.md, D203): a collection,
+ * or another test file on the same cores, can stop one run for longer than
+ * the check takes, but not all five, while a check worse than linear is slow
+ * on every run. `run` asserts what it checks each time.
+ */
+function fastestRun(run: () => void, now: () => number = () => performance.now()): number {
+  let fastest = Number.POSITIVE_INFINITY;
+
+  for (let attempt = 0; attempt < TIMED_RUNS; attempt += 1) {
+    const started = now();
+
+    run();
+    fastest = Math.min(fastest, now() - started);
+  }
+
+  return fastest;
+}
+
+describe('a timed check', () => {
+  it('is read as the fastest of five runs, so one stalled run does not decide it', () => {
+    // A made-up clock, read as each run starts and as it ends: the runs take
+    // these, in milliseconds, two of them stalled.
+    const durations = [5_000, 3, 9_000, 2, 4];
+    let clock = 0;
+    let reads = 0;
+    let runs = 0;
+    const now = () => {
+      reads += 1;
+      if (reads % 2 === 0) {
+        clock += durations[reads / 2 - 1] as number;
+      }
+
+      return clock;
+    };
+
+    assert.equal(
+      fastestRun(() => {
+        runs += 1;
+      }, now),
+      2,
+    );
+    assert.equal(runs, TIMED_RUNS);
+  });
+});
+
 describe('the operator settings', () => {
   it('are read here beside production’s origins, whatever the shell running the tests holds (#354)', () => {
     assert.deepEqual(SITE_ORIGINS, PRODUCTION_ORIGINS);
@@ -257,16 +307,17 @@ describe('the operator settings', () => {
   it('read values at growing sizes in time linear in their length', () => {
     for (const size of [1_000, 10_000, 100_000, 1_000_000]) {
       const path = 'a'.repeat(size);
-      const started = performance.now();
+      const ms = fastestRun(() => {
+        assert.equal(
+          parseStatusPageUrl(`https://status.example.com/${path}`),
+          `https://status.example.com/${path}`,
+        );
+        assert.throws(() => parseStatusPageUrl(`https://status.example.com/${path}$`));
+        assert.throws(() => parseContactEmail(`${'a.'.repeat(size)}@example.com`));
+        assert.throws(() => parseContactEmail(`a@${'a-'.repeat(size)}.com`));
+      });
 
-      assert.equal(
-        parseStatusPageUrl(`https://status.example.com/${path}`),
-        `https://status.example.com/${path}`,
-      );
-      assert.throws(() => parseStatusPageUrl(`https://status.example.com/${path}$`));
-      assert.throws(() => parseContactEmail(`${'a.'.repeat(size)}@example.com`));
-      assert.throws(() => parseContactEmail(`a@${'a-'.repeat(size)}.com`));
-      assert.ok(performance.now() - started < 2_000, `${size} characters took too long`);
+      assert.ok(ms < 2_000, `${size} characters took ${ms.toFixed(1)} ms at best of ${TIMED_RUNS}`);
     }
   });
 
@@ -286,6 +337,57 @@ describe('the operator settings', () => {
     assert.deepEqual(parseBuiltOperator({ texts: true }), NO_OPERATOR);
   });
 });
+
+/** A rendered node as HTML: its tag in lower case, its attributes in the order React set them. */
+const markup = (node: FakeNode): string => {
+  if (node instanceof FakeText) {
+    return node.nodeValue;
+  }
+
+  if (!(node instanceof FakeElement)) {
+    return node.childNodes.map(markup).join('');
+  }
+
+  const tag = node.tagName.toLowerCase();
+  const attributes = [...node.attributes].map(([name, value]) => ` ${name}="${value}"`).join('');
+
+  return `<${tag}${attributes}>${node.childNodes.map(markup).join('')}</${tag}>`;
+};
+
+/**
+ * The application's header and footer as React draws them in `lang` for
+ * `operator`, into a fake browser at a desktop width, as `main.tsx` would.
+ */
+const application = async (operator: Operator, lang: 'en' | 'ru' = 'en') => {
+  const browser = installFakeBrowser('https://inspector.example/');
+  const { createRoot } = await import('react-dom/client');
+  const container = browser.document.createElement('div');
+
+  browser.document.body.appendChild(container);
+
+  const root = createRoot(container as unknown as HTMLElement);
+
+  await act(async () => {
+    root.render(
+      createElement(LanguageProvider, {
+        initial: lang,
+        storage: null,
+        children: createElement(
+          MemoryRouter,
+          null,
+          createElement(AppHeader, { operator }),
+          createElement(AppFooter, { operator }),
+        ),
+      }),
+    );
+  });
+
+  const html = markup(container);
+
+  await act(async () => root.unmount());
+
+  return html;
+};
 
 describe('the pages of a build with no operator settings', () => {
   const header = (lang = 'en') => siteHeader('/about', lang, NO_OPERATOR);
@@ -331,57 +433,6 @@ describe('the pages of a build with no operator settings', () => {
       true,
     );
   });
-
-  /** A rendered node as HTML: its tag in lower case, its attributes in the order React set them. */
-  const markup = (node: FakeNode): string => {
-    if (node instanceof FakeText) {
-      return node.nodeValue;
-    }
-
-    if (!(node instanceof FakeElement)) {
-      return node.childNodes.map(markup).join('');
-    }
-
-    const tag = node.tagName.toLowerCase();
-    const attributes = [...node.attributes].map(([name, value]) => ` ${name}="${value}"`).join('');
-
-    return `<${tag}${attributes}>${node.childNodes.map(markup).join('')}</${tag}>`;
-  };
-
-  /**
-   * The application's header and footer as React draws them in `lang` for
-   * `operator`, into a fake browser at a desktop width, as `main.tsx` would.
-   */
-  const application = async (operator: Operator, lang: 'en' | 'ru' = 'en') => {
-    const browser = installFakeBrowser('https://inspector.example/');
-    const { createRoot } = await import('react-dom/client');
-    const container = browser.document.createElement('div');
-
-    browser.document.body.appendChild(container);
-
-    const root = createRoot(container as unknown as HTMLElement);
-
-    await act(async () => {
-      root.render(
-        createElement(LanguageProvider, {
-          initial: lang,
-          storage: null,
-          children: createElement(
-            MemoryRouter,
-            null,
-            createElement(AppHeader, { operator }),
-            createElement(AppFooter, { operator }),
-          ),
-        }),
-      );
-    });
-
-    const html = markup(container);
-
-    await act(async () => root.unmount());
-
-    return html;
-  };
 
   it('draw the application’s header with no Status ↗ and its footer with no legal links or contact', async () => {
     for (const lang of ['en', 'ru'] as const) {
@@ -837,17 +888,19 @@ describe('the build check of production’s operator names (issue #369, criterio
       const textOf = samples
         .map((sample) => sample.repeat(Math.ceil(size / samples.length / sample.length)))
         .join('');
-      const started = performance.now();
+      const split = `${textOf}Yandex\n${' '.repeat(size)}Object Storage`;
 
-      assert.deepEqual(left(textOf), []);
-      assert.deepEqual(left(`${textOf}Yandex\n${' '.repeat(size)}Object Storage`), [
-        'Yandex Object Storage',
-      ]);
-      times.push(performance.now() - started);
+      times.push(
+        fastestRun(() => {
+          assert.deepEqual(left(textOf), []);
+          assert.deepEqual(left(split), ['Yandex Object Storage']);
+        }),
+      );
     }
 
-    // Forty times the text in at most about two hundred times the time: linear
-    // with room for a busy runner, nowhere near the 1,600 of a quadratic scan.
+    // Forty times the text in at most about two hundred times the time, each
+    // the fastest of five runs: linear with room for a busy runner, nowhere
+    // near the 1,600 of a quadratic scan.
     assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 
@@ -944,18 +997,20 @@ function filesOf(dist: string, prefix = ''): string[] {
 
 describe('a build with example origins and no operator settings (issue #369, criterion 1)', () => {
   let dist = '';
+  /** The build's environment: a copy's origins and none of the operator settings. */
+  const environment = {
+    ...withoutOperator(process.env),
+    APP_ORIGIN: OTHER_ORIGINS.app,
+    RECEIVE_ORIGIN: OTHER_ORIGINS.receive,
+    APP_ALIAS_ORIGIN: '',
+  };
 
   // Five Vite builds and five scripts, as the build for another address in
   // site-origin.test.ts, which takes about 6 s on an 8-core machine.
   before(
     () => {
       dist = mkdtempSync(join(tmpdir(), 'webhook-inspector-no-operator-'));
-      buildInto(dist, {
-        ...withoutOperator(process.env),
-        APP_ORIGIN: OTHER_ORIGINS.app,
-        RECEIVE_ORIGIN: OTHER_ORIGINS.receive,
-        APP_ALIAS_ORIGIN: '',
-      });
+      buildInto(dist, environment);
     },
     { timeout: 180_000 },
   );
@@ -990,7 +1045,7 @@ describe('a build with example origins and no operator settings (issue #369, cri
     assert.deepEqual(check.operatorNameProblems(dist, NO_OPERATOR), []);
   });
 
-  it('draws no status link in any header and no legal link or contact in any footer', () => {
+  it('draws no status link in any header and no legal link or contact in any footer', async () => {
     for (const page of ['about/index.html', 'ru/about/index.html', 'changelog/index.html']) {
       const html = built(page);
       const header = /<header class="site-header">[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
@@ -1001,12 +1056,24 @@ describe('a build with example origins and no operator settings (issue #369, cri
       assert.doesNotMatch(footer, /\/terms|\/privacy|mailto|Contact:|Почта:/, page);
     }
 
-    // The application's bundle carries no operator: the header and footer
-    // above, rendered, draw none.
-    const bundles = filesOf(dist).filter((path) => /^assets\/main-.*\.js$/.test(path));
+    // The application's: its bundle is handed the operator this build's
+    // environment gives, as vite.config.ts defines it and operator.ts reads
+    // it back (the settings' own tests above), and its header and footer,
+    // rendered for that one, draw no status link, no legal link and no
+    // contact. Read from what React draws, not from the minified bundle,
+    // whose text a bundler or a minifier may change with no defect.
+    const operator = parseBuiltOperator(JSON.parse(JSON.stringify(parseOperator(environment))));
 
-    assert.equal(bundles.length, 1);
-    assert.match(built(bundles[0] as string), /\{statusPageUrl:null,contactEmail:null,texts:!1\}/);
+    assert.deepEqual(operator, NO_OPERATOR);
+    for (const lang of ['en', 'ru'] as const) {
+      const [head, foot] = (await application(operator, lang)).split('<footer');
+
+      assert.ok(head !== undefined && foot !== undefined, lang);
+      assert.match(head, /<header/, lang);
+      assert.doesNotMatch(head, /status|Статус/i, lang);
+      assert.doesNotMatch(foot, /\/terms|\/privacy|mailto|Contact:|Почта:/, lang);
+      assert.match(foot, /href="\/(?:ru\/)?about"/, lang);
+    }
   });
 
   it('serves no /terms, /privacy, /ru/terms, /ru/privacy, /status or security.txt', () => {
@@ -1048,12 +1115,6 @@ describe('a build with example origins and no operator settings (issue #369, cri
 
   it('fails the build check, naming the file, with one of the names left in a source', () => {
     const copy = mkdtempSync(join(tmpdir(), 'webhook-inspector-left-name-'));
-    const env = {
-      ...withoutOperator(process.env),
-      APP_ORIGIN: OTHER_ORIGINS.app,
-      RECEIVE_ORIGIN: OTHER_ORIGINS.receive,
-      APP_ALIAS_ORIGIN: '',
-    };
 
     try {
       cpSync(dist, copy, { recursive: true });
@@ -1066,7 +1127,7 @@ describe('a build with example origins and no operator settings (issue #369, cri
 
       const run = spawnSync(process.execPath, ['scripts/check-build.mjs', copy], {
         cwd: FRONTEND,
-        env,
+        env: environment,
         encoding: 'utf8',
       });
 

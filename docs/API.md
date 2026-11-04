@@ -26,7 +26,9 @@ Privacy Policy says, and the relay script's words (D277). Its `info.version` is
 project's public address, `{"name": "QA Tools", "email": "contact@qa-tools.ru"}`,
 the one the application's footer and `/.well-known/security.txt` publish
 (D177); `/docs` shows it as a mail link, and the frontend suite fails when it
-differs from the footer's.
+differs from the footer's. A build without the operator settings leaves it
+out, as it does the introduction's status, about and terms sentences
+([Conventions](#conventions)).
 
 `https://qa-tools.ru/docs` renders the description as the public API reference
 (D155), and `info.description` is that page's introduction: a quickstart, the
@@ -141,6 +143,17 @@ addresses as links and `llms-full.txt` carries it (D217). `/terms` and
 `/privacy` are static pages of the site, like `/about`, and no part of the
 API; the Terms' `Changes to the service` points back to the stability policy
 above.
+
+The introduction's three sentences above and `info.contact` are this site's
+operator's, and a frontend build writes them from its operator settings into
+the description it serves at `/openapi.json`, which `/docs` and
+`llms-full.txt` show: a build without the settings leaves them out —
+`info.contact` without `CONTACT_EMAIL`, the status page's sentence without
+`STATUS_PAGE_URL`, the about page's and the Terms' without `OPERATOR_TEXTS` —
+and one with another operator's names that operator's address and status page
+in their place. The settings are the frontend image's build arguments in the
+table of [README.md](../README.md#installing-on-k3s-with-the-chart),
+Installing on k3s with the chart.
 
 Public webhook endpoint, and any path under it (D173), on the receive host since 0.36.0 (D187):
 ```text
