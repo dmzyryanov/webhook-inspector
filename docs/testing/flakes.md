@@ -4052,7 +4052,7 @@ bounds on time, none in this file:
 | `b3a644b` | eight loops and the `Accept` script | 11.9 to 18.8 | 3420 | 3417 | 3: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` and `:1490` |
 | `82dc81b`, the bounds of the fix | eight loops and a series | 10.0 to 18.3 | 3423 | 3422 | 1: `rate-limit.test.ts:388` |
 | `82dc81b` | eight loops and both scripts at once | 13.5 to 19.7 | 3423 | 3418 | 5: `rate-limit.test.ts:388`, `access-key.test.ts:264` and `:473`, over their 100 ms, `capture-budget.test.ts:960` and `:1490` |
-| the correction below, the ids' bodies and the `Origin` headers built before they are timed | eight loops and its series | 0.6 to 18.8 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:1490` |
+| `214e2fd`, the ids' bodies and the `Origin` headers built before they are timed (below) | eight loops and its series | 0.6 to 18.8 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:1490` |
 | the same | eight loops and its series | 13.5 to 18.0 | 3423 | 3421 | 2: `rate-limit.test.ts:388`, `capture-budget.test.ts:960` |
 | the same | eight loops and its series | 13.1 to 18.5 | 3423 | 3419 | 4: `rate-limit.test.ts:388`, `access-key.test.ts:264`, over its 100 ms, `capture-budget.test.ts:960` and `:1490` |
 
@@ -4068,14 +4068,14 @@ Up to `f3f5f46` the ids case built each body inside the function
 `parseMessage`, which the series above, on bodies built before, did not
 measure: #377's tester read the emoji id that way at 12 to 13.5 ms alone and
 up to 47.1 ms, the fastest of five, beside the suite and eight loops,
-against 50 ms. Since the correction of that review each id's body, and the
-`Origin` case's 16,384 headers, are built before `withinBound`, as the
-bodies case's are, and the bound holds `parseMessage` and `isAllowedOrigin`
-alone. On 2026-11-04 from 03:54 to 04:07 MSK, on the same host, a script
-outside the tree timed both forms as the series above did, each value's
-fastest of five a round, of 1 MiB; beside the suite is beside a full run of
-it at the correction's tree and eight loops, each series ending with its
-run. Min, median and max of the rounds, in ms:
+against 50 ms. Since `214e2fd` each id's body, and the `Origin` case's
+16,384 headers, are built before `withinBound`, as the bodies case's are,
+and the bound holds `parseMessage` and `isAllowedOrigin` alone. On
+2026-11-04 from 03:54 to 04:07 MSK, on the same host, a script outside the
+tree timed both forms as the series above did, each value's fastest of five
+a round, of 1 MiB; beside the suite is beside a full run of it with the
+checks of `214e2fd` and eight loops, each series ending with its run. Min,
+median and max of the rounds, in ms:
 
 | beside | load | rounds | ids, built before | ids, built in the timing | `ownCopy` | `Origin` headers, built before | built in the timing | URLs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -4094,11 +4094,11 @@ built before, at 26.9 ms in one of 80 rounds beside the suite and eight
 loops, and at most 19.7 ms in the other 79. `BOUND_MS` keeps 50 ms: 2.1
 times the 24.1 ms of these rounds and 1.9 times the tester's 26.9 ms, and
 under the 141 to 162 ms of the reading once per `Origin` header by 2.8 times
-or more. The three full runs of the suite at the correction, in the table
+or more. The three full runs of the suite at `214e2fd`, in the table
 above, took the ids case of 1 MiB, all eight ids and their building, in 69,
-87 and 100 ms, and the file passed in each. The file alone, at the
-correction, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in seven runs of seven,
-exit 0.
+87 and 100 ms, and the file passed in each. The file alone, with the checks
+of `214e2fd`, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in seven runs of
+seven, exit 0.
 
 The scripts are not kept in the tree.
 
