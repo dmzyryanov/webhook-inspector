@@ -624,7 +624,8 @@ the deploy job reads the variables themselves:
   origin it is given; then, given the second origin, it waits up to about 5
   minutes for that host's certificate, which cert-manager issues only once
   the deployment has created its Ingress, and checks the host as one closed
-  to search whose pages name the first.
+  to search whose pages name the first. It gives the check the operator's
+  details too (The operator's details, below).
 
 The backend's names are not those of the project variables, which reach every
 job: the `test` job's backend suite expects both unset, and the e2e suite
@@ -720,6 +721,24 @@ the repository names their values. On `main` the build stops before building,
 naming each of the three that is not set, so an unset variable cannot leave a
 detail out of production's site, whose image is built once per commit (The
 inspector's address, above); set empty, the image leaves it out.
+
+Since #381 `scripts/check-deployment.mjs` checks the three as the deployment's
+settings give them, rather than production's values written into it: options
+after the hosts of D187's call, `--status-page`, `--contact-email` and
+`--operator-texts`, each read as `operator.ts` reads its setting, a value
+refused as the build refuses it and a blank one as none, and
+`scripts/delivery.test.mjs` holds the two readings equal. With a status page
+`/status` and `/status/` must answer a 301 to its address exactly, without
+one the site's `Page not found` — the frontend's 404 whose page is the home
+page's own document; with a contact address `security.txt` must give that
+address as its one `Contact`, without one answer 404; with the operator's
+texts `/terms` and `/privacy` are the two pages, without them `Page not
+found`. A setting not given is not checked, nor asked for, and the check's
+first line names it, so the call with the hosts alone still checks the rest
+of any deployment. `deployment-smoke` gives the check production's three from
+the project's CI/CD variables themselves, each in double quotes, so one set
+empty is checked as left out (`scripts/chart.test.mjs` runs the job's command
+with them).
 
 - The status page: `Status ↗` in the application's header (`AppHeader`) and
   the static pages' (`siteHeader`), with the divider before it, comes from
