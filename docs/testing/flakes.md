@@ -5259,8 +5259,8 @@ server on 2026-11-03, each beside `node scripts/db.mjs task-test 355`, the
 `1096.0`, `1100.0`, `1045.0` and `1222.1 ms for 1048576 characters`, and
 the second in two, `1048576: 1182.378455 ms` and `1048576: 1114.422662 ms
 for "{{{{{{{{{{{{"`; one run failed both at most. 4 of 26, Wilson 95%
-6.2%–33.5%, and 2 of 26, 2.1%–24.1%. Neither failed in a run of its file
-alone. No series was run at the base for this entry; the counts are F-26's.
+6.2%–33.5%, and 2 of 26, 2.1%–24.1%. No run of either file alone, and no
+series, was made at the base for this entry; the counts are F-26's.
 
 ### The mechanism
 
