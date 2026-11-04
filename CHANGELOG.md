@@ -113,6 +113,18 @@ How to write an entry (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.16
+
+2026-11-04
+
+**Nothing changes on this site; some of the inspector's own checks no longer
+fail when nothing is wrong.** They no longer depend on how a comment is
+wrapped, on the exact text the build tool writes, or on one timing taken on a
+busy computer. The inspector's API contract also says now that a copy built
+without its operator's details leaves our contact address, status page and
+terms out of its API reference. Every page and address answers exactly as
+before. (#379)
+
 ## 1.19.15
 
 2026-11-04
