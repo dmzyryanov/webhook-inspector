@@ -304,21 +304,38 @@ describe('a repeated word', () => {
     assert.deepEqual(typedWords('POST post 500 POST'), ['POST', 'post', '500']);
   });
 
+  /**
+   * Up to a megabyte, each size 4 times the last: a filter whose time grows
+   * with the square of the query, under its bound at one size, takes about
+   * 16 times as long at the next and fails there, not after minutes at the
+   * megabyte.
+   */
+  const SIZES = [16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024];
+  /**
+   * 4000 ms (#388): 3.3 times the slowest call of loaded suites, 1222 ms,
+   * most of a call under load being the 1000 rows' times, formatted anew at
+   * every size; 3.3 times under matching every repeat of the word against
+   * every row, 13.3 s alone at a megabyte.
+   */
+  const LIMIT_MS = 4000;
+
   it('costs the list nothing: a megabyte of one word over 1000 rows', () => {
     const items = Array.from({ length: 1000 }, (_, n) =>
       row({ id: `${String(n).padStart(8, '0')}-1f2a-4c3d-8e9f-0a1b2c3d4e5f` }),
     );
 
-    for (const query of ['p '.repeat(512 * 1024), 'post 200 '.repeat(116_000)]) {
-      const started = performance.now();
-      const kept = filterRequests(items, query, UTC);
-      const first = items[0] as RequestListItem;
-      const { ranges } = rowHighlights(first, queryWords(query), UTC);
-      const elapsed = performance.now() - started;
+    for (const size of SIZES) {
+      for (const query of ['p '.repeat(size / 2), 'post 200 '.repeat(Math.floor(size / 9))]) {
+        const started = performance.now();
+        const kept = filterRequests(items, query, UTC);
+        const first = items[0] as RequestListItem;
+        const { ranges } = rowHighlights(first, queryWords(query), UTC);
+        const elapsed = performance.now() - started;
 
-      assert.equal(kept.length, 1000);
-      assert.equal(ranges.method.length, 1);
-      assert.ok(elapsed < 1000, `${elapsed.toFixed(1)} ms for ${query.length} characters`);
+        assert.equal(kept.length, 1000);
+        assert.equal(ranges.method.length, 1);
+        assert.ok(elapsed < LIMIT_MS, `${elapsed.toFixed(1)} ms for ${query.length} characters`);
+      }
     }
   });
 });
