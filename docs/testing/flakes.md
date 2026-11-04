@@ -3800,7 +3800,7 @@ Not this issue's; not filed by this entry.
   the base of the fix, and `:267` at the fix, `c3ffb2b`. Each of its ten
   made-up bodies is read by `parseMessage` through `timed`, `withinBound`
   with the file's one bound then, `BOUND_MS`, which every check of made-up
-  input in the file shared (F-04). Issue #363. Since #377, `:301`, through
+  input in the file shared (F-04). Issue #363. Since #377, `:304`, through
   `withinBound` with a bound of its own, `BODIES_BOUND_MS`.
 - **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
   `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
@@ -3952,7 +3952,7 @@ the protocol version's, a test of five headers of which one is of 1 MiB:
 | `BODIES_BOUND_MS`, 1000 ms | `parseMessage` on the made-up bodies, this case | 60 to 84 ms, `[` | 269 ms, `[` | from every byte, 7.8 s | one search per 41-byte batch element, 178 and 213 ms |
 | `ACCEPT_BOUND_MS`, 500 ms | `Accept` values of one character repeated - `,`, `;`, NUL - and one range with a parameter every four characters | 37 to 66 ms, the commas | 165 ms, the commas; 249 ms in one round whose value was not named | from every byte, 8.0 s; once per parameter, 1.9 and 2.0 s | none measured |
 | `ACCEPT_RANGES_BOUND_MS`, 200 ms | `Accept` lists of whole media ranges, 10 to 21 characters each | 16 to 21 ms, ranges of 21 characters | 78 ms, the same, in 500 rounds; 132 ms in one of 40 rounds of #377's tester | once per range: of 21 characters 364 and 377 ms, of 16 480 and 500 ms, of 10 753 and 756 ms | none measured |
-| `BOUND_MS`, 50 ms | ids, `ownCopy`, `Origin`, URLs and the protocol version | 3.5 to 6.6 ms, an id of emoji, its body built before it is timed; `ownCopy` 4.3 ms; the rest 0.1 ms or less | 24 ms, the ids, in 879 rounds, and 27 ms in one of 80 rounds of #377's tester; `ownCopy` 16 ms; the rest 0.14 ms or less | from every byte of 1 MiB, 7.8 to 16.5 s, and of the 16,384 `Origin` headers joined, 501 to 657 ms; once per URL parameter or escape, 1.9 to 2.9 s; once per origin repeated in one value, 280 to 467 ms; once per header of 16,384, the rest of them searched, 147 and 162 ms | none measured; but `Origin`, URLs and the protocol version, at 0.14 ms or less, are held some 350 times or more above their cost, so a slowdown of them short of that, or a reading coarser than those measured, passes (inferred from these readings) |
+| `BOUND_MS`, 50 ms | ids, `ownCopy`, `Origin`, URLs and the protocol version | 3.5 to 6.6 ms, an id of emoji, its body built before it is timed; `ownCopy` 4.3 ms; the rest 0.1 ms or less | 24 ms, the ids, in 879 rounds, and 27 ms in one of 80 rounds of #377's tester; `ownCopy` 16 ms; the rest 0.14 ms or less | from every byte of 1 MiB, 7.8 to 16.5 s, and of the 16,384 `Origin` headers joined, 501 to 657 ms; once per URL parameter or escape, 1.9 to 2.9 s; once per origin repeated in one value, 280 to 467 ms; once per header of 16,384, the rest of them searched, 147 and 162 ms | none measured; but `Origin`, URLs and the protocol version, at 0.16 ms or less, are held some 300 times or more above their cost, so a slowdown of them short of that passes (inferred from these readings); of coarser URL readings, one search from every 32nd to every 256th character still fails it, 62 to 231 ms, and one from every 512th or coarser passes, as #377's tester measured |
 
 The `Accept` case of before is two since: its values of one character, or
 one parameter, repeated allocate a string for each, a million for the
@@ -4111,6 +4111,11 @@ The scripts are not kept in the tree.
   `capture-budget.test.ts:960` in six, `:1490` in five,
   `access-key.test.ts:264` in two and `:473` in one, over their bounds on
   time; not #377's.
+- In three more loaded runs, by #377's tester at `2c636d7`,
+  `capture-budget.test.ts:960` in three, `rate-limit.test.ts:388` in two,
+  `capture-budget.test.ts:1490` in one, and in one
+  `measure-ordinary-load.test.ts:1818`, `100000 nodes took 4758.5 ms`, over
+  their bounds on time; not #377's.
 - The 248.5 ms of one round of the `b3a644b` series, its `Accept` value not
   named: the commas' or the parameters', the likelier, would be half the
   500 ms they are held to; a list of whole ranges' would be over its 200 ms
