@@ -1,16 +1,18 @@
-// What this repository names of the private side it came from (#375). The
-// inspector moved out of the QA Tools project, whose agents' files, decision
-// log, delivery process, records of resources and runbooks are not published
-// (D282), and production's CI runner and hosting provider are its operator's.
-// A tracked file outside CHANGELOG.md, whose history stays as published,
-// names none of them but where ALLOWED says it may, so that none creeps back:
-// a file that does fails here, in `delivery-checks`, naming the file, the line
-// and the name. Decision and issue numbers stay, as references (README).
+// What this repository names of the private side it came from (#375, #397).
+// The inspector moved out of the QA Tools project, whose agents' files,
+// decision log, delivery process, records of resources and runbooks are not
+// published (D282), and production's CI runners, hosting provider, backup
+// storage and heartbeat service are its operator's. A tracked file outside
+// CHANGELOG.md, whose history stays as published, names none of them but
+// where ALLOWED says it may, so that none creeps back: a file that does fails
+// here, in `delivery-checks`, naming the file, the line and the name.
+// Decision and issue numbers stay, as references (README).
 //
 // The check reads every path `git ls-files` lists, and the file at it in the
 // working tree, byte for byte. The names are literal and case-sensitive, as
 // the issue's own `git grep` is: a name split across lines, escaped or written
-// in another case is not caught.
+// in another case is not caught. A runner's build directory is a form, not
+// one string, and FORMS matches it.
 
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
@@ -42,6 +44,25 @@ const NAMES = Object.freeze([
   'docs/runbooks/',
   'qa-tools-ci-firstvds',
   'FirstVDS',
+  // Production's deploy runner's tag, its backup bucket and directory, and its
+  // heartbeat service's host: values of its CI/CD variables, which the tests
+  // replace with made-up ones (#397).
+  'qa-tools-vps',
+  'qa-tools-backups',
+  '/var/backups/qa-tools',
+  'hb.statuser.cloud',
+]);
+
+/**
+ * The names that are a form, not one string: a GitLab runner's build
+ * directory, `runner-<token>-project-<id>-concurrent-<n>`, which a job's log
+ * prints and whose token part names the runner (#397). A token is 8 or 9
+ * characters of `[A-Za-z0-9_-]`, and up to 40 are taken. The search finds
+ * each `-project-` and digit first and looks back from there, never more than
+ * 47 characters, so it stays linear however many `runner-` a text holds.
+ */
+const FORMS = Object.freeze([
+  { name: 'runner-<token>-project-', pattern: /(?<=runner-[\w-]{8,40})-project-\d/ },
 ]);
 
 /** The one file the check does not read: the changelog's published history. */
@@ -77,8 +98,11 @@ const ALLOWED = Object.freeze([
   { file: 'apps/frontend/src/lib/operator.test.ts' },
 ]);
 
-/** The names a text holds, in the list's order. */
-const namesIn = (text) => NAMES.filter((name) => text.includes(name));
+/** The names a text holds, in the lists' order: NAMES, then FORMS. */
+const namesIn = (text) => [
+  ...NAMES.filter((name) => text.includes(name)),
+  ...FORMS.filter(({ pattern }) => pattern.test(text)).map(({ name }) => name),
+];
 
 /**
  * The tracked paths of the checkout at `dir`, each with its content as
@@ -263,6 +287,88 @@ test('on made-up content at growing sizes: a name found at the end of a long lin
       'long.txt:1: FirstVDS',
       `near.txt:${size / 100 + 1}: docs/runbooks/`,
       `crlf.txt:${size / 10 + 1}: .claude/`,
+    ]);
+    assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
+  }
+});
+
+test("on made-up files: production's variable values and a runner's build directory, each with its file and line, and their near misses not (#397)", () => {
+  const { problems } = check(
+    [
+      ['f.mjs', "const tag = 'qa-tools-vps';\nconst bucket = 'qa-tools-backups';\n"],
+      ['g.md', 'Kept in /var/backups/qa-tools/nightly; beats to https://hb.statuser.cloud/x.\n'],
+      [
+        'h.txt',
+        [
+          'Running on runner-ab12cd34-project-123-concurrent-0',
+          'runner-jq_m-5oe9-project-7',
+          `runner-${'a'.repeat(40)}-project-1`,
+          'xrunner-abcdefgh-project-0x',
+        ].join('\r\n'),
+      ],
+      ['runner-ab12cd34-project-9/x.log', ''],
+      // Near misses: another case, a name cut short or changed, the README's
+      // own directory, a placeholder token, a token of 7 or 41 characters,
+      // no project number, `projects`.
+      [
+        'i.md',
+        [
+          'QA-TOOLS-VPS qa-tools-vp qa-tools-backup qa_tools-backups',
+          '/var/backups/webhook-inspector /var/backups/qa_tools /var/backup/qa-tools',
+          'hb.statuser.clou hb-statuser.cloud HB.STATUSER.CLOUD statuser.cloud',
+          'runner-<token>-project-<project>-concurrent-0 runner-…-project-1',
+          'runner-abcdefg-project-1',
+          `runner-${'a'.repeat(41)}-project-1`,
+          'runner-abcdefgh-project-x runner-abcdefgh-projects-1 Runner-abcdefgh-project-1',
+          'runner-abcd efgh-project-1 runner-abcdefgh_project-1',
+        ].join('\n'),
+      ],
+    ],
+    [],
+  );
+  assert.deepEqual(problems, [
+    'f.mjs:1: qa-tools-vps',
+    'f.mjs:2: qa-tools-backups',
+    'g.md:1: /var/backups/qa-tools',
+    'g.md:1: hb.statuser.cloud',
+    'h.txt:1: runner-<token>-project-',
+    'h.txt:2: runner-<token>-project-',
+    'h.txt:3: runner-<token>-project-',
+    'h.txt:4: runner-<token>-project-',
+    'runner-ab12cd34-project-9/x.log: its path names runner-<token>-project-',
+  ]);
+});
+
+test("on made-up content at growing sizes: a runner's build directory found after runs built to make its pattern backtrack, and none in them, quickly (#397)", () => {
+  for (const size of [1_000, 100_000, 10_000_000]) {
+    const started = performance.now();
+    // Every start of `runner-` followed by more token characters than a token
+    // has, `-` included, or by a token with no `-project-<digit>` after it;
+    // and every `-project-<digit>` with no `runner-` behind it.
+    const runs = `${'runner-'.repeat(size / 7)}x`;
+    const projects = `x${'-project-1'.repeat(size / 10)}`;
+    const long = `runner-${'b-'.repeat(size / 2)}project-1`;
+    const capped = `runner-${'c'.repeat(40)}`.repeat(size / 47);
+    const almost = 'runner-abcdefgh-project-'.repeat(size / 24);
+    const near = Array.from({ length: size / 100 }, (_, i) =>
+      i % 2 ? 'runner-abcdefg-project-1' : `runner-${'d'.repeat(41)}-project-1`,
+    ).join('\n');
+    const { problems } = check(
+      [
+        ['runs.txt', runs],
+        ['projects.txt', projects],
+        ['long.txt', long],
+        ['capped.txt', capped],
+        ['almost.txt', almost],
+        ['near.txt', near],
+        ['end.txt', `${near}\nrunner-ab12cd34-project-1\n`],
+        ['crlf.txt', 'a\r\n'.repeat(size / 10) + 'runner-ab12cd34-project-1-concurrent-0\r\n'],
+      ],
+      [],
+    );
+    assert.deepEqual(problems, [
+      `end.txt:${size / 100 + 1}: runner-<token>-project-`,
+      `crlf.txt:${size / 10 + 1}: runner-<token>-project-`,
     ]);
     assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
   }

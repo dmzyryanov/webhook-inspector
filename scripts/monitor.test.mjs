@@ -596,7 +596,7 @@ test('a missing token leaves that heartbeat unsent, sends the other, and fails t
 
 test('tokens travel only over https, or http on the loopback interface', async (t) => {
   const ctx = await setup(t);
-  const result = await run(ctx.env({ MONITOR_HEARTBEAT_URL: 'http://hb.statuser.cloud' }));
+  const result = await run(ctx.env({ MONITOR_HEARTBEAT_URL: 'http://heartbeat.example' }));
   assert.equal(result.status, 1);
   assert.match(result.stderr, /MONITOR_HEARTBEAT_URL must be an https URL/);
   assert.equal(ctx.hb.requests.length, 0);
@@ -832,14 +832,14 @@ test('the lookup id has a session id’s shape, fresh each time', () => {
 });
 
 test('a heartbeat URL is the token under the base, and /fail after it for a failure', () => {
-  const base = new URL('https://hb.statuser.cloud');
+  const base = new URL('https://heartbeat.example');
   assert.equal(
     heartbeatUrl(base, SITE_TOKEN, true).href,
-    `https://hb.statuser.cloud/${SITE_TOKEN}`,
+    `https://heartbeat.example/${SITE_TOKEN}`,
   );
   assert.equal(
     heartbeatUrl(base, SITE_TOKEN, false).href,
-    `https://hb.statuser.cloud/${SITE_TOKEN}/fail`,
+    `https://heartbeat.example/${SITE_TOKEN}/fail`,
   );
   assert.equal(
     heartbeatUrl(new URL('https://hb.example.test/beat/'), 'abcdefgh', false).href,

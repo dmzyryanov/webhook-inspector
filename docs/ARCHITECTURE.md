@@ -1129,8 +1129,10 @@ its rule lists, what its tests read, which the job checks by recording it
 (D241). Among the quick ones, since 1.19.15 (#375),
 `scripts/private-names.test.mjs` fails when a tracked file outside
 `CHANGELOG.md` names a file of the QA Tools project that is not published,
-or production's CI runner or hosting provider, naming the file, the line and
-the name; its allow-list holds `.gitignore`'s entries, the check's own list,
+or production's CI runners, hosting provider, backup bucket and directory or
+heartbeat host, a runner's build directory `runner-<token>-project-…`
+included (#397), naming the file, the line and the name; its allow-list
+holds `.gitignore`'s entries, the check's own list,
 the changelog check's test of a private path it refuses and, until #330
 moves them out of this repository, the operator's own texts with their test
 and the build check that refuses those names with its test, and an entry

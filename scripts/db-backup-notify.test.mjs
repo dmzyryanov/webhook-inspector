@@ -234,7 +234,7 @@ test('an unreachable or refusing Statuser, or no token, is logged and the notifi
       /NOTIFY_TOKEN is not set .*Heartbeat backup\/fail not sent/s,
     ],
     'the heartbeat URL is plain http off the loopback interface': [
-      { NOTIFY_HEARTBEAT_URL: 'http://hb.statuser.cloud' },
+      { NOTIFY_HEARTBEAT_URL: 'http://heartbeat.example' },
       /NOTIFY_HEARTBEAT_URL is not an https URL.*Heartbeat backup\/fail not sent/s,
     ],
   };
