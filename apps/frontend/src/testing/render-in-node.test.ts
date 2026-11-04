@@ -9,8 +9,8 @@ import { installFakeBrowser } from './render-in-node.ts';
  * The render harness itself (#366): a page started in its fake browser sees
  * an English browser, whatever language the machine running the suite is set
  * to, so a test that reads what such a page draws gets the same text on any
- * machine; and React draws into it with no warning, told that it renders
- * under `act` (#391).
+ * machine; and React, told that it renders under `act`, draws into it with
+ * nothing written to `console.error` (#391).
  */
 
 const HARNESS = new URL('./render-in-node.ts', import.meta.url).href;
@@ -72,7 +72,7 @@ describe('the fake browser', () => {
     assert.equal(seen.language, 'en');
   });
 
-  it('tells React it renders under act, so React draws into it with no warning (#391)', async (t) => {
+  it('tells React it renders under act: React draws into it and writes no error (#391)', async (t) => {
     const browser = installFakeBrowser('https://qa-tools.ru/');
     // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
     const { createRoot } = await import('react-dom/client');
@@ -80,7 +80,7 @@ describe('the fake browser', () => {
 
     assert.ok(container, 'the page has no #root');
 
-    // React writes its warnings with `console.error`; outside an act
+    // React writes its act warnings with `console.error`: outside an act
     // environment, one for every update an `act` wraps.
     const errors = t.mock.method(console, 'error', () => {});
     const root = createRoot(container as unknown as HTMLElement);

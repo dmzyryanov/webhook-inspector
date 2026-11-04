@@ -1286,13 +1286,17 @@ filter (D180, D191) and of the home page's list of sessions (D199) run in CI aga
 pass before an image is built or deployed (D108). They are the whole of the
 project's end-to-end coverage and are described in
 `docs/testing/browser-smoke.md`. Components are unit-tested only where a
-change needed it: since 1.19.3 (#346) the move banner and the arrival toast
-are rendered in the frontend suite, through `src/testing/render-in-node.ts`,
+change needed it: since 1.19.3 (#346) the move banner and the arrival toast,
+and the request the page-not-found screen draws (#391), are rendered in the
+frontend suite, through `src/testing/render-in-node.ts`,
 which compiles `.tsx` for the test with TypeScript and gives `react-dom/client`
 a fake window, document and navigator, no browser, holding only what React,
-the router, `main.tsx` and the tests use (#366). Its navigator is an English
-browser's, `languages` `['en-US']` as the browser suite's locale, so a page
-it starts draws the same text whatever the machine's locale; Node's own
-`navigator` follows the machine's (`src/testing/render-in-node.test.ts`
-starts one under `ru_RU.UTF-8`). Nothing anywhere asserts layout or
+the router, `main.tsx` and the pages it draws, and the tests use (#366). Its
+navigator is an English browser's, `languages` `['en-US']` as the browser
+suite's locale, so a page it starts draws the same text whatever the
+machine's locale; Node's own `navigator` follows the machine's
+(`src/testing/render-in-node.test.ts` starts one under `ru_RU.UTF-8`, in a
+child Node killed after 30 s). It tells React it renders under `act`, and
+that test fails on anything React writes to `console.error` as it draws, as
+React warns there without it (#391). Nothing anywhere asserts layout or
 appearance.
