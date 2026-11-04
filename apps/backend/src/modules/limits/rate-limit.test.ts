@@ -21,6 +21,19 @@ import {
 
 const MINUTE = RATE_LIMIT_WINDOW_SECONDS * 1000;
 
+/**
+ * Milliseconds a counter may take for 100,000 calls of distinct addresses,
+ * the fastest of up to five runs (`withinBound`, D203): 1000. The calls take
+ * 59 to 74 ms alone and up to 184 ms beside the full backend suite and eight
+ * busy loops (F-07, After #378). Their keys are made before the counter is
+ * timed: with `addressKey` on the same addresses, as until #378, a run took
+ * 2.7 to 2.9 s alone and 3.6 to 7.1 s under that load, over the 5000 ms of
+ * then in 10 of 15 rounds. A counter that walks its whole map on every
+ * call, F-07's mutation, takes 8.4 s for 40,000 calls and 63 s for the
+ * 100,000: over the bound on every run.
+ */
+const COUNTER_BOUND_MS = 1_000;
+
 /** A clock a test moves by hand, starting at an arbitrary instant. */
 function manualClock(start = 5_000.25): { now: () => number; advance: (ms: number) => void } {
   let time = start;
@@ -386,19 +399,20 @@ describe('the memory a window counter holds (D201)', () => {
   });
 
   it('counts 100,000 distinct addresses quickly', () => {
+    // The keys are made before the counter is timed: `addressKey` on 100,000
+    // addresses is most of the time, and is not what this holds (F-07).
+    const keys = Array.from({ length: 100_000 }, (_, index) =>
+      addressKey(`2001:db8:${(index >> 16).toString(16)}:${(index & 0xffff).toString(16)}::1`),
+    );
     // Held to the bound by `withinBound` (F-07): a run that a loaded machine
-    // stops for seconds is made again, with a fresh counter, while a counter
-    // that walks its whole map on every call is over the bound on every run.
+    // stops is made again, with a fresh counter, while a counter that walks
+    // its whole map on every call is over the bound on every run.
     const run = (): number => {
       const counter = new WindowCounter(API_CALL_LIMIT);
 
       try {
-        for (let index = 0; index < 100_000; index += 1) {
-          counter.hit(
-            addressKey(
-              `2001:db8:${(index >> 16).toString(16)}:${(index & 0xffff).toString(16)}::1`,
-            ),
-          );
+        for (const key of keys) {
+          counter.hit(key);
         }
 
         return counter.size;
@@ -407,7 +421,7 @@ describe('the memory a window counter holds (D201)', () => {
       }
     };
 
-    assert.equal(withinBound(5_000, run), 100_000);
+    assert.equal(withinBound(COUNTER_BOUND_MS, run), 100_000);
   });
 });
 
