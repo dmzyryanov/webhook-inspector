@@ -3862,14 +3862,18 @@ Not this issue's; not filed by this entry.
   made-up bodies is read by `parseMessage` through `timed`, `withinBound`
   with the file's one bound then, `BOUND_MS`, which every check of made-up
   input in the file shared (F-04). Issue #363. Since #377, `:304`, through
-  `withinBound` with a bound of its own, `BODIES_BOUND_MS`.
+  `withinBound` with a bound of its own, `BODIES_BOUND_MS`; since #392,
+  `:317`.
 - **Status**: fixed in the test on `chore/mcp-protocol-timing-bound-363`, at
   `c3ffb2b`: the bound is 1000 ms, from 100 ms. `parseMessage` and
   `testing/timing.ts` were not changed; VERSION kept. On
   `chore/mcp-protocol-tight-bounds-377` the case keeps its 1000 ms and the
   file's other checks of made-up input are held to tighter bounds, of 500,
   200 and 50 ms (After #377); `protocol.ts` and `testing/timing.ts` were not
-  changed, VERSION kept.
+  changed, VERSION kept. On `chore/mcp-protocol-test-tidy-392` the case's
+  batch body is whole elements, read and refused as a batch, and every check
+  of the file is timed on a value built before it (After #392); the same
+  two files not changed, VERSION kept.
 
 ### The failure
 
@@ -4162,6 +4166,64 @@ of `214e2fd`, gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0` in seven runs of
 seven, exit 0.
 
 The scripts are not kept in the tree.
+
+### After #392
+
+Three loose ends of #377's file, from the review and the test of its
+delivery (#392). The bodies case's batch body,
+`[${fill('{"jsonrpc":"2.0","id":1,"method":"ping"},', size)}{}]`, ended
+inside an element at every size, as `fill` cuts it, so `parseMessage`
+answered it `Parse error: invalid JSON` and never reached its batch
+refusal, as the first placing of the batch's reading above found at 1 MiB.
+On `chore/mcp-protocol-test-tidy-392` the body is `batchOf`'s: as many whole
+elements as fit in the size, joined by commas, 985, 65,519 and 1,048,576
+bytes at 1 KiB, 64 KiB and 1 MiB. The case asserts that `parseMessage`
+answers it with the batch refusal, `-32600`, and that the body is short of
+its size by less than an element and its comma. With the body of before put
+back in its place for one run, the file gave `ℹ tests 41`, `ℹ pass 38`,
+`ℹ fail 3`, the bodies case at each of the three sizes, each answered
+`Parse error: invalid JSON`.
+
+The `Accept` lists case's `true` value, `text/html,` repeated and then
+`application/json`, was built inside the function `withinBound` times, as
+the ids' bodies were up to `f3f5f46`; it is built before, and so is the
+one-value list the `Origin` case gives `isAllowedOrigin`, so every bound of
+the file holds its check alone. The comments of `ACCEPT_RANGES_BOUND_MS` and
+`BOUND_MS` cite the series of 40 and of 80 rounds above by this entry.
+
+On 2026-11-04 from 21:07 to 21:12 MSK, on the same host, an AMD EPYC 7763
+with 8 CPUs, Node v24.22.2, a script outside the tree built the batch
+bodies of 1 MiB, `batchOf`'s and that of before, the `[` body and the
+`Accept` `true` value, and each round ran each check five times, keeping its
+fastest, the number `withinBound` holds to its bound. Beside the suite is
+beside a full run of it, `node scripts/db.mjs task-test 392`, with the
+checks of `1109cad` and no busy loops; the host was shared with other
+tasks' work, so the load of the rows of nothing is not only this entry's.
+Min, median and max of the rounds, in ms:
+
+| beside | load | rounds | the batch, whole elements | the batch of before, a parse error | `[` | `Accept` `true`, built before | built in the timing |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing | 0.9 to 1.4 | 20 | 6.86 / 7.68 / 10.62 | 7.66 / 8.06 / 11.59 | 68.37 / 75.87 / 93.44 | 8.77 / 10.30 / 20.54 | 10.07 / 11.15 / 13.96 |
+| the suite | 2.4 to 8.8 | 60 | 7.16 / 8.46 / 13.78 | 7.61 / 9.21 / 15.26 | 68.20 / 82.50 / 136.61 | 7.58 / 9.47 / 31.27 | 8.94 / 10.65 / 17.51 |
+| the suite | 8.6 to 10.7 | 60 | 7.12 / 8.37 / 11.52 | 7.64 / 9.03 / 17.04 | 70.07 / 84.23 / 117.94 | 7.64 / 9.84 / 30.68 | 8.88 / 10.66 / 31.30 |
+| nothing, the suite just ended | 7.3 to 6.5 | 20 | 7.46 / 8.51 / 11.31 | 7.69 / 9.35 / 11.38 | 71.70 / 82.58 / 92.15 | 8.92 / 10.99 / 22.33 | 10.59 / 11.58 / 15.17 |
+
+The batch of 1 MiB read as a batch, 6.9 to 13.8 ms, takes no longer than
+the parse error it was, 7.6 to 17.0 ms: JSON.parse reads the whole of both.
+It is 72 times or more under `BODIES_BOUND_MS`, and `[` stays the case's
+slowest body. The `Accept` value built in the timing read about 1 ms more
+at the median than built before, which is the building's share (inferred);
+its 200 ms bound had room for it either way. A reading of the batch placed
+in `protocol.ts` after JSON.parse, which never ran on the body of before,
+would run on this one; it was not measured.
+
+The file alone, with the checks of `1109cad`,
+`node scripts/db.mjs task-test 392 -- src/modules/mcp/protocol.test.ts`,
+gave `ℹ tests 41`, `ℹ pass 41`, `ℹ fail 0`, exit 0, the bodies case of
+1 MiB in 211 ms; the full suite, the run beside the series above, `ℹ tests
+3423`, `ℹ pass 3423`, `ℹ fail 0`, exit 0, in 125 s at a load of 0.9 to
+10.6, the bodies case of 1 MiB in 242 ms. The script is not kept in the
+tree.
 
 ### Watched, and left
 
