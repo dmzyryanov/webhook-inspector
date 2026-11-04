@@ -81,6 +81,7 @@ import { loadConfig } from './config.ts';
 import { createPool } from './db/pool.ts';
 import { createRealtimePlaces } from './modules/realtime/connection-places.ts';
 import { buildTestServers, type TestServers } from './testing/servers.ts';
+import { withinBound } from './testing/timing.ts';
 
 const SCRIPT = fileURLToPath(
   new URL('../../../scripts/measure-ordinary-load.mjs', import.meta.url),
@@ -1815,10 +1816,21 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
     }
   });
 
-  it('summarises hostile profiles of growing size in linear time', () => {
-    let previous = 0;
+  /** Samples a node of the hostile profiles below. */
+  const PROFILE_SAMPLES_PER_NODE = 2;
 
+  /**
+   * Milliseconds a node of the hostile profiles below may take to summarise:
+   * 0.03, so 30 ms at 1,000 nodes, 300 at 10,000 and 3000 at 100,000, the
+   * fastest of up to five runs (`withinBound`), so that the machine's load
+   * does not decide it. A bound linear in the size, which a summary worse
+   * than linear is over from some size on, on every run.
+   */
+  const PROFILE_MS_PER_NODE = 0.03;
+
+  it('summarises hostile profiles of growing size in linear time', () => {
     for (const size of [1_000, 10_000, 100_000]) {
+      const samples = size * PROFILE_SAMPLES_PER_NODE;
       const nodes = Array.from({ length: size }, (_, index) => ({
         id: index,
         callFrame: {
@@ -1832,19 +1844,19 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
       }));
       const profile = {
         startTime: 0,
-        endTime: size * 10,
+        endTime: samples,
         nodes,
-        samples: Array.from({ length: size * 10 }, (_, index) => (index * 7919) % (size + 10)),
-        timeDeltas: Array.from({ length: size * 10 }, (_, index) => (index % 11 === 0 ? -1 : 1)),
+        samples: Array.from({ length: samples }, (_, index) => (index * 7919) % (size + 10)),
+        timeDeltas: Array.from({ length: samples }, (_, index) => (index % 11 === 0 ? -1 : 1)),
       };
-      const started = performance.now();
-      const summary = summarizeCpuProfile(profile, { from: 5, to: size * 8 });
-      const elapsed = performance.now() - started;
+      // The deltas add up to about 0.82 a sample: the window leaves out the
+      // first samples and the last few.
+      const summary = withinBound(size * PROFILE_MS_PER_NODE, () =>
+        summarizeCpuProfile(profile, { from: 5, to: samples * 0.8 }),
+      );
 
       assert.ok(summary.functions.length <= 10);
       assert.ok(summary.functions.every((each) => each.name.length <= 250));
-      assert.ok(elapsed < 2_000 + previous * 20, `${size} nodes took ${elapsed} ms`);
-      previous = elapsed;
     }
   });
 
