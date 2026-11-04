@@ -11,7 +11,15 @@
  * `http.server.request.start` and `http.server.response.finish` channels,
  * apart from the bound's own count, from the moment Node's parser reads a
  * request's head - the ones Node answers itself included - to the moment its
- * whole answer has been handed to the connection.
+ * whole answer has been handed to the connection. A test finds its
+ * connection's count by both of its ports, the client's and the receiver's,
+ * the latest count first: the kernel gives a client's connection to one
+ * receiver the port an earlier connection to another had (#383).
+ *
+ * A client that reads none of its answers pipelines more of them than the
+ * kernel can take whole, by the machine's own `net.ipv4.tcp_wmem` and
+ * `net.ipv4.tcp_rmem`, and the case checks the bound only once the kernel
+ * takes no more of them, failing if it never stops (#383).
  *
  * Node's parser itself is held where the bound relies on it: every request
  * head it counts ends in `LF CR LF` (`HEAD_END`), checked against random
@@ -33,13 +41,19 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
+import { readFileSync } from 'node:fs';
 import http, { METHODS, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type pg from 'pg';
-import { MAX_PIPELINED_REQUESTS, type ResponseConfig } from '@webhook-inspector/shared';
+import {
+  MAX_PIPELINED_REQUESTS,
+  MAX_REQUESTS_PER_SESSION,
+  MAX_RESPONSE_BODY_BYTES,
+  type ResponseConfig,
+} from '@webhook-inspector/shared';
 import { loadConfig } from '../../config.ts';
 import { createPool } from '../../db/pool.ts';
 import { buildReceiver, buildServer } from '../../server.ts';
@@ -69,11 +83,24 @@ let pair: FastifyInstance;
 const createdSessionIds: string[] = [];
 const sockets: net.Socket[] = [];
 
-/**
- * Each receive connection's requests read and not answered, the most it had,
- * and the port its client connected from, read while it is connected.
- */
-const counts = new Map<net.Socket, { now: number; most: number; port: number | undefined }>();
+/** What one receive connection has read and answered, counted from Node's channels. */
+interface Count {
+  /** Requests read and not answered. */
+  now: number;
+  /** The most `now` has been. */
+  most: number;
+  /** Requests whose whole answer has been handed to the connection. */
+  answered: number;
+  /** The port its client connected from, read while it is connected. */
+  port: number | undefined;
+  /** The receiver's port it connected to. */
+  to: number | undefined;
+  /** The receiver's side of the connection. */
+  socket: net.Socket;
+}
+
+/** Each receive connection's count, in the order each began. */
+const counts = new Map<net.Socket, Count>();
 let receivers: Server[] = [];
 
 const onStart = (message: unknown): void => {
@@ -83,7 +110,14 @@ const onStart = (message: unknown): void => {
     return;
   }
 
-  const count = counts.get(socket) ?? { now: 0, most: 0, port: socket.remotePort };
+  const count = counts.get(socket) ?? {
+    now: 0,
+    most: 0,
+    answered: 0,
+    port: socket.remotePort,
+    to: socket.localPort,
+    socket,
+  };
 
   count.now += 1;
   count.most = Math.max(count.most, count.now);
@@ -96,6 +130,7 @@ const onFinish = (message: unknown): void => {
 
   if (count !== undefined) {
     count.now -= 1;
+    count.answered += 1;
   }
 };
 
@@ -196,6 +231,8 @@ interface Pipeline {
   closed: Promise<void>;
   /** The port the client connected from, once connected. */
   port: number | undefined;
+  /** The receiver's port it connects to. */
+  to: number;
 }
 
 /**
@@ -265,7 +302,7 @@ function pipeline(
 
   const closed = new Promise<void>((resolve) => socket.on('close', () => resolve()));
 
-  const sent: Pipeline = { socket, answers, closed, port: undefined };
+  const sent: Pipeline = { socket, answers, closed, port: undefined, to: portOf(receiver) };
 
   socket.on('connect', () => {
     sent.port = socket.localPort;
@@ -296,15 +333,27 @@ function pipeline(
   return sent;
 }
 
-/** The count of `sent`'s connection on the server's side. */
-function countOf(sent: Pipeline): { now: number; most: number } | undefined {
+/**
+ * The count of `sent`'s connection on the server's side: the latest whose
+ * client port and receiver port are both `sent`'s. A client port alone is
+ * not enough: the kernel gives a connection to one receiver the port of a
+ * connection to another, open or closed, whose count is kept - the PROXY v2
+ * suite's fifth connection took one of the eleven of the suite before it in
+ * 23 of 25,000 tries on the agents' server (#383, `docs/testing/flakes.md`,
+ * F-28). Two connections have the same pair of ports only once the first
+ * has closed, so the latest is `sent`'s once its first request has been
+ * read.
+ */
+function countOf(sent: Pipeline): Count | undefined {
+  let found: Count | undefined;
+
   for (const count of counts.values()) {
-    if (sent.port !== undefined && count.port === sent.port) {
-      return count;
+    if (sent.port !== undefined && count.port === sent.port && count.to === sent.to) {
+      found = count;
     }
   }
 
-  return undefined;
+  return found;
 }
 
 /** Waits, for at most `withinMs`, until `condition` holds. */
@@ -315,6 +364,80 @@ async function until(condition: () => boolean, what: string, withinMs = 20_000):
     assert.ok(Date.now() < deadline, `timed out waiting until ${what}`);
     await delay(10);
   }
+}
+
+/** The largest of `net.ipv4.<name>`'s three sizes, or `undefined` where it cannot be read. */
+function largestTcpBuffer(name: 'tcp_wmem' | 'tcp_rmem'): number | undefined {
+  try {
+    const largest = Number(
+      readFileSync(`/proc/sys/net/ipv4/${name}`, 'latin1').trim().split(/\s+/)[2],
+    );
+
+    return Number.isSafeInteger(largest) && largest > 0 ? largest : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * How many answers of `MAX_RESPONSE_BODY_BYTES` to pipeline for a client
+ * that reads none of them, so that the kernel cannot take them whole: on the
+ * loopback, the receiver's send buffer and the client's receive buffer hold
+ * what the kernel takes, and Linux grows them at most to the largest size of
+ * `net.ipv4.tcp_wmem` and of `net.ipv4.tcp_rmem`. As many answers as both
+ * would hold of bodies alone, and twice `MAX_PIPELINED_REQUESTS` more, so
+ * that more than the bound are still unanswered once the kernel takes no
+ * more; 200 at least, as before #383, and 200 where the sizes cannot be read
+ * (a kernel other than Linux), where `untilTakesNoMore` fails the case if
+ * the kernel takes them all.
+ *
+ * Up to 4 MiB and 6 MiB by default, so 224 answers. How much the kernel
+ * takes of them changes from run to run: Linux grows the receiver's send
+ * buffer, up to that largest size, by the reordering the connection starts
+ * with, which earlier connections to `127.0.0.1` raise in its TCP metrics.
+ * On the agents' server 39 answers at Linux's own 3, 63 at the 29 its
+ * metrics held, and with sizes of 16 MiB 119 at 29 and every one of 200,
+ * 252 of 576, at 300 (F-28).
+ */
+function unreadAnswerCount(): { count: number; sizes: string } {
+  const wmem = largestTcpBuffer('tcp_wmem');
+  const rmem = largestTcpBuffer('tcp_rmem');
+
+  if (wmem === undefined || rmem === undefined) {
+    return { count: 200, sizes: 'tcp_wmem and tcp_rmem unread' };
+  }
+
+  return {
+    count: Math.max(
+      200,
+      Math.ceil((wmem + rmem) / MAX_RESPONSE_BODY_BYTES) + 2 * MAX_PIPELINED_REQUESTS,
+    ),
+    sizes: `tcp_wmem up to ${wmem} bytes, tcp_rmem up to ${rmem}`,
+  };
+}
+
+/**
+ * Waits until the kernel takes no more of `sent`'s answers: the receiver's
+ * side of the connection holds a write the kernel has not taken at ten looks
+ * in a row, no answer handed over between them. Between two looks the event
+ * loop has polled the sockets, and a kernel with room takes a waiting write
+ * as soon as it is polled, so a write still waiting ten looks later waits
+ * for a client that reads.
+ */
+async function untilTakesNoMore(sent: Pipeline): Promise<void> {
+  let looks = 0;
+  let answered = -1;
+
+  await until(() => {
+    const count = countOf(sent);
+    const waiting =
+      count !== undefined && count.socket.writableLength > 0 && count.answered === answered;
+
+    answered = count?.answered ?? -1;
+    looks = waiting ? looks + 1 : 0;
+
+    return looks >= 10;
+  }, 'the kernel takes no more of its answers');
 }
 
 /** What a session stored, oldest first: method, query string and body digest. */
@@ -943,23 +1066,34 @@ for (const [name, receiver] of [
       assert.equal(sent.answers[1]?.status, 400);
     });
 
-    it('holds at most the bound for a client that reads none of its answers, and delivers them all once it reads', async () => {
-      const answerBody = 'r'.repeat(65_536);
-      const sessionId = await newSession({ status: 200, body: answerBody });
-      const sent = pipeline(receiver(), gets(sessionId, 200), { read: false });
+    it('holds at most the bound for a client that reads none of its answers, and delivers them all once it reads', async (t) => {
+      const answerBody = 'r'.repeat(MAX_RESPONSE_BODY_BYTES);
+      const { count: total, sizes } = unreadAnswerCount();
 
-      // Long enough for the server to have written what the kernel takes.
-      await delay(1_000);
+      assert.ok(
+        total <= MAX_REQUESTS_PER_SESSION,
+        `${total} answers to outgrow the kernel's buffers (${sizes}): more than a session keeps`,
+      );
+
+      const sessionId = await newSession({ status: 200, body: answerBody });
+      const sent = pipeline(receiver(), gets(sessionId, total), { read: false });
+
+      // What the kernel takes stays there, the client reading none of it.
+      await untilTakesNoMore(sent);
 
       const count = countOf(sent);
 
       assert.ok(count !== undefined, 'the connection was counted');
       assert.ok(count.most <= MAX_PIPELINED_REQUESTS, `${count.most} read and unanswered at once`);
-      assert.ok(count.now > 0, 'every answer written at once: the kernel took them all');
+      assert.ok(
+        total - count.answered > MAX_PIPELINED_REQUESTS,
+        `the kernel took ${count.answered} of ${total} answers (${sizes}): too few left for the bound to hold back`,
+      );
+      t.diagnostic(`the kernel took ${count.answered} of ${total} answers (${sizes})`);
 
       sent.socket.resume();
-      await until(() => sent.answers.length === 200, 'all 200 are delivered');
-      await inOrder(sessionId, sent.answers, 200);
+      await until(() => sent.answers.length === total, `all ${total} are delivered`);
+      await inOrder(sessionId, sent.answers, total);
       assert.ok(sent.answers.every((answer) => answer.body.toString() === answerBody));
       assert.ok(count.most <= MAX_PIPELINED_REQUESTS, `${count.most} read and unanswered at once`);
     });

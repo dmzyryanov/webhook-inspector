@@ -5011,3 +5011,221 @@ numbers.
   request pipeline at `a026eef`, these checks' times there not read; a
   runner much slower or faster than the agents' server narrows one of
   those margins.
+
+## F-28 — `holds at most the bound for a client that reads none of its answers, and delivers them all once it reads`, its precondition
+
+- **Test**: `apps/backend/src/modules/webhook/pipelining.test.ts:946` at
+  `a5bef43`, the base of the fix, in the suite `a connection that
+  pipelines, PROXY protocol v2 (D229)`: its precondition at `:958`, `every
+  answer written at once: the kernel took them all`. The same lines at
+  `d3b643f`, where it failed. Issue #383, from the delivery of #344. At the
+  fix `:1069`, its precondition in `unreadAnswerCount` (`:402`) and
+  `untilTakesNoMore` (`:427`), its count found by `countOf` (`:347`). F-21
+  names the same case, Watched, and left, for another failure under load.
+- **Status**: fixed in the test on `chore/pipelining-test-precondition`, at
+  `6a9df56`. `pipelining.ts`, `MAX_PIPELINED_REQUESTS` and every assertion
+  of the bound were not changed; VERSION kept.
+
+### The failure
+
+On CI, in merge request pipeline 3020296935 of !6 (#344, head `d3b643f`,
+its backend that of `main` at `7c9c5cb`, 1.19.6), the retried `test` job
+17683749912, on 2026-11-03 at 01:22 UTC, on the project runner (its log:
+`runner-jqrma5oev-project-88390528-concurrent-0`, an AMD EPYC 9655, image
+`node:24-slim`):
+
+```text
+✖ holds at most the bound for a client that reads none of its answers, and delivers them all once it reads (1006.713077ms)
+  AssertionError [ERR_ASSERTION]: every answer written at once: the kernel took them all
+      at TestContext.<anonymous> (file:///builds/qa-tools-team/webhook-inspector/apps/backend/src/modules/webhook/pipelining.test.ts:958:14)
+```
+
+`ℹ tests 3407`, `ℹ pass 3406`, `ℹ fail 1`. The same case of the suite with
+PROXY protocol off, in the same process seconds before, passed in
+1558.6 ms; the job's first run, 17683619935, passed both and failed
+another test (#382).
+
+The case pipelined 200 `GET`s whose answers carry 65,536 bytes each from a
+client that reads none of them, waited 1 s, and took `count.now > 0`, a
+request read and not yet answered, for proof that the kernel had stopped
+taking answers, before it checked the bound.
+
+### The mechanism
+
+Two things fail that assertion, each measured on the agents' server. The
+runner's TCP sizes, read in this change's own pipeline, leave only the
+first possible on CI; that it is the one that failed there is inferred,
+the failed run having printed no port.
+
+**The count was another connection's.** `countOf` returned the first count
+the file kept whose client port was the case's. The kernel gives a
+connection to one receiver a port an earlier connection to another receiver
+had, open or closed, as long as the two connections' addresses and ports
+are not the same four. A count of a connection answered whole has `now` 0
+and `most` of 32 at most: the case's first two assertions pass, and `now >
+0` fails with this message, after the 1 s wait, as in the 1006.7 ms
+reported. The suite with PROXY protocol off does not meet it: its
+connections all go to one receiver, and Linux hands out the ports of
+connections to one destination from an offset it moves on at each, so that
+one comes back only once the range has gone round (its
+`__inet_hash_connect`, not measured). The suite with PROXY protocol v2
+does, its connections going to another receiver after the eleven of the
+suite before.
+
+A probe outside the tree, on 2026-11-04, made the file's connections each
+try, to two loopback servers of its own, new each try: eleven connections
+to the first, kept open, then five to the second. The fifth took the port
+of one of the eleven in 23 of 25,000 tries, 0.092% (Wilson 95%
+0.061%–0.138%); one of the five in 68 of 25,000.
+
+**The kernel took every answer.** On the loopback what a client does not
+read stays in two buffers: the receiver's socket's send buffer and the
+client's receive buffer. The client's grows only as its application reads,
+so it stays at `net.ipv4.tcp_rmem`'s default, 131,072 bytes; the send
+buffer grows up to the largest size of `net.ipv4.tcp_wmem`, by as much as
+the connection's congestion window and its reordering call for (Linux's
+`tcp_sndbuf_expand`; the reordering's part is measured below, the
+window's not). A probe outside the tree: a Node server answering each
+`GET` with 65,536 bytes, a client stopped before it connects that
+pipelines its `GET`s, and, 1 s later, how many answers the server had
+handed over whole. On the agents' server, `tcp_wmem` `4096 16384 4194304`
+and `tcp_rmem` `4096 131072 6291456`, three runs of 200 took 63 each, and
+`ss -tmni` read the server's send buffer at 4,194,304 bytes holding
+4,124,672 and the client's receive buffer at 131,072 holding 127,192:
+about 4.1 MB of the 13.1 MB of 200 answers. In network namespaces of their
+own, by `docker run --sysctl`:
+
+| `tcp_wmem`, largest | `tcp_rmem`, largest | `tcp_reordering` | of 200 | of the fix's count |
+| --- | --- | --- | --- | --- |
+| 4,194,304 | 6,291,456 | 3, Linux's own | 39 | 39 of 224 |
+| 4,194,304 | 6,291,456 | 29 | 63 | 63 of 224 |
+| 4,194,304 | 6,291,456 | 300, the most `tcp_max_reordering` allows | 63 | 63 of 224 |
+| 16,777,216 | 16,777,216 | 3 | 39 | 39 of 576 |
+| 16,777,216 | 16,777,216 | 29 | 118 | 119 of 576 |
+| 16,777,216 | 16,777,216 | 300 | 200 | 252 of 576 |
+
+So with Linux's largest sizes by default, 4 MiB and 6 MiB, the kernel took
+63 answers at most, whatever the reordering, and 200 left the case 137
+more: it cannot fail this way. With a largest `tcp_wmem` above about 13 MB
+it can, once a connection starts with a reordering high enough. A
+connection starts with the reordering Linux keeps for its destination in
+its TCP metrics: the agents' server kept 29 for `127.0.0.1` (`ip
+tcp_metrics show`), and `ss` read 29 on the probe's connections there,
+which took 63, as `tcp_reordering` 29 did. That the suite's own
+connections raise it, so that it changes from run to run and from one
+suite of the file to the next, is inferred, not traced.
+
+In this change's first merge request pipeline, 3027422805 at `ba00a11`,
+the `test` job 17737857125 ran on the same runner,
+`runner-jqrma5oev-project-88390528-concurrent-0`, in the same
+`node:24-slim` image, by its digest, as 17683749912, and the diagnostic
+line read in both suites `the kernel took 41 of 224 answers (tcp_wmem up
+to 4194304 bytes, tcp_rmem up to 6291456)`: Linux's defaults, with which
+the kernel cannot take 200 answers whole. If the runner's sizes were the
+same on 2026-11-03, and nothing records a change, the second way cannot
+have failed the case there.
+
+### The fix
+
+In the test only, `6a9df56`, its comments' readings at `ba00a11`:
+
+- `countOf` finds a count by the client's port and the receiver's, the
+  latest kept first. Two connections have the same two ports only once the
+  first has closed, so the latest is the case's own once its first request
+  has been read.
+- The case pipelines `unreadAnswerCount()` answers of
+  `MAX_RESPONSE_BODY_BYTES`, 65,536: as many as the largest `tcp_wmem` and
+  `tcp_rmem` together would hold of bodies alone, read from
+  `/proc/sys/net/ipv4`, and twice `MAX_PIPELINED_REQUESTS` more, so that
+  more than the bound are still unanswered once the kernel takes no more;
+  200 at least, as before, and 200 where the sizes cannot be read, on a
+  kernel other than Linux. 224 on the agents' server; 576 at the table's
+  16 MiB.
+- It checks the bound once `untilTakesNoMore` has seen the receiver's side
+  of the connection hold a write the kernel has not taken at ten looks in a
+  row, no answer handed over between them, instead of after 1 s: a kernel
+  with room takes a waiting write as soon as the event loop polls it, which
+  it does between two looks. It then asserts that more than the bound of the
+  answers are still unanswered. A kernel that takes every answer fails the
+  case at `untilTakesNoMore`, `timed out waiting until the kernel takes no
+  more of its answers`, after 20 s, and one that takes all but the bound's
+  worth at the next assertion, naming the sizes; a session keeps 1,000
+  requests (`MAX_REQUESTS_PER_SESSION`), so sizes that would need more fail
+  the case before it starts, naming them.
+- A diagnostic line gives what the kernel took on every run, `the kernel
+  took 64 of 224 answers (tcp_wmem up to 4194304 bytes, tcp_rmem up to
+  6291456)` on the agents' server.
+
+The bound's assertions are as they were: at most 32 read and unanswered at
+once, once the kernel takes no more and once all are delivered, and every
+answer delivered in order with its body.
+
+### The forced reproductions
+
+Not committed: two copies of the file beside it for the runs, one of the
+base and one of the fix, each with the same lines added to the case, and
+deleted after them. In the PROXY v2 suite only, before the case's
+pipeline, 3,000 connections to the PROXY-off receiver, one after another,
+each sending `GET / HTTP/1.1` with no `Host`, which Node answers `400`
+itself and closes, so that each is counted and its client port kept; and a
+line naming how many of the file's counts had the case's client port. Each
+copy run 20 times, one after the other, by `node scripts/db.mjs task-test
+383 -- --test-name-pattern="reads none of its answers" <copy>`:
+
+| copy | runs | the case's port an earlier connection's | failed |
+| --- | --- | --- | --- |
+| the base's | 20 | 5 | 5, each of them, `every answer written at once: the kernel took them all` |
+| the fix's | 20 | 5 | 0 |
+
+Each of the fix's 40 runs of the case read `the kernel took 64 of 224
+answers`.
+
+### The measurement
+
+At the fix, `ba00a11`, on 2026-11-04 from 17:02 to 17:17 MSK on the agents'
+server, an AMD EPYC 7763 with 8 CPUs, Node v24.22.2, at a load of 1.07 to
+2.41: the file 30 times, one run after another, by `node scripts/db.mjs task-test 383 --
+src/modules/webhook/pipelining.test.ts`. Every run `ℹ tests 36`, `ℹ pass
+36`, `ℹ fail 0`, exit 0: 30 of 30, the case passed in both D229 suites in
+each, 0 failures of 60 (Wilson 95% 0%–6.0%). Each of the 60 read `the
+kernel took 64 of 224 answers`; the case took 2.0 to 9.3 s, median 2.5 s.
+On CI it took 3.3 and 2.6 s in the pipeline above, and 1.6 s with PROXY
+protocol off in the failed job, the base's 1 s wait included.
+
+The whole backend suite once after them, `node scripts/db.mjs task-test
+383`, from 17:17 to 17:19 MSK: `ℹ tests 3423`, `ℹ pass 3423`, `ℹ fail 0`,
+exit 0. The pipeline above: `ℹ tests 3423`, `ℹ pass 3423`, `ℹ fail 0`.
+
+### The mutations
+
+Each written into the tree for one run and taken out after it with
+`git checkout --`, never committed; the case alone in both suites, by
+`node scripts/db.mjs task-test 383 -- --test-name-pattern="reads none of
+its answers" src/modules/webhook/pipelining.test.ts`:
+
+| the mutation | where | the case in both suites |
+| --- | --- | --- |
+| the receiver's bound at `MAX_PIPELINED_REQUESTS + 1`, 33, the test's kept at 32 | `pipelining.ts`, `options.limit ?? MAX_PIPELINED_REQUESTS` | failed, both: `33 read and unanswered at once` |
+| the receiver's bound at four times it, 128 | the same | failed, both: `128 read and unanswered at once` |
+| the bound counts a request answered once the application ends its answer, not once the kernel has taken it | `pipelining.ts`, `subscribeOnce`: `response.end` wrapped at `http.server.request.start` to call `onAnswered`, the `http.server.response.finish` subscription dropped | failed, both: `34 read and unanswered at once` |
+| the case pipelines 20 answers, which the kernel takes whole, as a kernel larger than the sizes read would | the test, `total` 20 | failed, both, after 20 s: `timed out waiting until the kernel takes no more of its answers` |
+
+### Watched, and left
+
+- F-21's failure of this case under heavy load, `timed out waiting until
+  all 200 are delivered`, now `all 224 are delivered` on the agents'
+  server, was not looked at: its 20 s for the delivery is as it was.
+  `untilTakesNoMore` waits up to 20 s more, at most, before the delivery.
+- Sizes whose largest `tcp_wmem` and `tcp_rmem` together pass 58.5 MiB,
+  61,341,696 bytes, would call for more than the 1,000 requests a session
+  keeps, and fail the case before it starts, naming them; not met on the
+  agents' server.
+- Where `/proc/sys/net/ipv4` cannot be read the case pipelines 200, and a
+  kernel that takes them all fails it at `untilTakesNoMore` rather than
+  letting it pass unchecked; not run on such a kernel.
+- Every other case of the file finds its count through `countOf` too, and
+  until the fix could have read an earlier connection's, and then passed or
+  failed by that connection's count: the first case of the PROXY v2 suite,
+  given the count of the suite before's first, at 32, would have passed
+  `count.most > 16` without its own. Not measured apart from the probe
+  above, whose one of the five covers the suite's first four connections.
