@@ -74,13 +74,13 @@ const ACCEPT_RANGES_BOUND_MS = 200;
 
 /**
  * Milliseconds every other check of a made-up value may take - an id, a
- * copy, an `Origin`, a URL, a protocol version: 50, as the slowest of them,
- * `parseMessage` on a body whose id is 1 MiB of emoji, takes 3.7 to 5.5 ms
- * alone and up to 21 ms under that load, `ownCopy` up to 4.3 ms alone and
- * 16 ms under it, and the rest 0.1 ms or less. The cheapest quadratic reading
- * of them measured, one search of the rest of 16,384 `Origin` headers per
- * header, takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and
- * once per byte of 1 MiB 8 s: over the bound on every run.
+ * copy, an `Origin`, a URL, a protocol version: 50, as the slowest of them
+ * alone, `parseMessage` on a body whose id is 1 MiB of emoji, takes 3.7 to
+ * 5.5 ms, the ids up to 21 ms under that load, `ownCopy` up to 4.3 ms alone
+ * and 16 ms under it, and the rest 0.1 ms or less. The cheapest quadratic
+ * reading of them measured, one search of the rest of 16,384 `Origin`
+ * headers per header, takes 147 ms; one per origin repeated in a 1 MiB value
+ * 280 ms, and once per byte of 1 MiB 8 s: over the bound on every run.
  */
 const BOUND_MS = 50;
 
