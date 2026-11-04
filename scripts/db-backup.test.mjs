@@ -1679,7 +1679,7 @@ test('the backup, the uploader and the notifier together: a copy in the bucket a
   const keyId = 'YCAJEstandInKeyId6543210B';
   const secret = 'YCstand-in_Secret+access/key=ba9876543210';
   const heartbeats = [];
-  const buckets = { 'qa-tools-backups': new Map() };
+  const buckets = { 'example-backups': new Map() };
   const xml = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/xml' });
     res.end(body);
@@ -1749,7 +1749,7 @@ test('the backup, the uploader and the notifier together: a copy in the bucket a
       OFFSITE_DIR: ctx.offsite,
       OFFSITE_ENDPOINT: url,
       OFFSITE_REGION: 'ru-central1',
-      OFFSITE_BUCKET: 'qa-tools-backups',
+      OFFSITE_BUCKET: 'example-backups',
       OFFSITE_DATABASE: 'qa_tools',
       OFFSITE_KEEP: '3',
       OFFSITE_ACCESS_KEY_ID: keyId,
@@ -1790,8 +1790,8 @@ test('the backup, the uploader and the notifier together: a copy in the bucket a
     const { ctx, result, uploader, heartbeat } = await pod(st, { stamp });
     assert.equal(result.status, 0, `${result.output}${uploader.output}`);
     const dump = readFileSync(join(ctx.backup, name), 'utf8');
-    assert.deepEqual([...buckets['qa-tools-backups'].keys()], [`${name}.gpg`]);
-    assert.equal(String(buckets['qa-tools-backups'].get(`${name}.gpg`)), standInCiphertext(dump));
+    assert.deepEqual([...buckets['example-backups'].keys()], [`${name}.gpg`]);
+    assert.equal(String(buckets['example-backups'].get(`${name}.gpg`)), standInCiphertext(dump));
     assert.match(
       result.stdout,
       new RegExp(
@@ -1819,7 +1819,7 @@ test('the backup, the uploader and the notifier together: a copy in the bucket a
     assert.deepEqual(ctx.status(), { outcome: 'fail', message, mode: 0o644 });
     // That run's dump and checksum are on the node; the bucket is as it was.
     assertDumpKept(ctx, name);
-    assert.ok(!buckets['qa-tools-backups'].has(`${name}.gpg`));
+    assert.ok(!buckets['example-backups'].has(`${name}.gpg`));
   });
 
   await t.test('the Secret is missing', async (st) => {
@@ -1834,7 +1834,7 @@ test('the backup, the uploader and the notifier together: a copy in the bucket a
     assert.equal(result.status, 1, result.output);
     assert.deepEqual(heartbeat, { path: 'backup/fail', body: `backup failed: ${message}` });
     assertDumpKept(ctx, name);
-    assert.ok(!buckets['qa-tools-backups'].has(`${name}.gpg`));
+    assert.ok(!buckets['example-backups'].has(`${name}.gpg`));
   });
 });
 

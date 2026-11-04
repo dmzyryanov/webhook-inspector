@@ -48,10 +48,11 @@ const VALIDATE = read('.gitlab/ci/validate.yml');
 
 const SHARED = 'saas-linux-small-amd64';
 // The runners are the project's CI/CD variables' since #367, not the
-// pipeline files': production's two, as the operator's record outside this
-// repository holds them, with which the jobs land as before.
-const OURS = 'qa-tools-ci';
-const DEPLOY = 'qa-tools-vps';
+// pipeline files': production's two, under made-up tags, since their real
+// ones are the operator's record outside this repository (#397); with them
+// the jobs land as before.
+const OURS = 'example-ci';
+const DEPLOY = 'example-deploy';
 const DEPLOY_TAG_VARIABLE = 'DEPLOY_RUNNER_TAG';
 const PRODUCTION = Object.freeze({ [RUNNER_TAG_VARIABLE]: OURS, [DEPLOY_TAG_VARIABLE]: DEPLOY });
 const KEYWORDS = ['stages', 'workflow', 'include', 'variables', 'default'];
@@ -1239,7 +1240,7 @@ test('test and e2e hold one resource group, named after the runner tag, in the m
   assert.deepEqual(pipelines({ ...PRODUCTION, [RUNNER_TAG_VARIABLE]: SHARED })['child e2e'], [
     SHARED,
   ]);
-  assert.equal(groups(PRODUCTION)['child test'], 'heavy-tests-qa-tools-ci');
+  assert.equal(groups(PRODUCTION)['child test'], 'heavy-tests-example-ci');
   // With no project variable at all, as on the shared runners, and no deploy.
   assert.deepEqual(groups({}), expectedGroups(SHARED, null));
   // The script-test groups and the light jobs take the second place.
@@ -1283,15 +1284,12 @@ test('the resource group check sees each way of letting the two run together or 
 });
 
 test('the model reads a resource group as GitLab does: variables expanded, unknown names dropped, its characters checked', () => {
-  assert.equal(
-    expandGroup(HEAVY_GROUP, { [RUNNER_TAG_VARIABLE]: OURS }),
-    'heavy-tests-qa-tools-ci',
-  );
+  assert.equal(expandGroup(HEAVY_GROUP, { [RUNNER_TAG_VARIABLE]: OURS }), 'heavy-tests-example-ci');
   assert.equal(expandGroup('a-${B}', { B: 'x' }), 'a-x');
   assert.equal(expandGroup(HEAVY_GROUP, {}), 'heavy-tests-');
   assert.equal(expandGroup('$A', { A: '$B' }), '$B', 'a value is not expanded again');
   for (const key of [
-    'heavy-tests-qa-tools-ci',
+    'heavy-tests-example-ci',
     'heavy-tests-saas-linux-small-amd64',
     'a/b',
     'a b',

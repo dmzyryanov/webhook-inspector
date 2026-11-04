@@ -129,7 +129,7 @@ const BACKUP_SCRIPT = readFileSync(
 // secret holds the characters a real one may: `+`, `/`, `=`, `-` and `_`.
 const KEY_ID = 'YCAJEstandInKeyId0123456A';
 const SECRET = 'YCstand-in_Secret+access/key=0123456789a';
-const BUCKET = 'qa-tools-backups';
+const BUCKET = 'example-backups';
 const REGION = 'ru-central1';
 
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');

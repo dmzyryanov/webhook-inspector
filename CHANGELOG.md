@@ -1,4 +1,12 @@
-# QA Tools — Changes
+# Webhook Inspector — Changelog
+
+What changed in each version of Webhook Inspector, newest first. The site
+renders it at https://webhook.qa-tools.ru/changelog, with Atom feeds of every
+release and of breaking changes alone. The numbers in parentheses after an
+entry, an issue `#123` or a decision `D123`, point to the project's private
+issue tracker and decision log; the site leaves them out.
+
+## How to write an entry
 
 This file is public. Every frontend build publishes it as the page
 `https://qa-tools.ru/changelog`, the text `https://qa-tools.ru/changelog.md`
@@ -11,7 +19,7 @@ product version is in `VERSION`; delivery evidence and the exact commit live in
 the MR and the Git tag. An entry in a branch is planned work until its
 deployment is verified.
 
-How to write an entry (issue #97, D184):
+The rules (issue #97, D184):
 
 - **One entry per version, newest first**, under a heading that is exactly
   `## <version>`, as `scripts/check-version.mjs` requires.

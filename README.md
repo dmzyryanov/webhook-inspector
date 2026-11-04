@@ -10,6 +10,16 @@ are temporary, and are not meant for sensitive production data.
 It is built for QA engineers and developers, designed for the desktop and
 usable on tablets and phones. It is a service of QA Tools.
 
+## How it is built
+
+The code, the tests and the documentation are written by AI agents; the owner
+sets the tasks and takes the decisions. The process they follow is private,
+and so are its issue tracker, its merge requests and its decision log: an
+issue `#123`, a merge request `!12` or a decision `D123` cited in the
+documents or in a commit message leads to nothing public. On GitHub, a `#123`
+in a commit message links to the mirror's own issue of that number, if it has
+one, which is not the issue meant.
+
 ## The hosted instance
 
 - **https://qa-tools.ru** and **https://webhook.qa-tools.ru** — the site,
@@ -123,10 +133,6 @@ webhook-inspector/
 ├── VERSION                # the product version
 └── package.json           # npm workspaces: apps/* and packages/*
 ```
-
-The documents cite decisions (`D123`) and issues (`#123`) by number. The
-numbers are references to the decision log and the issue tracker of the QA
-Tools project, which are not published.
 
 ## Running locally
 
@@ -541,6 +547,16 @@ own, `https://qa-tools.ru`, removes the second host's Ingresses and certificate,
 while the frontend image still names `https://webhook.qa-tools.ru`, the
 build's default for this site (`apps/frontend/scripts/site-origin.mjs`); a copy
 on its own origins has no second origin by default and is unaffected.
+
+## Issues, contributions and security
+
+The GitHub repository,
+[`dmzyryanov/webhook-inspector`](https://github.com/dmzyryanov/webhook-inspector),
+is a read-only mirror of the project's GitLab repository, where the work is
+done. Issues are welcome on GitHub: a bug, a question or an idea. Pull requests
+are not accepted, since every change goes through the project's own process.
+Report a security problem by mail to `contact@qa-tools.ru`, not in a public
+issue; [`SECURITY.md`](SECURITY.md) says the same.
 
 ## License
 

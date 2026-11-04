@@ -1728,9 +1728,11 @@ test('delivery-checks downloads the pinned oasdiff, verifies its SHA-256 and run
 
 // D219 records the check and DELIVERY says what delivery-checks fails; both
 // live with the delivery process, outside this repository. The changelog's
-// header, which readers of the API see, says it here.
+// header, which readers of the API see, says it here: everything above the
+// first version heading, its rules' own heading included.
 test('the changelog header says what delivery-checks fails (D219)', () => {
-  const header = read('CHANGELOG.md').split(/^## /m)[0].replace(/\s+/g, ' ');
+  const changelog = read('CHANGELOG.md');
+  const header = changelog.slice(0, changelog.search(/^## \d/m)).replace(/\s+/g, ' ');
   for (const phrase of [
     '`scripts/check-api-breaking.mjs` fails a merge request',
     'a query, header or cookie parameter or a response header removed',

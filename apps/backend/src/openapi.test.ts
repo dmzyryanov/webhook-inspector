@@ -268,8 +268,8 @@ describe('the OpenAPI description', () => {
     );
     assert.match(description as string, /Do not send production secrets/);
     assert.match(description as string, /\/ws\/\{sessionId\}/);
-    // /docs is public and the repository is not: the description must stand on
-    // its own rather than send a reader to docs/API.md (D155).
+    // The description is a client's whole reference at /docs: it must stand
+    // on its own rather than send a reader to docs/API.md (D155).
     assert.doesNotMatch(description as string, /docs\/API\.md|project repository/);
 
     // The realtime summary names every optional event and both refusals, so a
