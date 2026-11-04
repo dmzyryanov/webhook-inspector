@@ -976,7 +976,7 @@ that host, the backend's and the frontend's, until day X (whether the
 WebSocket's `101` carries it is not checked); on Ingresses of their own
 because a middleware annotation applies to every router of its Ingress, so
 `qa-tools.ru`'s two stay as they were. `qa-tools-alias` asks cert-manager for
-the host's certificate, the Secret `webhook-qa-tools-tls`, apart from
+the host's certificate, the Secret `ingress.tls.aliasSecretName` names, apart from
 `qa-tools-tls`. Its routers are ranked as the first host's: the frontend's `/`
 is 46 characters there, `/s/` 48, `/ws/` and `/mcp` 49, `/api/` 50.
 
@@ -989,7 +989,7 @@ connection. A sender's TCP FIN or TLS `close_notify` reaches the backend as a
 FIN, which aborts a request not yet answered: such a sender gets no answer, and
 a wait for a configured delay is cancelled (D105, D109, D187). Its HTTP layer — header rewriting, path normalisation,
 `readTimeout`, `Accept-Encoding` — never sees a webhook. Its certificate is a
-cert-manager `Certificate` of its own, into the Secret `hook-qa-tools-tls`,
+cert-manager `Certificate` of its own, into the Secret `receive.tlsSecretName` names,
 from the same ClusterIssuer; the HTTP-01 challenge is answered on `web`, where
 the entry point's redirect is kept at priority 100 so that cert-manager's
 solver route, whose rule is longer, wins. All of it is in
