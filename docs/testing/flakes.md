@@ -4628,6 +4628,7 @@ and its text form with `7836.5 ms for 2097152 characters`.
   `response-template.test.ts:412`, `loses nothing of the line, and stands
   hostile lines at growing sizes in one pass`, in two, `1048576:
   1182.378455 ms` and `1048576: 1114.422662 ms for "{{{{{{{{{{{{"`.
+  Since #388, F-29.
 - The backend suite beside them, 13 runs, failed
   `src/modules/webhook/capture-budget.test.ts:960`, `refuses 100,000
   webhooks of one address at once quickly once its line is full, and lets
@@ -5229,3 +5230,186 @@ its answers" src/modules/webhook/pipelining.test.ts`:
   given the count of the suite before's first, at 32, would have passed
   `count.most > 16` without its own. Not measured apart from the probe
   above, whose one of the five covers the suite's first four connections.
+
+## F-29 — `costs the list nothing: a megabyte of one word over 1000 rows` and `loses nothing of the line, and stands hostile lines at growing sizes in one pass`
+
+- **Test**: `apps/frontend/src/lib/request-filter.test.ts:307` and
+  `apps/frontend/src/lib/response-template.test.ts:412` at `b97ed1a`, the
+  base of the fix. The first timed one call of `filterRequests`, and one of
+  `rowHighlights` with the `queryWords` it takes, on 1000 rows, for each of
+  two queries of about a megabyte, `p ` and `post 200 ` repeated, and held
+  it to 1000 ms (`:321`). The second timed one call of `textParts` on each
+  of nine hostile lines of 1, 16 and 256 KiB and 1 MiB, each held to
+  1000 ms (`:432`). Issue #388, a follow-up of #355, whose F-26 left both
+  under Watched, and left.
+- **Status**: changed in the tests on `chore/hostile-size-test-margins-388`,
+  at `8cd9b38`. Both go up to the megabyte in sizes 4 times apart, `SIZES`,
+  16 KiB to 1 MiB (`request-filter.test.ts:313`), and `LINE_SIZES`, 1 KiB to
+  1 MiB (`response-template.test.ts:417`), and hold each call to 4000 ms,
+  `LIMIT_MS` (`:320`) and `LINE_LIMIT_MS` (`:423`); the tests are at `:322`
+  and `:425`. `filterRequests`, `rowHighlights`, `queryWords` and
+  `textParts` were not changed; VERSION kept. `a1ec563` rewords a comment
+  of the first.
+
+### The failure
+
+Recorded in F-26. In its 26 whole runs of the frontend suite on the agents'
+server on 2026-11-03, each beside `node scripts/db.mjs task-test 355`, the
+1-minute load average between 2.1 and 20.7, the first test failed in four,
+`1096.0`, `1100.0`, `1045.0` and `1222.1 ms for 1048576 characters`, and
+the second in two, `1048576: 1182.378455 ms` and `1048576: 1114.422662 ms
+for "{{{{{{{{{{{{"`; one run failed both at most. 4 of 26, Wilson 95%
+6.2%–33.5%, and 2 of 26, 2.1%–24.1%. Neither failed in a run of its file
+alone. No series was run at the base for this entry; the counts are F-26's.
+
+### The mechanism
+
+A bound with little room over the call's own time, as in F-24 and F-26, in
+two ways.
+
+`filterRequests` given a time zone, as the test gives `UTC`, keeps no texts
+of a row between calls: `searchTexts` builds each row's texts anew, its time
+through a `new Intl.DateTimeFormat`, about 120 ms of a call on 1000 rows
+whatever the query. The query's own work, trimmed, split and each word kept
+once in `typedWords`, and again, lower-cased, in `queryWords` for
+`rowHighlights`, adds about 55 to 90 ms at a megabyte, by the medians. A
+call at a megabyte took 146.8 to 294.7 ms alone, so 1000 ms left 3.4 times
+the slowest, and the load made it 4.1 times as long, 1222 ms. Under load
+the fixed part grows as much as the rest: the slowest call of this entry's
+measured loaded runs, 966.1 ms, was at 64 KiB, where the query's own work
+takes a few milliseconds alone.
+
+`textParts` is linear: it looks from a `{{` for its `}}` once, never again
+before where that look stopped, and makes a part of each `{{` and `}}`,
+524,288 of them for `{{` repeated over a megabyte. A cut of a megabyte took
+15.7 to 174.7 ms alone, its median 16.8 to 114.4 ms by line, and in the two
+failures 1114 and 1182 ms, 6.4 and 6.8 times the slowest alone.
+
+### The measurement
+
+On 2026-11-04 on the agents' Linux host, an AMD EPYC 7763 with 8 CPUs, Node
+v24.22.2. A script outside the tree imports the two modules from the
+worktree, builds the rows, queries and lines as the tests do and times the
+same calls, five rounds; min / median / max in ms, alone, at a load of 0.9
+to 1.9:
+
+| call | 64 KiB | 256 KiB | 1 MiB | 2 MiB |
+| --- | --- | --- | --- | --- |
+| `p `: `filterRequests`, then `rowHighlights` | 132.9 / 168.2 / 184.0 | 135.5 / 144.1 / 172.4 | 205.0 / 217.0 / 294.7 | 313.0 / 334.5 / 368.0 |
+| of it, `filterRequests` | 128.3 / 163.7 / 177.9 | 122.3 / 125.7 / 133.1 | 163.4 / 166.9 / 185.4 | 195.1 / 207.5 / 261.8 |
+| `post 200 `: `filterRequests`, then `rowHighlights` | 113.8 / 124.7 / 149.7 | 128.6 / 151.8 / 179.4 | 146.8 / 181.4 / 221.6 | 195.4 / 214.7 / 300.1 |
+| `textParts`, the nine lines: medians, fastest to slowest; max | 1.0 to 9.8; 11.3 | 3.6 to 23.7; 78.0 | 16.8 to 114.4; 174.7 | 32.8 to 303.5; 485.1 |
+
+Six whole runs of the frontend suite with the tests as at `8cd9b38` but for
+two comments, in a copy of the tree outside the worktree with a line
+written after each timed call, never committed; each beside
+`node scripts/db.mjs task-test 388`, two frontend runs to a backend run,
+the 1-minute load average, sampled every 5 s, between 1.35 and 20.81, each
+run 52 to 66 s. Min / median / max in ms over every call of the six runs:
+
+| size | `costs the list nothing`, 12 calls a size | `loses nothing of the line`, 54 calls a size |
+| --- | --- | --- |
+| 1 KiB | | 0 / 0.2 / 7.6 |
+| 4 KiB | | 0.1 / 0.6 / 13.2 |
+| 16 KiB | 201.8 / 356.0 / 624.8 | 0.4 / 7.9 / 26.8 |
+| 64 KiB | 148.9 / 369.8 / 966.1 | 1.0 / 18.2 / 111.0 |
+| 256 KiB | 224.6 / 334.0 / 708.5 | 7.7 / 42.0 / 184.0 |
+| 1 MiB | 375.2 / 533.9 / 664.1 | 22.9 / 162.9 / 779.2 |
+
+Twelve whole runs of the frontend suite at `8cd9b38`, in the worktree, by
+`npm test -w @webhook-inspector/frontend`, each beside
+`node scripts/db.mjs task-test 388`, two to a backend run, on 2026-11-04
+from 19:30 to 19:45 MSK, the 1-minute load average, sampled every 5 s,
+between 1.14 and 20.91, each run 48 to 55 s: both tests passed in all
+twelve, each run `ℹ tests 2472`, `ℹ pass 2464`, `ℹ fail 0`,
+`ℹ cancelled 8`, the eight of llms.test.ts (Watched, and left). The first
+test, its eight calls and the building of its queries, took 2205.7 to
+3946.2 ms; the second, 54 calls, 3083.3 to 4767.4 ms. 0 of 12 failed either,
+Wilson 95% 0%–24.2%; with the six instrumented runs, 0 of 18, 0%–17.6%. The
+six backend runs beside them passed, `ℹ tests 3423`, `ℹ pass 3423`, in 142
+to 149 s.
+
+### The mutations
+
+Scratch mutations of the copy outside the worktree, never committed, each
+applied in turn and the module put back after it. The `textParts` form
+looks from every `{{` again, `if (opens)` for `if (opens && index >=
+noCloseBefore)`; the every-repeat form of `filterRequests` takes the
+query's words as split, `query.trim().split(/\s+/)` for `typedWords(query)`,
+and matches every repeat against every row; its list form keeps a word
+only when a copy of the words after it lacks it,
+`all.filter((word, index) => !all.slice(index + 1).includes(word))`,
+quadratic in the words. Timed by the script above, one round, alone, at a
+load of 1.0 to 1.6, in ms:
+
+| form | input | 1 KiB | 4 KiB | 16 KiB | 64 KiB | 256 KiB | 1 MiB |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `textParts`, every `{{` again | `{` repeated | 12.2 | 137.9 | 1846.4 | 29014.2 | | |
+| the same | `{{x` repeated, the least slowed of the four lines it slows | 19.4 | 64.5 | 1127.0 | 19674.9 | | |
+| `filterRequests`, every repeat | `p ` | | | 392.4 | 926.6 | 3737.7 | 13073.5 |
+| the same | `post 200 ` | | | 284.9 | 798.0 | 2860.9 | 10678.3 |
+| `filterRequests`, the list | `p ` | | | 185.2 | 4597.7 | 80329.6 | |
+| the same | `post 200 ` | | | 117.4 | 200.0 | 15824.2 | |
+
+The other five lines take 7 ms or less at 64 KiB under the `textParts`
+form. Against `8cd9b38`'s tests, each form applied in turn and its file run
+alone in the copy, `npm test -w @webhook-inspector/frontend --
+src/lib/<name>.test.ts`, at a load of 1.8 to 2.7; unmutated, the copy's
+files passed, 51 of 51 and 26 of 26:
+
+| form | the file | what failed |
+| --- | --- | --- |
+| `textParts`, every `{{` again | 25 of 26 passed, exit 1, 41 s | `loses nothing of the line, …` at 64 KiB, its first line, 1 to 16 KiB passed: `65536: 32126.798721 ms for "{{{{{{{{{{{{"`, the test 39.4 s |
+| `filterRequests`, every repeat | 50 of 51, exit 1, 23 s | `costs the list nothing: …` at the megabyte, 16 to 256 KiB passed: `13321.2 ms for 1048576 characters`, the test 21.9 s |
+| `filterRequests`, the list | 50 of 51, exit 1, 6 s | the same test at 64 KiB: `4632.2 ms for 65536 characters`, the test 5.0 s |
+
+At the base's sizes and a bound of 4000 ms, the `textParts` form would
+pass at 16 KiB and fail only at 256 KiB, after about 16 times its 29 s at
+64 KiB, 8 minutes; the list form, at the base's one size of a megabyte,
+after about 16 times its 80 s at 256 KiB, 21 minutes. Both estimated from
+the growth above, not run.
+
+### The fix
+
+In the tests only. Sizes 4 times apart up to the megabyte: a form quadratic
+in its input that passes the bound at one size takes about 16 times as long
+at the next and fails there, so a larger bound does not let it run for
+minutes first. 4000 ms is 3.3 times the slowest loaded call seen of the
+first test, F-26's 1222.1 ms, 4.1 times this entry's 966.1 ms, and 3.4 times
+the slowest loaded cut seen, F-26's 1182.4 ms, 5.1 times this entry's
+779.2 ms. It is 3.3 times under the every-repeat form's 13.3 s at the
+megabyte and 7.3 times under the `textParts` form's 29 s at 64 KiB; the
+list form's 4.6 s at 64 KiB is only 1.15 times over it, and where a faster
+machine passes it there, it fails at 256 KiB, 80 s here.
+
+The megabyte stays. Most of the first test's time is the rows' texts,
+built the same at every size: its slowest loaded call here, 966.1 ms, was
+at 64 KiB, so a smaller query would not have kept its failures away; the
+second keeps the megabyte that its sibling, `stands hostile bodies at
+growing sizes in one pass, its message a line`, also goes to.
+
+### Watched, and left
+
+- `llms.test.ts:640`, its eight tests cancelled in every whole run of this
+  entry, `jq must be installed`, `spawnSync jq ENOENT`: the agents' server
+  still has no `jq` (#350), as in F-26. Each frontend run here exited 1 on
+  it alone.
+- The first test's one word, or two, cannot tell the `Set` from a dedupe by
+  `indexOf`, `all.filter((word, index) => all.indexOf(word) === index)`,
+  quadratic in the number of distinct words only: on its queries that form
+  is linear, 222.2 / 232.2 / 245.9 ms for `p ` at a megabyte, three rounds
+  at a load of 10.7 to 11.4, about the time without it. A query of many
+  distinct words is not among the test's; not this entry's.
+- `planRawSearch: hostile queries` (`request-filter.test.ts:574` at
+  `8cd9b38`) holds each plan of up to a megabyte to 1000 ms in one
+  wall-clock call, and `stands hostile bodies at growing sizes in one pass,
+  its message a line` (`response-template.test.ts:347`) each `templateError`
+  of up to a megabyte to 500 ms. Neither failed in this entry's 18 loaded
+  runs, nor is either named failing in F-26's 26; not measured.
+- The backend suite beside them failed once in its nine runs, beside the
+  instrumented runs: `src/modules/sessions/access-key.test.ts:473`, `answer
+  made-up handshakes of 1048576 characters under both prefixes at once`,
+  `took 102.9 ms at best in 5 runs, over the 100 ms bound`, as in F-26's
+  runs. Its load was the frontend suite's; not this entry's.
+
+The scripts are not kept in the tree.
