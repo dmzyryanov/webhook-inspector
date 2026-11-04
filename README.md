@@ -34,6 +34,53 @@ usable on tablets and phones. It is a service of QA Tools.
 - **The status page** — https://status.qa-tools.ru, the image's
   `STATUS_PAGE_URL` (see below).
 
+## Install
+
+Webhook Inspector runs on a [k3s](https://k3s.io) cluster from the Helm chart
+in `deploy/helm/qa-tools`: the backend, the frontend, PostgreSQL and a nightly
+backup, in one namespace. Before the commands below:
+
+- **The cluster:** k3s with the Traefik it packages, cert-manager, and this
+  repository's Traefik settings and certificate issuers, set up as step 1 of
+  [Installing on k3s with the chart](#installing-on-k3s-with-the-chart) says.
+- **Two host names** pointing at the server: the site's, and the receive
+  host's, where sessions receive their webhooks.
+- **A registry** the cluster can pull images from.
+- **Where you run the commands:** this repository, Docker, `kubectl` and Helm
+  reaching the cluster, and `openssl`. Followed on a test cluster with
+  k3s 1.35, Helm 4.3, kubectl 1.37 and cert-manager 1.21
+  ([On a test cluster](#on-a-test-cluster)).
+
+Set the five values, then run the rest as it stands:
+
+```bash
+REGISTRY=registry.example.com/inspector  # the registry and path the cluster pulls from
+TAG=$(git rev-parse --short HEAD)        # the images' tag
+SITE_HOST=inspector.example.com          # the site's host
+RECEIVE_HOST=hook.inspector.example.com  # the receive host
+ISSUER=letsencrypt-production            # selfsigned on a test cluster
+
+docker build -f apps/backend/Dockerfile -t $REGISTRY/backend:$TAG .
+docker build -f apps/frontend/Dockerfile --build-arg APP_ORIGIN=https://$SITE_HOST \
+  --build-arg RECEIVE_ORIGIN=https://$RECEIVE_HOST -t $REGISTRY/frontend:$TAG .
+docker build -f deploy/postgres/Dockerfile -t $REGISTRY/postgres:16-pgcron-1 deploy/postgres
+for image in backend:$TAG frontend:$TAG postgres:16-pgcron-1; do docker push $REGISTRY/$image; done
+
+kubectl create namespace inspector
+kubectl -n inspector create secret generic inspector-postgres --from-literal=password="$(openssl rand -hex 24)"
+sudo install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector  # on the node itself
+
+helm upgrade --install inspector deploy/helm/qa-tools --namespace inspector \
+  --set-string images.registry=$REGISTRY --set-string images.tag=$TAG \
+  --set-string ingress.host=$SITE_HOST --set-string receive.host=$RECEIVE_HOST \
+  --set-string ingress.tls.issuer=$ISSUER --wait --timeout 10m
+```
+
+The site then answers at `https://$SITE_HOST`, and a session receives its
+webhooks at `https://$RECEIVE_HOST/s/<session-id>`. A private registry needs
+its pull Secret, and the off-server copy of the backups, the heartbeat monitor
+and every other value are options: all are in the full section below.
+
 ## Technology
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, shadcn/ui
@@ -189,28 +236,44 @@ names it gives objects are the release's. The project's own production at
 `qa-tools.ru` is one installation of it, deployed by `.gitlab-ci.yml` with
 values its operator keeps in the project's CI/CD variables.
 
-1. **The cluster.** k3s with the Traefik it packages, and cert-manager. Then,
-   from this repository:
+The commands below use the five values the [Install](#install) section sets:
+`REGISTRY`, `TAG`, `SITE_HOST`, `RECEIVE_HOST` and `ISSUER`.
+
+1. **The cluster.** k3s with the Traefik it packages, and cert-manager, which
+   Helm installs:
+
+   ```bash
+   helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version v1.21.1 \
+     --namespace cert-manager --create-namespace --set crds.enabled=true --wait
+   ```
+
+   Then, from this repository:
    - `deploy/cluster/traefik-config.yaml` — Traefik's redirect to HTTPS, its
      timeouts, and `externalTrafficPolicy: Local`, so the backend sees each
-     sender's own address. Its header says where k3s takes it.
-   - `deploy/cluster/letsencrypt-issuers.yaml` — the Let's Encrypt issuers.
-     Replace the placeholder `acme-contact@example.com` with your own contact
-     address before applying it; Let's Encrypt refuses the placeholder.
+     sender's own address. k3s takes it from its manifests directory, on the
+     server, and redeploys Traefik with it:
+     `sudo install -m 600 deploy/cluster/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/traefik-config.yaml`.
+   - `deploy/cluster/letsencrypt-issuers.yaml` — the Let's Encrypt issuers:
+     `letsencrypt-production`, the chart's `ingress.tls.issuer` unless set,
+     and `letsencrypt-staging`. Replace the placeholder
+     `acme-contact@example.com` with your own contact address, then
+     `kubectl apply -f deploy/cluster/letsencrypt-issuers.yaml`; Let's Encrypt
+     refuses the placeholder. Where Let's Encrypt cannot reach the server, a
+     self-signed issuer takes their place
+     ([On a test cluster](#on-a-test-cluster)).
    - `deploy/cluster/gitlab-deployer.yaml` — only for deploying from GitLab CI
      (below): a ServiceAccount limited to the namespace `qa-tools`, the one the
      pipeline installs into.
 2. **The images.** Build and push the three images to a registry the cluster
-   can pull from, under `<registry>/backend:<tag>`, `<registry>/frontend:<tag>`
-   and `<registry>/postgres:16-pgcron-1`:
+   can pull from, as `$REGISTRY/backend:$TAG`, `$REGISTRY/frontend:$TAG` and
+   `$REGISTRY/postgres:16-pgcron-1`:
 
    ```bash
-   docker build -f apps/backend/Dockerfile -t <registry>/backend:<tag> .
-   docker build -f apps/frontend/Dockerfile \
-     --build-arg APP_ORIGIN=https://inspector.example \
-     --build-arg RECEIVE_ORIGIN=https://hook.inspector.example \
-     -t <registry>/frontend:<tag> .
-   docker build -f deploy/postgres/Dockerfile -t <registry>/postgres:16-pgcron-1 deploy/postgres
+   docker build -f apps/backend/Dockerfile -t $REGISTRY/backend:$TAG .
+   docker build -f apps/frontend/Dockerfile --build-arg APP_ORIGIN=https://$SITE_HOST \
+     --build-arg RECEIVE_ORIGIN=https://$RECEIVE_HOST -t $REGISTRY/frontend:$TAG .
+   docker build -f deploy/postgres/Dockerfile -t $REGISTRY/postgres:16-pgcron-1 deploy/postgres
+   for image in backend:$TAG frontend:$TAG postgres:16-pgcron-1; do docker push $REGISTRY/$image; done
    ```
 
    The frontend image names its address when it is built, so a copy on another
@@ -228,8 +291,9 @@ values its operator keeps in the project's CI/CD variables.
    (Deploying from GitLab CI, below). The texts behind
    `OPERATOR_TEXTS` are this site's operator's and name its hosting; a copy
    leaves them off. `scripts/check-deployment.mjs` below still expects this
-   site's contact address and legal pages, so a copy built without them
-   fails those of its checks.
+   site's contact address and legal pages, so on a copy built without them it
+   stops at its check of the Terms of Use, and the checks after that one do
+   not run.
 3. **The namespace and its Secrets.** The database password, which the chart
    reads and never holds, in the Secret `<release>-postgres`:
 
@@ -239,12 +303,15 @@ values its operator keeps in the project's CI/CD variables.
    ```
 
    For a private registry, a `docker-registry` Secret named `gitlab-registry`,
-   or the name you give `images.pullSecret`.
+   or the name you give `images.pullSecret`. A registry that takes no
+   credentials needs none: add `--set-string images.pullSecret=` to the
+   release, or every pod warns that it cannot find `gitlab-registry`
+   (`FailedToRetrieveImagePullSecret`), and pulls without it.
 4. **The backup directory.** The nightly backup dumps the database into a
    directory on the node, `backup.hostPath`, by default
    `/var/backups/webhook-inspector`. It must exist before the install, owned by
    the PostgreSQL image's user with mode 0700, or the backup's pod does not
-   start:
+   start. On the node itself:
 
    ```bash
    sudo install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector
@@ -254,22 +321,27 @@ values its operator keeps in the project's CI/CD variables.
    both pointing at the server.
 6. **The release.** The two hosts and the images are the values every install
    sets; without the hosts, or the registry and tag, the chart refuses to
-   render and names them. Migrations run in the backend's init container on
-   every upgrade.
+   render and names them. `ISSUER` names the ClusterIssuer of the two
+   certificates.
 
    ```bash
-   helm upgrade --install inspector deploy/helm/qa-tools \
-     --namespace inspector \
-     --set-string images.registry=<registry> \
-     --set-string images.tag=<tag> \
-     --set-string ingress.host=inspector.example \
-     --set-string receive.host=hook.inspector.example \
-     --wait --timeout 10m
+   helm upgrade --install inspector deploy/helm/qa-tools --namespace inspector \
+     --set-string images.registry=$REGISTRY --set-string images.tag=$TAG \
+     --set-string ingress.host=$SITE_HOST --set-string receive.host=$RECEIVE_HOST \
+     --set-string ingress.tls.issuer=$ISSUER --wait --timeout 10m
    ```
 
-   Every value is described in `deploy/helm/qa-tools/values.yaml`; the TLS and
-   database Secrets are named after the release unless set.
-   `node scripts/check-deployment.mjs https://inspector.example https://hook.inspector.example`
+   Migrations run in the backend's init container on every upgrade. On the
+   first install it fails and is restarted until PostgreSQL answers, then
+   applies them all;
+   `kubectl -n inspector logs deploy/inspector-backend -c migrate` lists what
+   it applied. Every value is described in `deploy/helm/qa-tools/values.yaml`;
+   the TLS and database Secrets are named after the release unless set. The
+   backend believes the sender's address Traefik passes on only from a peer
+   in `backend.trustedProxyCidrs`, by default `10.42.0.0/24`, the pod network
+   k3s gives its first node; a cluster whose Traefik pod has an address
+   outside it sets its own range, or the receive host takes no webhook.
+   `node scripts/check-deployment.mjs https://$SITE_HOST https://$RECEIVE_HOST`
    then checks the deployed site from outside, as CI does after each
    deployment.
 
@@ -302,6 +374,61 @@ Two options are off until configured:
 `helm template` with the values above shows what an install creates, and
 `scripts/chart.test.mjs` renders the chart the same way with its own renderer,
 `scripts/chart-render.mjs`.
+
+### On a test cluster
+
+The steps above were followed from scratch on 2026-11-04 on one machine with
+k3d 5.9.0, which runs k3s 1.35.5 in Docker, its packaged Traefik 3.6 included,
+with cert-manager 1.21.1, Helm 4.3.1, kubectl 1.37.2 and Docker 29.9, the two
+options left off (#374). There the node is a container and Let's Encrypt
+cannot reach the cluster, so these commands take the place of step 1 and
+step 4:
+
+```bash
+CLUSTER=inspector-test
+REGISTRIES=$(mktemp)
+printf 'mirrors:\n  "localhost:15000":\n    endpoint:\n      - http://%s-registry:5000\n' $CLUSTER > $REGISTRIES
+k3d cluster create $CLUSTER --api-port 127.0.0.1:16443 \
+  -p '127.0.0.1:18080:80@loadbalancer' -p '127.0.0.1:18443:443@loadbalancer' \
+  --registry-create $CLUSTER-registry:127.0.0.1:15000 --registry-config $REGISTRIES \
+  --kubeconfig-update-default=false --wait
+export KUBECONFIG=$(k3d kubeconfig write $CLUSTER)
+docker cp deploy/cluster/traefik-config.yaml \
+  k3d-$CLUSTER-server-0:/var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version v1.21.1 \
+  --namespace cert-manager --create-namespace --set crds.enabled=true --wait
+kubectl apply -f - <<'EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+EOF
+docker exec k3d-$CLUSTER-server-0 install -d -o 999 -g 999 -m 0700 /var/backups/webhook-inspector
+```
+
+- The cluster gets a kubeconfig file of its own and a registry, which Docker
+  pushes to as `localhost:15000` and the cluster pulls from under the same
+  name. Its load balancer answers on `127.0.0.1`, ports 18080 and 18443, and
+  its API on 16443.
+- Traefik's settings go into the node's container, the self-signed issuer
+  takes the place of the Let's Encrypt issuers, and the backup directory is
+  made in the node's container: the [Install](#install) section's `sudo install`
+  line is left out.
+- The values are `REGISTRY=localhost:15000`, `SITE_HOST=inspector.localhost`
+  and `RECEIVE_HOST=hook.inspector.localhost`, names under `localhost`, which
+  resolve to the machine itself, and `ISSUER=selfsigned`. The registry takes
+  no credentials, so the pods warned `FailedToRetrieveImagePullSecret` until
+  the release was run again with `--set-string images.pullSecret=` (step 3).
+- The site is at `https://inspector.localhost:18443/`. A webhook URL it gives
+  names the receive host without a port, so a webhook goes to port 18443 of
+  that URL. The certificates are self-signed with no issuer name, so neither
+  `curl --cacert` nor Node can trust them: `curl -k`, and
+  `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/check-deployment.mjs https://inspector.localhost:18443 https://hook.inspector.localhost:18443`,
+  which stops at the Terms of Use, as step 2 says.
+- `k3d cluster delete $CLUSTER` removes the cluster, its registry and its
+  kubeconfig file; the images built stay in Docker until removed.
 
 ### Deploying from GitLab CI
 
