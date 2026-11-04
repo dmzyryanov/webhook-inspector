@@ -337,11 +337,12 @@ function pipeline(
  * The count of `sent`'s connection on the server's side: the latest whose
  * client port and receiver port are both `sent`'s. A client port alone is
  * not enough: the kernel gives a connection to one receiver the port of a
- * connection to another, open or closed, whose count is kept - in about 1 in
- * 1,300 runs at the PROXY v2 suite's fifth connection, after the eleven of
- * the suite before it (#383, `docs/testing/flakes.md`, F-28). Two connections
- * have the same pair of ports only once the first has closed, so the latest
- * is `sent`'s once its first request has been read.
+ * connection to another, open or closed, whose count is kept - the PROXY v2
+ * suite's fifth connection took one of the eleven of the suite before it in
+ * 23 of 25,000 tries on the agents' server (#383, `docs/testing/flakes.md`,
+ * F-28). Two connections have the same pair of ports only once the first
+ * has closed, so the latest is `sent`'s once its first request has been
+ * read.
  */
 function countOf(sent: Pipeline): Count | undefined {
   let found: Count | undefined;
@@ -390,11 +391,13 @@ function largestTcpBuffer(name: 'tcp_wmem' | 'tcp_rmem'): number | undefined {
  * (a kernel other than Linux), where `untilTakesNoMore` fails the case if
  * the kernel takes them all.
  *
- * Up to 4 MiB and 6 MiB by default, so 224 answers. How much of that the
- * kernel takes changes from run to run: Linux grows the receiver's send
- * buffer by the connection's congestion window and reordering, which it
- * starts from what earlier connections to `127.0.0.1` left in its TCP
- * metrics, so 39 to 63 answers on the agents' server (F-28).
+ * Up to 4 MiB and 6 MiB by default, so 224 answers. How much the kernel
+ * takes of them changes from run to run: Linux grows the receiver's send
+ * buffer, up to that largest size, by the reordering the connection starts
+ * with, which earlier connections to `127.0.0.1` raise in its TCP metrics.
+ * On the agents' server 39 answers at Linux's own 3, 63 at the 29 its
+ * metrics held, and with sizes of 16 MiB 119 at 29 and every one of 200,
+ * 252 of 576, at 300 (F-28).
  */
 function unreadAnswerCount(): { count: number; sizes: string } {
   const wmem = largestTcpBuffer('tcp_wmem');
