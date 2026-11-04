@@ -42,8 +42,8 @@ const SIZES = [1024, 64 * 1024, 1024 * 1024];
 /**
  * Milliseconds `parseMessage` may take on one made-up body: 1000, above the
  * 500 of most of the suite's hostile input, as the slowest body - 1 MiB of
- * `[`, a level of nesting a byte for V8's own JSON.parse - takes 63 to 84 ms
- * alone and up to 268 ms under that load; two loaded suite runs took it to
+ * `[`, a level of nesting a byte for V8's own JSON.parse - takes 60 to 84 ms
+ * alone and up to 269 ms under that load; two loaded suite runs took it to
  * 109 and 154 ms, over the 100 ms of before #363. A quadratic reading of the
  * same body, each `[` searched to the end for its `]` with V8's own
  * `indexOf`, takes 7.6 to 7.8 s: over the bound on every run. One search per
@@ -55,31 +55,32 @@ const BODIES_BOUND_MS = 1000;
  * Milliseconds `acceptsJson` may take on one made-up `Accept` value of one
  * character repeated, or of one range with a parameter every four characters:
  * 500, the suite's usual, as the slowest of them - 1 MiB of commas, a million
- * empty ranges, a string for each - takes 46 to 55 ms alone and up to 249 ms
- * under that load. A reading that searches the rest of the value once per
- * parameter takes 1.9 s, and once per byte 8 s: over the bound on every run.
+ * empty ranges, a string for each - takes 37 to 66 ms alone and up to 165 ms
+ * under that load, and one round's slowest `Accept` value, not named, read
+ * 249 ms. A reading that searches the rest of the value once per parameter
+ * takes 1.9 s, and once per byte 8 s: over the bound on every run.
  */
 const ACCEPT_BOUND_MS = 500;
 
 /**
  * Milliseconds `acceptsJson` may take on one made-up list of whole media
- * ranges, of 10 to 21 characters each: 200, as the slowest of them takes 16
- * to 18 ms alone and up to 76 ms under that load. A reading that searches the
- * rest of the list once per range takes 364 ms on ranges of 21 characters,
- * 480 ms on ranges of 16 and 753 ms on ranges of 10: over the bound on every
- * run.
+ * ranges, of 10 to 21 characters each: 200, as the slowest of them, ranges of
+ * 21 characters, takes 16 to 21 ms alone and up to 78 ms under that load. A
+ * reading that searches the rest of the list once per range takes 364 ms on
+ * ranges of 21 characters, 480 ms on ranges of 16 and 753 ms on ranges of 10:
+ * over the bound on every run.
  */
 const ACCEPT_RANGES_BOUND_MS = 200;
 
 /**
  * Milliseconds every other check of a made-up value may take - an id, a
  * copy, an `Origin`, a URL, a protocol version: 50, as the slowest of them,
- * `parseMessage` on a body whose id is 1 MiB of emoji, takes 4 to 6 ms alone
- * and up to 20 ms under that load, and the others 1 ms or less alone and
- * 6 ms or less under it. The cheapest quadratic reading of any of them
- * measured, one search of the rest of 16,384 `Origin` headers per header,
- * takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and once
- * per byte of 1 MiB 8 s: over the bound on every run.
+ * `parseMessage` on a body whose id is 1 MiB of emoji, takes 3.7 to 5.5 ms
+ * alone and up to 21 ms under that load, `ownCopy` up to 4.3 ms alone and
+ * 16 ms under it, and the rest 0.1 ms or less. The cheapest quadratic reading
+ * of them measured, one search of the rest of 16,384 `Origin` headers per
+ * header, takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and
+ * once per byte of 1 MiB 8 s: over the bound on every run.
  */
 const BOUND_MS = 50;
 
