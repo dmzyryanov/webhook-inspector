@@ -66,10 +66,11 @@ const ACCEPT_BOUND_MS = 500;
  * Milliseconds `acceptsJson` may take on one made-up list of whole media
  * ranges, of 10 to 21 characters each: 200, as the slowest of them, ranges of
  * 21 characters, takes 16 to 21 ms alone and under that load up to 78 ms in
- * 500 rounds, but 132 ms in one of 40 rounds of #377's tester: 1.5 times
- * under the bound. A reading that searches the rest of the list once per
- * range takes 364 ms on ranges of 21 characters, 480 ms on ranges of 16 and
- * 753 ms on ranges of 10: over the bound on every run.
+ * 500 rounds, but 132 ms in one round of a series of 40
+ * (`docs/testing/flakes.md`, F-24): 1.5 times under the bound. A reading
+ * that searches the rest of the list once per range takes 364 ms on ranges
+ * of 21 characters, 480 ms on ranges of 16 and 753 ms on ranges of 10: over
+ * the bound on every run.
  */
 const ACCEPT_RANGES_BOUND_MS = 200;
 
@@ -78,12 +79,13 @@ const ACCEPT_RANGES_BOUND_MS = 200;
  * copy, an `Origin`, a URL, a protocol version - each value built before it
  * is timed: 50, as the slowest of them alone, `parseMessage` on a body whose
  * id is 1 MiB of emoji, takes 3.5 to 6.6 ms, and the ids under that load up
- * to 24 ms in 879 rounds and 27 ms in one of 80 rounds of #377's tester: 1.9
- * times under the bound. `ownCopy` takes up to 4.3 ms alone and 16 ms under
- * that load, and the rest under 0.2 ms. The cheapest quadratic reading of
- * them measured, one search of the rest of 16,384 `Origin` headers per
- * header, takes 147 ms; one per origin repeated in a 1 MiB value 280 ms, and
- * once per byte of 1 MiB 8 s: over the bound on every run.
+ * to 24 ms in 879 rounds and 27 ms in one round of a series of 80
+ * (`docs/testing/flakes.md`, F-24): 1.9 times under the bound. `ownCopy`
+ * takes up to 4.3 ms alone and 16 ms under that load, and the rest under
+ * 0.2 ms. The cheapest quadratic reading of them measured, one search of the
+ * rest of 16,384 `Origin` headers per header, takes 147 ms; one per origin
+ * repeated in a 1 MiB value 280 ms, and once per byte of 1 MiB 8 s: over the
+ * bound on every run.
  */
 const BOUND_MS = 50;
 
@@ -94,6 +96,17 @@ function json(value: unknown): Buffer {
 /** `text` repeated to exactly `size` characters. */
 function fill(text: string, size: number): string {
   return text.repeat(Math.ceil(size / text.length)).slice(0, size);
+}
+
+/**
+ * A JSON array of `element` repeated, of at most `size` characters and as
+ * many whole elements as fit: cut between two elements, never inside one, so
+ * that it is valid JSON at every size.
+ */
+function batchOf(element: string, size: number): string {
+  const count = Math.floor((size - 1) / (element.length + 1));
+
+  return `[${Array.from({ length: count }, () => element).join(',')}]`;
 }
 
 describe('the JSON-RPC message a body holds', () => {
@@ -302,6 +315,8 @@ describe('the JSON-RPC message a body holds', () => {
 
   for (const size of SIZES) {
     it(`survives made-up bodies of ${size} bytes`, () => {
+      const ping = '{"jsonrpc":"2.0","id":1,"method":"ping"}';
+      const batch = Buffer.from(batchOf(ping, size));
       const bodies = [
         Buffer.from(fill('[', size)),
         Buffer.from(fill('{"a":', size)),
@@ -311,7 +326,7 @@ describe('the JSON-RPC message a body holds', () => {
         Buffer.alloc(size, 0x80),
         Buffer.from(`{"jsonrpc":"2.0","id":"${fill('x', size)}","method":"ping"}`),
         Buffer.from(`{"jsonrpc":"2.0","id":1,"method":"${fill('m', size)}"}`),
-        Buffer.from(`[${fill('{"jsonrpc":"2.0","id":1,"method":"ping"},', size)}{}]`),
+        batch,
         Buffer.from(
           `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"${fill('create_session', size)}"}}`,
         ),
@@ -322,7 +337,21 @@ describe('the JSON-RPC message a body holds', () => {
 
         assert.ok(['invalid', 'request'].includes(parsed.kind));
         assert.equal(isCreateSessionCall(parsed), false);
+
+        if (body === batch) {
+          // Whole elements, so valid JSON: read as a batch and refused as one,
+          // not as a parse error.
+          assert.deepEqual(parsed, {
+            kind: 'invalid',
+            code: RpcErrorCode.INVALID_REQUEST,
+            message: 'Invalid Request: batches are not supported; send one message per request',
+          });
+        }
       }
+
+      // Short of its size by less than an element and its comma, so that the
+      // case's size holds for it too.
+      assert.ok(batch.length <= size && batch.length > size - ping.length - 1, `${batch.length}`);
     });
 
     it(`refuses made-up ids of ${size} characters or digits as invalid requests within ${BOUND_MS} ms`, () => {
@@ -467,8 +496,10 @@ describe('the Origin that may call /mcp (D203)', () => {
         ALIAS_ORIGIN + fill('/', size),
         fill('w', size) + ALIAS_ORIGIN,
       ]) {
+        const values = [value];
+
         assert.equal(
-          withinBound(BOUND_MS, () => isAllowedOrigin([value], BOTH)),
+          withinBound(BOUND_MS, () => isAllowedOrigin(values, BOTH)),
           false,
         );
       }
@@ -628,10 +659,11 @@ describe('what Accept must allow (D203)', () => {
         );
       }
 
+      // Built before the bound, as the ids' bodies are.
+      const withJson = `${'text/html,'.repeat(size / 10)}application/json`;
+
       assert.equal(
-        withinBound(ACCEPT_RANGES_BOUND_MS, () =>
-          acceptsJson(`${'text/html,'.repeat(size / 10)}application/json`),
-        ),
+        withinBound(ACCEPT_RANGES_BOUND_MS, () => acceptsJson(withJson)),
         true,
       );
     });
