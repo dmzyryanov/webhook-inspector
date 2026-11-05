@@ -67,6 +67,7 @@ import {
   invalidResponseConfig,
   malformedRequestBody,
 } from '../../errors/app-error.ts';
+import { isPlainObject } from '../../lib/plain-object.ts';
 import type { ResponseChange } from './repository.ts';
 
 const TOP_LEVEL_KEYS = [
@@ -85,10 +86,6 @@ const RULES_KEYS = ['rules'];
 const RULE_KEYS = ['method', 'path', 'response'];
 
 const NUL = '\x00';
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function byteLength(value: string): number {
   return Buffer.byteLength(value, 'utf8');

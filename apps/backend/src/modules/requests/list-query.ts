@@ -36,6 +36,7 @@ import {
   type RequestListOrder,
 } from '@webhook-inspector/shared';
 import { invalidListQuery, malformedRequestBody } from '../../errors/app-error.ts';
+import { isPlainObject } from '../../lib/plain-object.ts';
 
 /** A header condition, its name already folded to ASCII lower case. */
 export interface HeaderCondition {
@@ -118,10 +119,6 @@ export const RULES = {
   conditions: `headers and body may hold at most ${REQUEST_QUERY_MAX_CONDITIONS} conditions together`,
   keys: 'The request body may contain no key other than headers, body, after, since, limit, order and include',
 } as const;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /** The query string of a request target: everything after the first `?`, or nothing. */
 export function queryStringOf(url: string): string {
