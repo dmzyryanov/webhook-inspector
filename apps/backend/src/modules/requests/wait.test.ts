@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import { WsCloseCode, type ServerEvent } from '@webhook-inspector/shared';
 import { AppError, requestNotFound, sessionExpired } from '../../errors/app-error.ts';
 import { RealtimeHub } from '../realtime/hub.ts';
+import { withinBound } from '../../testing/timing.ts';
 import { PendingWaits, waitForList } from './wait.ts';
 
 const SESSION = 'session-a';
@@ -236,6 +237,19 @@ describe('waitForList', () => {
     assert.equal(again.calls.length, 2, 'a settled wait read again');
   });
 
+  /**
+   * Milliseconds a burst may take to be announced to a wait, the fastest of
+   * up to five runs (`withinBound`, D203): 1000, at every size. Until #412
+   * one run decided, and a loaded run of the backend suite once took the
+   * burst of 100,000 over it with nothing wrong (F-31).
+   *
+   * Every run is announced to the same wait, during the same read: the first
+   * run's first announcement starts that read, which nothing settles before
+   * the runs end, so each run after it finds the wait reading, as the first
+   * leaves it, and all of them together are still one more read.
+   */
+  const BURST_BOUND_MS = 1_000;
+
   for (const count of [1_000, 10_000, 100_000]) {
     it(`takes a burst of ${count} announcements during one read as one more read, within a second`, async () => {
       const { hub, first, again, result } = start();
@@ -243,15 +257,12 @@ describe('waitForList', () => {
       first.calls[0]?.resolve([]);
       await settle();
 
-      const started = performance.now();
+      withinBound(BURST_BOUND_MS, () => {
+        for (let index = 0; index < count; index += 1) {
+          hub.publish(SESSION, captured(`r${index}`));
+        }
+      });
 
-      for (let index = 0; index < count; index += 1) {
-        hub.publish(SESSION, captured(`r${index}`));
-      }
-
-      const elapsed = performance.now() - started;
-
-      assert.ok(elapsed < 1000, `${count} announcements took ${Math.round(elapsed)} ms`);
       assert.equal(again.calls.length, 1);
       again.calls[0]?.resolve([]);
       await settle();
