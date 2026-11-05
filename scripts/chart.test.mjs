@@ -3439,7 +3439,7 @@ test("the cert-manager check passes whichever helm subcommand installs the other
     );
   const subcommand = /\bhelm (?:install|upgrade (?:--install|-i))(?= )/;
   const literal = OTHER_CHART_KEY.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&');
-  const flag = new RegExp(`[ \\t]+--set(?:-string|-literal)?[ =]${literal}=\\S*`);
+  const flag = new RegExp(`(?<![ \\t])[ \\t]+--set(?:-string|-literal)?[ =]${literal}=\\S*`);
   /** `markdown` with each copy of a command giving a key to another chart installing it with `helm <how>`. */
   const installedWith = (markdown, how) =>
     withLines(markdown, others(markdown), (lines, { command }) => {
