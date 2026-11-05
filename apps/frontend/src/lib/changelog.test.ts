@@ -479,7 +479,7 @@ describe('/changelog.md', () => {
     const header = source.slice(0, source.search(/^## \d/m)).replace(/\s+/g, ' ');
 
     for (const phrase of [
-      '`https://qa-tools.ru/changelog-breaking.xml` with the versions whose entry has a Breaking, a Deprecated or a Notice paragraph',
+      '`https://webhook.qa-tools.ru/changelog-breaking.xml` with the versions whose entry has a Breaking, a Deprecated or a Notice paragraph',
       '- **Notice.** A paragraph inside the entry that starts `**Notice:**` announces a change to the Terms of Use or the Privacy Policy',
       "It is required for a new version of the Terms of Use, except one the law requires, one needed to protect the service or one that only adds to the user's rights,",
       'keeps more data on the server, keeps it longer or shares it with anyone new — a move to another provider included — unless the law requires it sooner.',
@@ -490,6 +490,26 @@ describe('/changelog.md', () => {
     ]) {
       assert.ok(header.includes(phrase), phrase);
     }
+  });
+
+  it("names in the source header the one address its opening gives the site's changelog (#409)", () => {
+    const header = source.slice(0, source.search(/^## \d/m)).replace(/\s+/g, ' ');
+
+    assert.ok(header.includes('The site renders it at https://webhook.qa-tools.ru/changelog,'));
+
+    for (const path of [
+      '/changelog',
+      '/changelog.md',
+      '/changelog.xml',
+      '/changelog-breaking.xml',
+    ]) {
+      assert.ok(header.includes(`\`https://webhook.qa-tools.ru${path}\``), path);
+    }
+
+    assert.ok(
+      !header.includes('https://qa-tools.ru/changelog'),
+      'the source header names a second origin for the changelog',
+    );
   });
 
   it('follows the source: a changed entry changes the text', () => {
