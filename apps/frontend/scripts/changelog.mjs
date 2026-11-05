@@ -13,14 +13,15 @@
  *   `**Breaking:**`, a `**Deprecated:**` or a `**Notice:**` paragraph (D224),
  *   one `<entry>` per version, newest first.
  *
- * The source's own header, everything above the first `## <version>`, is the
- * writers' rules and is never published. Issue and decision references, which
- * the source keeps only as a trailing parenthesis such as `(#69, D183)`, are
- * removed from everything published. A version with no date line, or whose
- * entry does not open with a bold headline, stops the build. The source is
- * written for production: a build for another address names its own origins
- * in every output, and one with no second origin leaves out of all of them
- * the notices that name production's (`siteEntries()`, #343).
+ * The source's own header, everything above the first `## <version>`, holds an
+ * opening for readers of the file and the writers' rules, and is never
+ * published. Issue and decision references, which the source keeps only as a
+ * trailing parenthesis such as `(#69, D183)`, are removed from everything
+ * published. A version with no date line, or whose entry does not open with a
+ * bold headline, stops the build. The source is written for production: a
+ * build for another address names its own origins in every output, and one
+ * with no second origin leaves out of all of them the notices that name
+ * production's (`siteEntries()`, #343).
  *
  * Nothing it writes is committed. `scripts/build-changelog.mjs` writes
  * `changelog.md` and the two feeds into the build; `check-build.mjs` checks

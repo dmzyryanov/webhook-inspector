@@ -9,10 +9,11 @@ issue tracker and decision log; the site leaves them out.
 ## How to write an entry
 
 This file is public. Every frontend build publishes it as the page
-`https://qa-tools.ru/changelog`, the text `https://qa-tools.ru/changelog.md`
-and two Atom feeds, `https://qa-tools.ru/changelog.xml` with every version and
-`https://qa-tools.ru/changelog-breaking.xml` with the versions whose entry has
-a Breaking, a Deprecated or a Notice paragraph (D212, D224).
+`https://webhook.qa-tools.ru/changelog`, the text
+`https://webhook.qa-tools.ru/changelog.md` and two Atom feeds,
+`https://webhook.qa-tools.ru/changelog.xml` with every version and
+`https://webhook.qa-tools.ru/changelog-breaking.xml` with the versions whose
+entry has a Breaking, a Deprecated or a Notice paragraph (D212, D224).
 Everything above the first version heading, this header included, stays in the
 repository; the published outputs carry a public header of their own. The
 product version is in `VERSION`; delivery evidence and the exact commit live in
@@ -120,6 +121,14 @@ The rules (issue #97, D184):
   or does not open with a bold headline, and a frontend test fails when the
   published text names an issue, a decision, a repository path or an
   infrastructure object.
+
+## 1.19.19
+
+2026-11-05
+
+**Nothing changes on this site; the notes for the people who write this
+changelog, which the site never publishes, now give this page and its feeds
+one address.** Every other entry reads exactly as before. (#409)
 
 ## 1.19.18
 
