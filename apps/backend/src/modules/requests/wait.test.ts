@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import { WsCloseCode, type ServerEvent } from '@webhook-inspector/shared';
 import { AppError, requestNotFound, sessionExpired } from '../../errors/app-error.ts';
 import { RealtimeHub } from '../realtime/hub.ts';
+import { withinBound } from '../../testing/timing.ts';
 import { PendingWaits, waitForList } from './wait.ts';
 
 const SESSION = 'session-a';
@@ -236,22 +237,40 @@ describe('waitForList', () => {
     assert.equal(again.calls.length, 2, 'a settled wait read again');
   });
 
+  /**
+   * Milliseconds a burst may take to be announced to a wait whose read is
+   * under way, the fastest of up to five runs (`withinBound`, D203): 1500,
+   * at every size. Until #412 one run decided, held to 1000 ms, and a loaded
+   * run of the backend suite once took the burst of 100,000 over it with
+   * nothing wrong (F-31). The 100,000 take 212 to 229 ms at best of five
+   * alone and up to 762 ms beside the full backend suite and eight busy
+   * loops, where one run took up to 1816 ms: 1500 is about twice that
+   * fastest of five. A hub or a wait quadratic in the announcements took
+   * 3.3 s and more for them alone, 2.2 times the bound and more - the
+   * cheapest form measured sums, on every event, the bytes of all the hub
+   * delivered: over the bound on every run. At 1,000 and 10,000 the bound
+   * tells no quadratic form apart; 100,000 does.
+   *
+   * Every run is announced to the same wait, during the same read: the first
+   * run's first announcement starts that read, which nothing settles before
+   * the runs end, so each run after it finds the wait reading, as the first
+   * leaves it, and all of them together are still one more read.
+   */
+  const BURST_BOUND_MS = 1_500;
+
   for (const count of [1_000, 10_000, 100_000]) {
-    it(`takes a burst of ${count} announcements during one read as one more read, within a second`, async () => {
+    it(`takes a burst of ${count} announcements during one read as one more read, within 1.5 s`, async () => {
       const { hub, first, again, result } = start();
 
       first.calls[0]?.resolve([]);
       await settle();
 
-      const started = performance.now();
+      withinBound(BURST_BOUND_MS, () => {
+        for (let index = 0; index < count; index += 1) {
+          hub.publish(SESSION, captured(`r${index}`));
+        }
+      });
 
-      for (let index = 0; index < count; index += 1) {
-        hub.publish(SESSION, captured(`r${index}`));
-      }
-
-      const elapsed = performance.now() - started;
-
-      assert.ok(elapsed < 1000, `${count} announcements took ${Math.round(elapsed)} ms`);
       assert.equal(again.calls.length, 1);
       again.calls[0]?.resolve([]);
       await settle();
