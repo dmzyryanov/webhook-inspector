@@ -5244,7 +5244,12 @@ answers`.
 
 Since #400 a committed case holds `countOf`'s match without sockets, on
 counts made by hand (`pipelining.test.ts:578` at `ec9299b`): a match by
-client port alone, or the first instead of the latest, fails it.
+client port alone, or the first instead of the latest, fails it. Since #414
+a match by receiver port alone, its undefined-port guard kept, fails it too,
+on a count from another client port to the same receiver kept after the
+latest (`pipelining.test.ts:582` at `a5153bc`); before, it passed the case.
+With the guard removed, the case fails on a count given before the client
+connects.
 
 ### The measurement
 
