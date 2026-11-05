@@ -5665,7 +5665,7 @@ and 7.1 s.
   announcements during one read as one more read, within a second`, failed
   once in the five runs at the fix, `100000 announcements took 1009 ms`: one
   wall-clock run of 100,000 announcements held to 1000 ms (`:254`). No
-  earlier entry names it; not this entry's.
+  earlier entry names it; not this entry's. Since #412, F-31.
 - `access-key.test.ts:264` in the first run at the base, `took 103.3 ms at
   best in 5 runs, over the 100 ms bound`, as in F-26's and F-27's runs.
 - CI's `test` job, on an AMD EPYC 9655, took the base's whole test in 1.60
@@ -5674,5 +5674,201 @@ and 7.1 s.
   and the mutations on that runner were not measured; a runner much faster
   than the agents' server narrows the 1.76 times by which the `includes`
   form is over the bound.
+
+The scripts are not kept in the tree.
+
+## F-31 — `takes a burst of 100000 announcements during one read as one more read, within a second`
+
+- **Test**: `apps/backend/src/modules/requests/wait.test.ts:240` at
+  `2154739`, the base of the fix, the largest of three cases of one loop,
+  of 1,000, 10,000 and 100,000 announcements. Each case timed one
+  wall-clock run of its `hub.publish` calls to a wait whose first read had
+  answered empty, and held it to 1000 ms (`:254`): `100000 announcements
+  took 1009 ms`. Issue #412, a follow-up of #393, whose F-30 left it under
+  Watched, and left. At the fix the cases are at `:262`, named `takes a
+  burst of … announcements during one read as one more read, within
+  1.5 s`, and each size's burst is held through `withinBound` to
+  `BURST_BOUND_MS` (`:259`).
+- **Status**: changed in the test on `chore/wait-burst-bound-412`: at
+  `bb16bc5` held through `withinBound` to 1000 ms, at `9b8da51` to 1500 ms
+  and renamed; the commit after it, which adds this entry, words the
+  constant's comment with the numbers below and changes no code. `hub.ts`,
+  `wait.ts` and `testing/timing.ts` were not changed; VERSION kept.
+
+### The failure
+
+Never in a run of the file alone; once in whole runs of the backend suite
+on the agents' server beside eight busy loops: the sixth of F-30's seven
+runs, #393's developer's at `0e7663f` on 2026-11-04, at a load of 18.59 to
+20.60, `100000 announcements took 1009 ms`; 1 of the 5 runs at that
+commit, Wilson 95% 3.6%–62.4%. None of the ten loaded runs below ran the
+base's case; its one run, replayed in the series beside them, was over
+1000 ms in 6 of 582 rounds, 0.5%–2.2%.
+
+### The mechanism
+
+One run decided, against a bound 4.1 to 4.6 times that run's time alone:
+the 100,000 announcements took 218.7 to 245.3 ms. Each one is built
+(`captured`), written as JSON by `publish`, its bytes counted by
+`deliver`, and parsed again by the wait for its type (`eventType`), a
+linear pass. Built before the runs instead, they took 232.2 to 240.5 ms
+at best of five alone, where built in them they took 215.1 to 251.3, three
+rounds each: the building is not what is slow. Under load one run took up
+to 1375.3 ms, the median 495.5 ms: a load that stops one run for longer
+than the bound's slack stops it, and not five in a row (below).
+
+### The measurement
+
+On 2026-11-05 from 09:09 to 09:45 MSK on the agents' Linux host, an AMD
+EPYC 7763 with 8 CPUs, Node v24.22.2. A script outside the tree imports
+the tree's `hub.ts` and `wait.ts`, starts a wait as the test's `start()`
+does, answers its first read empty and lets it settle, and times bursts of
+1,000, 10,000 and 100,000 announcements built as the test builds them: the
+base's form, one run on a wait of its own, and the fix's, five runs on one
+wait, as `withinBound` makes them when every run is over, the first run
+and the fastest of five. Each round then checks what the case checks: one
+read started, two once it settles, the answer `['r0']`. Under load is
+beside the ten runs of the full backend suite below, `node scripts/db.mjs
+task-test 412`, run after run, and eight busy loops, `node -e
+'for(;;){}'`; the 1-minute load average sampled every 5 s. Min / median /
+max of the rounds, in ms:
+
+| form | beside | load | rounds | 1,000 | 10,000 | 100,000 |
+| --- | --- | --- | --- | --- | --- | --- |
+| the base's, one run | nothing | 1.12 to 1.15 | 10 | 1.9 / 2.4 / 4.9 | 18.6 / 21.8 / 24.7 | 218.7 / 228.9 / 245.3 |
+| the fix's, first run; fastest of five | nothing | 1.12 to 1.15 | 10 | 1.8 / 2.2 / 4.3; 1.6 / 1.6 / 2.5 | 20.1 / 21.2 / 25.1; 18.7 / 20.2 / 23.0 | 212.5 / 228.3 / 239.8; 211.7 / 216.8 / 229.1 |
+| the base's, one run | the suite, ten runs, and eight loops | 4.7 to 21.59 | 582 | 1.8 / 3.3 / 29.0 | 19.3 / 41.9 / 143.0 | 208.0 / 495.5 / 1375.3 |
+| the fix's, first run; fastest of five | the same | 4.7 to 21.59 | 582 | 1.8 / 3.0 / 32.3; 1.6 / 2.0 / 16.4 | 18.2 / 41.6 / 142.1; 18.2 / 27.6 / 119.1 | 212.9 / 498.0 / 1441.3; 209.3 / 322.5 / 761.6 |
+
+Under load the base's one run of 100,000 was over 1000 ms in 6 of the 582
+rounds, 0.5%–2.2%, and the fix's first run in 9, 0.8%–2.9%; no round's
+fastest of five was over 1000 ms, 0 of 582, 0%–0.7%. Of the fix's 2910
+runs of 100,000, 44 were over 1000 ms and one over 1500 ms, 1815.5 ms. At
+1,000 and 10,000 the slowest of the fix's runs took 74.4 and 213.3 ms.
+
+The full suite under that load, the series beside it; the case's whole
+test at 1,000 / 10,000 / 100,000 announcements in ms, from the suite's own
+report:
+
+| run | tree | load | `ℹ tests` | `ℹ pass` | `ℹ fail` | the case |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `bb16bc5`, 1000 ms | 4.70 to 19.86 | 3428 | 3428 | 0 | 22.2 / 63.0 / 808.7 |
+| 2 | `bb16bc5` | 18.46 to 21.37 | 3428 | 3428 | 0 | 29.7 / 140.5 / 909.0 |
+| 3 | `bb16bc5` | 18.38 to 21.22 | 3428 | 3428 | 0 | 12.5 / 40.3 / 396.7 |
+| 4 | `bb16bc5` | 19.32 to 21.59 | 3428 | 3427 | 1: `access-key.test.ts:473`, `took 113.4 ms at best in 5 runs, over the 100 ms bound` (Watched, and left) | 24.0 / 99.0 / 739.3 |
+| 5 | `bb16bc5` | 17.85 to 20.25 | 3428 | 3428 | 0 | 24.2 / 255.2 / 916.2 |
+| 6 | `9b8da51`, 1500 ms | 13.53 to 20.83 | 3428 | 3428 | 0 | 48.6 / 129.0 / 655.9 |
+| 7 | `9b8da51` | 18.28 to 19.83 | 3428 | 3428 | 0 | 18.9 / 65.5 / 542.6 |
+| 8 | `9b8da51` | 17.84 to 20.94 | 3428 | 3428 | 0 | 27.2 / 72.6 / 531.2 |
+| 9 | `9b8da51` | 18.33 to 20.09 | 3428 | 3428 | 0 | 24.1 / 75.3 / 528.3 |
+| 10 | `9b8da51` | 17.82 to 21.46 | 3428 | 3428 | 0 | 12.8 / 64.1 / 456.5 |
+
+Each run took 188 to 194 s. The case passed in all ten, 0 of 10,
+0%–27.8%, five of them at 1000 ms.
+
+### The mutations
+
+Scratch copies of `hub.ts`, `wait.ts` and `wait.test.ts` outside the tree,
+never committed, their imports made absolute and nothing else changed but
+one change to `hub.ts` or `wait.ts` a form:
+
+- `hub-sum`: `deliver` adds each payload's length to a list kept for the
+  hub and sums the whole list, in a `for` loop, on every event: quadratic
+  in the announcements, and the cheapest form measured.
+- `wait-numbers`: the wait numbers the announcements of the read under
+  way and looks each number up among those it has,
+  `numbers.includes(numbers.length)`: V8's search of small integers.
+- `hub-includes`: `deliver` skips a payload it has delivered already,
+  looked for among all it delivered, `seen.includes(payload)`.
+- `wait-includes`: the wait keeps the payloads announced during the read
+  under way, and skips one it has, `during.includes(payload)`.
+- `hub-copy` and `wait-copy`: the same lists, the hub's of what it
+  delivered and the wait's of the read's announcements, copied on every
+  event, `[...list, payload]`.
+
+Timed by the series' script in the base's form, one run a size on a wait
+of its own, alone, at a load of 1.25 to 1.45, in ms:
+
+| form | rounds | 1,000 | 10,000 | 30,000 | 100,000 |
+| --- | --- | --- | --- | --- | --- |
+| none | 3 | 2.5 to 5.6 | 22.1 to 27.0 | not run | 231.2 to 265.9 |
+| `hub-sum` | 3 | 4.1 to 10.3 | 52.1 to 69.7 | not run | 3292.8 to 3351.1 |
+| `wait-numbers` | 3 | 3.7 to 10.1 | 76.8 to 99.5 | not run | 5207.2 to 5385.4 |
+| `hub-includes` | 1 | 9.1 | 349.0 | 2957.7 | 76027.6 |
+| `wait-includes` | 1 | 9.9 | 399.0 | 2795.2 | 66144.9 |
+| `hub-copy` | 1 | 11.9 | 190.0 | 9824.3 | not run |
+| `wait-copy` | 1 | 13.5 | 188.5 | 10343.3 | not run |
+
+Against the fix's test, `9b8da51`, each form's copy of `wait.test.ts` run
+alone through the workspace's script, `node scripts/db.mjs task-test 412
+-- --test-name-pattern="takes a burst of" <copy>`, at a load of 5.88
+falling to 1.27 after the loaded runs; each case's whole test:
+
+| form | 1,000 | 10,000 | 100,000 |
+| --- | --- | --- | --- |
+| none | passed, 14.4 ms | passed, 28.7 ms | passed, 249.3 ms |
+| `hub-sum` | passed, 15.2 ms | passed, 62.2 ms | failed, `took 3349.5 ms at best in 5 runs, over the 1500 ms bound`, 75.3 s |
+| `wait-numbers` | passed, 15.1 ms | passed, 80.7 ms | failed, `took 5188.4 ms at best in 5 runs, over the 1500 ms bound`, 120.6 s |
+| `hub-includes` | passed, 18.6 ms | passed, 358.5 ms | failed, `took 44437.8 ms at best in 5 runs, over the 1500 ms bound`, 238.6 s |
+| `wait-includes` | passed, 17.2 ms | passed, 394.3 ms | failed, `took 45880.6 ms at best in 5 runs, over the 1500 ms bound`, 269.4 s |
+| `hub-copy`, `wait-copy` | not run | not run | not run: one run of 30,000 took 9.8 and 10.3 s alone, 6.5 and 6.9 times the bound, and five of 100,000 would take far longer, estimated |
+
+Every form passes 1,000 and 10,000, under the same 1500 ms: 100,000 is the
+size that tells them apart.
+
+### The fix
+
+In the test only, `bb16bc5` and `9b8da51`. Each size's burst is held
+through `withinBound`, the fastest of up to five runs, to
+`BURST_BOUND_MS`, 1500 ms, the same at every size, and the cases are named
+`…, within 1.5 s`. Every run is announced to the same wait during the same
+read, which the first run's first announcement starts, and all of them are
+checked afterwards as one burst, as F-27's `:1564` checks all its runs as
+one flood: one read started, `again.calls.length` 1, two once it settles,
+and the answer `['r0']`, as before. A wait of its own for each run would
+need five waits set up before the first run, each first read answered and
+settled, and those no run used ended after it; with one wait a run after
+the first finds it as the first run left it, reading, with an announcement
+since. The events are still built in the run (The mechanism).
+
+1500 ms is 1.97 times the slowest loaded fastest of five at 100,000,
+761.6 ms, and 6.5 times the slowest alone, 229.1 ms; the cheapest
+quadratic form, `hub-sum`, took 3292.8 to 3351.1 ms alone, 2.2 times the
+bound, and 3349.5 ms at best of five in the test. `bb16bc5`'s 1000 ms left
+1.31 times on the loaded side and 3.3 on the quadratic; 1500 ms leaves
+about twice on each. The comment on `BURST_BOUND_MS` gives these numbers.
+
+At 1,000 and 10,000 the bound tells no form measured from the product's
+hub: at 10,000 the quadratic forms took 52.1 to 399.0 ms alone. A bound
+per announcement, as F-30's per node, of 0.015 ms would hold 10,000 to
+150 ms, 1.26 times its slowest loaded fastest of five, 119.1 ms, and was
+not chosen: those two sizes were not seen failing, and 100,000 tells a
+quadratic hub or wait apart.
+
+### Watched, and left
+
+- `access-key.test.ts:473`, `answer made-up handshakes of 1048576
+  characters under both prefixes at once`, `took 113.4 ms at best in 5
+  runs, over the 100 ms bound`, in the fourth loaded run, as in F-24's,
+  F-26's and F-27's runs. Not this entry's.
+- `wait.test.ts:548` at the fix, `:529` at the base, in `runs every pending
+  wait out at once on close, each after one last read`, holds one
+  wall-clock span, three waits ended, to 1000 ms. It passed in all ten
+  loaded runs; not measured, and outside #412's scope.
+- `measure-ordinary-load.test.ts`'s three checks F-30 left under Watched,
+  and left passed in all ten loaded runs.
+- Under a quadratic form the whole case takes long: each run after the
+  first is announced to a hub or a wait whose list the runs before it
+  filled, and the `wait-numbers` and `includes` forms' cases took 120.6 to
+  269.4 s, past the suite's 120 s timeout, a timer, which did not end the
+  synchronous runs: each failed on its bound after the fifth run, as F-30's
+  `find` form did.
+- A hub worse than linear but not quadratic, `n log n`, is not told apart
+  by one bound at one size; not measured, as the issue asks for a
+  quadratic one.
+- CI's `test` job, on an AMD EPYC 9655, was not measured. The bound is in
+  milliseconds: a runner much faster than the agents' server narrows the
+  2.2 times by which `hub-sum` is over it, and a much slower one the 1.97
+  times left on the loaded side.
 
 The scripts are not kept in the tree.
