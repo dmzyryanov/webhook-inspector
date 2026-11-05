@@ -238,20 +238,25 @@ describe('waitForList', () => {
   });
 
   /**
-   * Milliseconds a burst may take to be announced to a wait, the fastest of
-   * up to five runs (`withinBound`, D203): 1000, at every size. Until #412
-   * one run decided, and a loaded run of the backend suite once took the
-   * burst of 100,000 over it with nothing wrong (F-31).
+   * Milliseconds a burst may take to be announced to a wait whose read is
+   * under way, the fastest of up to five runs (`withinBound`, D203): 1500,
+   * at every size. Until #412 one run decided, held to 1000 ms, and a loaded
+   * run of the backend suite once took the burst of 100,000 over it with
+   * nothing wrong (F-31). The 100,000 take 211 to 229 ms at best of five
+   * alone and up to 762 ms beside the full backend suite and eight busy
+   * loops, where one run took up to 1441 ms. A hub or a wait quadratic in
+   * the announcements took 3.3 s and more for them alone: over the bound on
+   * every run.
    *
    * Every run is announced to the same wait, during the same read: the first
    * run's first announcement starts that read, which nothing settles before
    * the runs end, so each run after it finds the wait reading, as the first
    * leaves it, and all of them together are still one more read.
    */
-  const BURST_BOUND_MS = 1_000;
+  const BURST_BOUND_MS = 1_500;
 
   for (const count of [1_000, 10_000, 100_000]) {
-    it(`takes a burst of ${count} announcements during one read as one more read, within a second`, async () => {
+    it(`takes a burst of ${count} announcements during one read as one more read, within 1.5 s`, async () => {
       const { hub, first, again, result } = start();
 
       first.calls[0]?.resolve([]);
