@@ -14,7 +14,8 @@
  * whole answer has been handed to the connection. A test finds its
  * connection's count by both of its ports, the client's and the receiver's,
  * the latest count first: the kernel gives a client's connection to one
- * receiver the port an earlier connection to another had (#383).
+ * receiver the port an earlier connection to another had (#383). A case of
+ * its own holds that match on counts made by hand, no socket connected.
  *
  * A client that reads none of its answers pipelines more of them than the
  * kernel can take whole, by the machine's own `net.ipv4.tcp_wmem` and
@@ -337,12 +338,13 @@ function pipeline(
  * The count of `sent`'s connection on the server's side: the latest whose
  * client port and receiver port are both `sent`'s. A client port alone is
  * not enough: the kernel gives a connection to one receiver the port of a
- * connection to another, open or closed, whose count is kept - the PROXY v2
- * suite's fifth connection took one of the eleven of the suite before it in
- * 23 of 25,000 tries on the agents' server (#383, `docs/testing/flakes.md`,
+ * connection to another, open or closed, whose count is kept, as a
+ * connection of the PROXY v2 suite may be given the port of one of the
+ * PROXY-off suite's before it (#383; how often, `docs/testing/flakes.md`,
  * F-28). Two connections have the same pair of ports only once the first
  * has closed, so the latest is `sent`'s once its first request has been
- * read.
+ * read. The case `the count a case finds for its connection, by countOf`
+ * holds this on counts made by hand.
  */
 function countOf(sent: Pipeline): Count | undefined {
   let found: Count | undefined;
@@ -392,12 +394,13 @@ function largestTcpBuffer(name: 'tcp_wmem' | 'tcp_rmem'): number | undefined {
  * the kernel takes them all.
  *
  * Up to 4 MiB and 6 MiB by default, so 224 answers. How much the kernel
- * takes of them changes from run to run: Linux grows the receiver's send
- * buffer, up to that largest size, by the reordering the connection starts
- * with, which earlier connections to `127.0.0.1` raise in its TCP metrics.
- * On the agents' server 39 answers at Linux's own 3, 63 at the 29 its
- * metrics held, and with sizes of 16 MiB 119 at 29 and every one of 200,
- * 252 of 576, at 300 (F-28).
+ * takes of them changes with the reordering the connection starts with, by
+ * which Linux grows the receiver's send buffer up to that largest size: the
+ * reordering Linux keeps for `127.0.0.1` in its TCP metrics. That earlier
+ * connections raise it, so that what the kernel takes changes from run to
+ * run, is inferred, not traced (F-28). On the agents' server 39 answers at
+ * Linux's own 3, 63 at the 29 its metrics held, and with sizes of 16 MiB 119
+ * at 29 and every one of 200, 252 of 576, at 300 (F-28).
  */
 function unreadAnswerCount(): { count: number; sizes: string } {
   const wmem = largestTcpBuffer('tcp_wmem');
@@ -570,6 +573,65 @@ function cutAll(bytes: Buffer, free: number): number {
 
   return slices;
 }
+
+describe('the count a case finds for its connection, by countOf (#383)', () => {
+  it('is the latest kept from its client port to its receiver, never one from the same client port to another receiver', () => {
+    // Counts made by hand and kept in `counts`, as `onStart` keeps them;
+    // nothing connects. Each is taken out again whatever the case finds.
+    const port = 1;
+    const [one, other] = [portOf(plain), portOf(proxied)];
+    const made: net.Socket[] = [];
+    const keep = (from: number | undefined, to: number): Count => {
+      const socket = new net.Socket();
+      const count: Count = { now: 0, most: 1, answered: 1, port: from, to, socket };
+
+      made.push(socket);
+      counts.set(socket, count);
+
+      return count;
+    };
+    const sent = (from: number | undefined, to: number): Pipeline => ({
+      socket: new net.Socket(),
+      answers: [],
+      closed: Promise.resolve(),
+      port: from,
+      to,
+    });
+
+    assert.ok(
+      ![...counts.values()].some((count) => count.port === port),
+      `a connection of the file’s came from port ${port}`,
+    );
+
+    try {
+      const first = keep(port, one);
+
+      assert.equal(
+        countOf(sent(port, other)),
+        undefined,
+        'given the count of a connection from its client port to another receiver',
+      );
+      assert.equal(countOf(sent(port, one)), first, 'not given the count of its own connection');
+
+      const latest = keep(port, one);
+      const others = keep(port, other);
+
+      assert.equal(
+        countOf(sent(port, one)),
+        latest,
+        'not given the latest count from its client port to its receiver',
+      );
+      assert.equal(countOf(sent(port, other)), others, 'not given the other receiver’s own');
+
+      keep(undefined, one);
+      assert.equal(countOf(sent(undefined, one)), undefined, 'given a count before it connects');
+    } finally {
+      for (const socket of made) {
+        counts.delete(socket);
+      }
+    }
+  });
+});
 
 describe('the slices Node’s parser is given (D229)', () => {
   it('end before the head that would be one too many, and take the rest when there is none', () => {
