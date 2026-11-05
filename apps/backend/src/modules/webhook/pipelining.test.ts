@@ -15,7 +15,9 @@
  * connection's count by both of its ports, the client's and the receiver's,
  * the latest count first: the kernel gives a client's connection to one
  * receiver the port an earlier connection to another had (#383). A case of
- * its own holds that match on counts made by hand, no socket connected.
+ * its own holds that match on counts made by hand, no socket connected: a
+ * match by either port alone, or the first count in place of the latest,
+ * fails it (#414).
  *
  * A client that reads none of its answers pipelines more of them than the
  * kernel can take whole, by the machine's own `net.ipv4.tcp_wmem` and
@@ -344,7 +346,9 @@ function pipeline(
  * F-28). Two connections have the same pair of ports only once the first
  * has closed, so the latest is `sent`'s once its first request has been
  * read. The case `the count a case finds for its connection, by countOf`
- * holds this on counts made by hand.
+ * holds this on counts made by hand: it fails for a match by the client port
+ * alone or by the receiver port alone, for the first match in place of the
+ * latest, and for a count given before `sent` connects.
  */
 function countOf(sent: Pipeline): Count | undefined {
   let found: Count | undefined;
@@ -575,7 +579,7 @@ function cutAll(bytes: Buffer, free: number): number {
 }
 
 describe('the count a case finds for its connection, by countOf (#383)', () => {
-  it('is the latest kept from its client port to its receiver, never one from the same client port to another receiver', () => {
+  it('is the latest kept from its client port to its receiver, never one from the same client port to another receiver or from another client port to the same one', () => {
     // Counts made by hand and kept in `counts`, as `onStart` keeps them;
     // nothing connects. Each is taken out again whatever the case finds.
     const port = 1;
@@ -615,6 +619,10 @@ describe('the count a case finds for its connection, by countOf (#383)', () => {
 
       const latest = keep(port, one);
       const others = keep(port, other);
+
+      // Kept after `latest`, from another client port to the same receiver:
+      // a match by receiver port alone would be given this one.
+      keep(port + 1, one);
 
       assert.equal(
         countOf(sent(port, one)),
