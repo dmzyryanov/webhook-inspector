@@ -5242,6 +5242,10 @@ copy run 20 times, one after the other, by `node scripts/db.mjs task-test
 Each of the fix's 40 runs of the case read `the kernel took 64 of 224
 answers`.
 
+Since #400 a committed case holds `countOf`'s match without sockets, on
+counts made by hand (`pipelining.test.ts:578` at `ec9299b`): a match by
+client port alone, or the first instead of the latest, fails it.
+
 ### The measurement
 
 At the fix, `ba00a11`, on 2026-11-04 from 17:02 to 17:17 MSK on the agents'
