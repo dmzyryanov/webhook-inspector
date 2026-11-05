@@ -21,15 +21,12 @@ import {
 } from '@webhook-inspector/shared';
 import { invalidSearchWords, malformedRequestBody } from '../../errors/app-error.ts';
 import { createSlots, type Slots } from '../../lib/slots.ts';
+import { isPlainObject } from '../../lib/plain-object.ts';
 import type { ListQuery } from './list-query.ts';
 
 const WORDS_RULE = `words must be an array of 1 to ${SEARCH_MAX_WORDS} strings`;
 const WORD_RULE = `Each word must be ${SEARCH_MIN_WORD_BYTES} to ${SEARCH_MAX_WORD_BYTES} bytes of UTF-8`;
 const KEYS_RULE = 'The request body may contain no key other than "words"';
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /**
  * Turns the search body into the bytes to look for, one buffer per word, in

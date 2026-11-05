@@ -15,6 +15,7 @@ import {
   MCP_REQUEST_ID_MAX_LENGTH,
   type McpProtocolVersion,
 } from '@webhook-inspector/shared/mcp';
+import { isPlainObject } from '../../lib/plain-object.ts';
 
 /** JSON-RPC 2.0's own error codes, and the one MCP's transport uses for its refusals. */
 export const RpcErrorCode = {
@@ -61,10 +62,6 @@ export type ParsedMessage =
     };
 
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /**
  * A string with the same UTF-16 code units as `value`, lone surrogates

@@ -121,6 +121,14 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.18
+
+2026-11-05
+
+**Nothing changes on this site; the server's five copies of one check of
+whether a request body is a JSON object are now a single one.** It answers
+every request exactly as before. (#407)
+
 ## 1.19.17
 
 2026-11-04

@@ -19,6 +19,7 @@
  */
 import { MAX_SESSION_STATUS_IDS, SESSION_ID_PATTERN } from '@webhook-inspector/shared';
 import { invalidSessionIds, malformedRequestBody } from '../../errors/app-error.ts';
+import { isPlainObject } from '../../lib/plain-object.ts';
 
 export const IDS_RULE = `ids must be an array of 1 to ${MAX_SESSION_STATUS_IDS} session ids`;
 export const ID_RULE = 'Each id must be a session id: 43 characters of A-Z, a-z, 0-9, _ and -';
@@ -32,10 +33,6 @@ export interface StatusBody {
   ids: string[];
   /** Id to key, for the ids a key was sent with; empty when none was. */
   accessKeys: Map<string, string>;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
