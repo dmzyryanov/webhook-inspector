@@ -60,14 +60,15 @@
 // And README.md's install commands (#395), read as text: every chart value
 // its fenced shell blocks and its prose set with a `--set…` flag is a key of
 // values.yaml - but what a helm command of another chart, cert-manager's, is
-// given; and every command of its Install section but the variables it sets
-// stands in "Installing on k3s with the chart" as the same command, read for
-// its continuation lines and indentation alone. A key path the prose quotes
-// alone is not read, a file name looking the same (#402). No README command
-// is copied here: each check is shown to fail on a copy of the README or of
-// the values mutated from what is read out of them, and to hold on a copy
-// whose two releases are edited alike; its readers survive made-up input at
-// growing sizes.
+// given, whichever helm subcommand installs it (#417); and every command of
+// its Install section but the variables it sets stands in "Installing on k3s
+// with the chart" as the same command, read for its continuation lines and
+// indentation alone. A key path the prose quotes alone is not read, a file
+// name looking the same (#402). No README command is copied here, and the
+// command the test adds is none a README would run (#417): each check is
+// shown to fail on a copy of the README or of the values mutated from what is
+// read out of them, and to hold on a copy whose two releases are edited
+// alike; its readers survive made-up input at growing sizes.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -3088,6 +3089,15 @@ function atEnd(edit) {
 const copiesOf = (markdown, command, heading = null) =>
   shellBlockCopies(markdown, heading).filter((each) => each.command === command);
 
+/** The key README.md gives to another chart, cert-manager's. */
+const OTHER_CHART_KEY = 'crds.enabled';
+
+/**
+ * A command the Install section's mutation adds, which no README install
+ * step runs: no such program exists (#417).
+ */
+const MADE_UP_COMMAND = 'chart-test-made-up-command --added-by-the-test';
+
 /** The release of README.md's Install section: its command that installs the chart. */
 const releaseOf = (readme) =>
   installCommands(readme).find((command) => command.startsWith('helm upgrade '));
@@ -3116,9 +3126,13 @@ function assertKeysHeld(text) {
   for (const key of ['backend.tcpRmem', 'images.pullSecret', 'alerts.heartbeatUrl']) {
     assert.ok(keys.prose.includes(key), key);
   }
-  // cert-manager's value is its own chart's, the one of another chart.
-  assert.equal(keys.otherCharts.length, 2);
-  for (const each of keys.otherCharts) assert.match(each, /^helm install \S+ \S+: crds\.enabled$/);
+  // cert-manager's value, in both of its copies, goes to another chart, not
+  // to this one; which helm subcommand installs that chart is not looked at
+  // (#417).
+  assert.deepEqual(
+    keys.otherCharts.map((each) => each.split(': ').at(-1)),
+    [OTHER_CHART_KEY, OTHER_CHART_KEY],
+  );
 }
 
 /**
@@ -3228,15 +3242,17 @@ function assertInstallNamed(text) {
     assert.deepEqual(installCommandsMissing(withLines(text, full, () => [])), named, command);
   }
 
-  // A command added to the Install section alone.
+  // A command added to the Install section alone, one the README runs
+  // nowhere.
+  assert.ok(!shellBlockCommands(text).includes(MADE_UP_COMMAND), MADE_UP_COMMAND);
   assert.deepEqual(
     installCommandsMissing(
       withLines(text, copiesOf(text, commands[0], INSTALL).slice(0, 1), (lines) => [
-        'kubectl get pods',
+        MADE_UP_COMMAND,
         ...lines,
       ]),
     ),
-    ['kubectl get pods'],
+    [MADE_UP_COMMAND],
   );
 
   // A command wrapped at each word, each line indented its own way, is the
@@ -3412,6 +3428,69 @@ test('the same edit to both copies of the release passes both checks, which stil
 
   assert.deepEqual(missingKeys(lacking, values), ['backup.missing']);
   assert.deepEqual(installCommandsMissing(lacking), []);
+});
+
+test("the cert-manager check passes whichever helm subcommand installs the other chart, and still fails when its key is given to this chart's release or the other chart's is missing (#417, criterion 1)", () => {
+  const text = readme();
+  /** The copies, in `markdown`'s fenced shell blocks, of the commands giving a key to another chart. */
+  const others = (markdown) =>
+    shellBlockCopies(markdown).filter(({ command }) =>
+      setAssignments(command).some((each) => each.chart !== null),
+    );
+  const subcommand = /\bhelm (?:install|upgrade (?:--install|-i))(?= )/;
+  const literal = OTHER_CHART_KEY.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&');
+  const flag = new RegExp(`[ \\t]+--set(?:-string|-literal)?[ =]${literal}=\\S*`);
+  /** `markdown` with each copy of a command giving a key to another chart installing it with `helm <how>`. */
+  const installedWith = (markdown, how) =>
+    withLines(markdown, others(markdown), (lines, { command }) => {
+      const at = lines.findIndex((line) => subcommand.test(line));
+
+      assert.ok(at >= 0, `the test finds the helm subcommand in ${JSON.stringify(command)}`);
+
+      return lines.with(at, lines[at].replace(subcommand, `helm ${how}`));
+    });
+
+  assert.equal(others(text).length, 2);
+  for (const how of ['upgrade --install', 'install']) {
+    const copy = installedWith(text, how);
+    const commands = others(copy).map(({ command }) => command);
+
+    // The edit is read, in both places, and nothing else changed.
+    assert.deepEqual(
+      commands,
+      others(text).map(({ command }) => command.replace(subcommand, `helm ${how}`)),
+    );
+    for (const command of commands) assert.ok(command.startsWith(`helm ${how} `), command);
+    assert.deepEqual(installCommandsMissing(copy), []);
+    assertKeysHeld(copy);
+    assertKeysNamed(copy);
+
+    // The other chart's key given to this chart's release, in each copy of it.
+    const releases = copiesOf(copy, releaseOf(copy));
+
+    assert.ok(releases.length >= 2, 'the release has its two copies');
+    for (const release of releases) {
+      const given = withLines(
+        copy,
+        [release],
+        atEnd((head) => `${head} --set ${OTHER_CHART_KEY}=true`),
+      );
+
+      assert.throws(() => assertKeysHeld(given), { actual: [OTHER_CHART_KEY], expected: [] });
+    }
+
+    // The other chart's entry taken out, in each of its places.
+    for (const other of others(copy)) {
+      const without = withLines(copy, [other], (lines) =>
+        lines.map((line) => line.replace(flag, '')),
+      );
+
+      assert.throws(() => assertKeysHeld(without), {
+        actual: [OTHER_CHART_KEY],
+        expected: [OTHER_CHART_KEY, OTHER_CHART_KEY],
+      });
+    }
+  }
 });
 
 test("this file holds no copy of a command of README.md's Install section, nor of one of its lines (#402, criterion 1)", () => {
