@@ -1683,13 +1683,11 @@ test("the pipeline and deploy/ name no host, account or runner of production's: 
     const text = readFileSync(join(ROOT, file), 'utf8');
 
     assert.doesNotMatch(text, /qa-tools\.ru|statuser|yandexcloud/i, file);
-    assert.doesNotMatch(text, /qa-tools-ci/, file);
   }
-  // The validate stage's `chart` job looks for those names in a render, so
-  // it holds them as its pattern; not as runner tags.
-  assert.doesNotMatch(validate, /qa-tools-ci/);
-  // Production's bucket and deploy runner's tag, which these patterns named
-  // too, scripts/private-names.test.mjs refuses in every tracked file (#397).
+  // Production's bucket and its runners' tags, the CI runner's and the deploy
+  // runner's, which these assertions named too, scripts/private-names.test.mjs
+  // refuses in every tracked file, the validate stage's among them, in any
+  // case and regex-escaped (#397, #410).
 
   // The address, from the variables, for the image builds and the smoke under
   // the names the backend reads; the test jobs' backend expects those unset,

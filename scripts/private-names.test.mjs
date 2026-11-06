@@ -9,10 +9,17 @@
 // Decision and issue numbers stay, as references (README).
 //
 // The check reads every path `git ls-files` lists, and the file at it in the
-// working tree, byte for byte. The names are literal and case-sensitive, as
-// the issue's own `git grep` is: a name split across lines, escaped or written
-// in another case is not caught. A runner's build directory is a form, not
-// one string, and FORMS matches it.
+// working tree, byte for byte. A name is found in any case of its letters,
+// and regex-escaped as a test's pattern writes it, one backslash or none
+// before each of its other characters: `HB.STATUSER.CLOUD`, `FirstVds`,
+// `hb\.statuser\.cloud` and `\.claude\/` are all found (#410). A runner's
+// build directory is a form, not one string, and FORMS matches it, in any
+// case. Still not caught: a name split across lines; two backslashes or more
+// before any of its characters but the first, as a string handed to
+// `new RegExp` holds them; a backslash before a letter or digit; a character
+// written as a class (`[.]`), a code (`\x2e`), an HTML entity, percent-encoded
+// or as a lookalike from another alphabet; and a runner's build directory
+// regex-escaped.
 
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
@@ -35,14 +42,15 @@ import { URL, fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
-/** The names, each literal and case-sensitive. */
+/** The names, each found as PATTERNS spells it. */
 const NAMES = Object.freeze([
   '.claude/',
   'docs/DECISIONS.md',
   'docs/DELIVERY.md',
   'docs/RESOURCES.md',
   'docs/runbooks/',
-  'qa-tools-ci-firstvds',
+  // Production's CI runner's tag, found too at the start of a longer one (#410).
+  'qa-tools-ci',
   'FirstVDS',
   // Production's deploy runner's tag, its backup bucket and directory, and its
   // heartbeat service's host: values of its CI/CD variables, which the tests
@@ -54,15 +62,45 @@ const NAMES = Object.freeze([
 ]);
 
 /**
+ * Each name as a pattern (#410): its letters in any case, and before each of
+ * its other characters one backslash or none, as a regular expression escapes
+ * them. The first character goes without: a search finds a name wherever it
+ * starts, a backslash before it or not. No part repeats, and a backslash
+ * matches only where the name allows one, so a run of them, or of a name's
+ * start in alternating case, costs the search a few steps a character.
+ */
+const PATTERNS = Object.freeze(
+  NAMES.map((name) => ({
+    name,
+    pattern: new RegExp(
+      [...name]
+        .map((char, at) => (/[A-Za-z0-9]/.test(char) ? char : `${at ? '\\\\?' : ''}\\${char}`))
+        .join(''),
+      'i',
+    ),
+  })),
+);
+
+/**
  * The names that are a form, not one string: a GitLab runner's build
  * directory, `runner-<token>-project-<id>-concurrent-<n>`, which a job's log
  * prints and whose token part names the runner (#397). A token is 8 or 9
- * characters of `[A-Za-z0-9_-]`, and up to 40 are taken. The search finds
- * each `-project-` and digit first and looks back from there, never more than
- * 47 characters, so it stays linear however many `runner-` a text holds.
+ * characters of `[A-Za-z0-9_-]`, and up to 40 are taken. The form is found in
+ * any case, but not regex-escaped, which #410 asks of NAMES alone.
+ *
+ * The pattern begins with its lookbehind, so at a position it tries, the
+ * search reads back first: for a token, at most 40 characters, then for
+ * `runner-` before it, giving the token back a character at a time down to 8;
+ * and only where that holds does it read `-project-` and a digit forward. No
+ * position costs more than those few hundred steps, however many `runner-` or
+ * `-project-` a text holds, so the search stays linear. V8 also, before that,
+ * glances at the next few characters and tries the lookbehind only where they
+ * could begin `-project-`: on ten million letters the pattern takes under
+ * 20 ms, where the lookbehind alone, tried at every position, takes about
+ * 2.7 s (#410). The bound does not rest on that.
  */
 const FORMS = Object.freeze([
-  { name: 'runner-<token>-project-', pattern: /(?<=runner-[\w-]{8,40})-project-\d/ },
+  { name: 'runner-<token>-project-', pattern: /(?<=runner-[\w-]{8,40})-project-\d/i },
 ]);
 
 /** The one file the check does not read: the changelog's published history. */
@@ -83,6 +121,12 @@ const ALLOWED = Object.freeze([
     file: 'apps/frontend/src/lib/changelog.test.ts',
     lines: ["    'An agent in .claude/agents.',"],
   },
+  // The chart test's check that a render names nothing of production's, which
+  // must say what it refuses, the hosting provider in lower case (#410).
+  {
+    file: 'scripts/chart.test.mjs',
+    lines: ['      if (/qa[-_]tools|statuser|yandex|firstvds/i.test(text)) {'],
+  },
 
   // The operator's own texts, kept as they are until #330 moves them out of
   // this repository to the platform, and #369's guard, which names what it
@@ -99,10 +143,8 @@ const ALLOWED = Object.freeze([
 ]);
 
 /** The names a text holds, in the lists' order: NAMES, then FORMS. */
-const namesIn = (text) => [
-  ...NAMES.filter((name) => text.includes(name)),
-  ...FORMS.filter(({ pattern }) => pattern.test(text)).map(({ name }) => name),
-];
+const namesIn = (text) =>
+  [...PATTERNS, ...FORMS].filter(({ pattern }) => pattern.test(text)).map(({ name }) => name);
 
 /**
  * The tracked paths of the checkout at `dir`, each with its content as
@@ -201,14 +243,27 @@ test('on made-up files: each name, its file and line, and nothing but the names'
       ['a.md', 'one\nSee docs/DECISIONS.md and docs/runbooks/x.md.\n'],
       ['b.ts', '// .claude/agents\r\nconst host = "qa-tools-ci-firstvds";\r\n'],
       ['c.txt', 'xFirstVDSx docs/DELIVERY.mdx docs/RESOURCES.md'],
-      // Near misses: another case, no slash, split, escaped, or another file.
-      ['d.md', 'firstvds FIRSTVDS .claude .claudex/ First\nVDS docs/decisions.md'],
-      ['e.md', 'docs\\/DECISIONS.md First&#86;DS docs/DECISIONS-old.md'],
+      // Another case and escaped, near misses until #410.
+      ['d.md', 'firstvds FIRSTVDS\ndocs/decisions.md\ndocs\\/DECISIONS.md'],
+      // Near misses: no slash, cut short, split, changed, an HTML entity,
+      // percent-encoded, two backslashes, a backslash before a letter, a
+      // character class, a code; or another file.
+      [
+        'e.md',
+        [
+          '.claude .claudex/ qa-tools-c First',
+          'VDS docs/DECISIONS-old.md First&#86;DS docs%2FDECISIONS.md .claude%2F',
+          'hb\\\\.statuser.cloud docs\\\\/DECISIONS.md .claude\\\\/ F\\irstVDS docs/\\runbooks/',
+          'hb[.]statuser[.]cloud hb\\x2estatuser\\x2ecloud docs\\u002fDECISIONS.md',
+        ].join('\n'),
+      ],
       ['CHANGELOG.md', 'On FirstVDS, see docs/DECISIONS.md.'],
       ['apps/CHANGELOG.md', 'On FirstVDS.'],
       ['changelog.md', 'On FirstVDS.'],
       ['.claude/agents/developer.md', 'nothing'],
       ['docs/runbooks/restore.md', ''],
+      ['.Claude/agents/x.md', ''],
+      ['docs/Runbooks/x.md', ''],
     ],
     allowed,
   );
@@ -216,15 +271,94 @@ test('on made-up files: each name, its file and line, and nothing but the names'
     'a.md:2: docs/DECISIONS.md',
     'a.md:2: docs/runbooks/',
     'b.ts:1: .claude/',
-    'b.ts:2: qa-tools-ci-firstvds',
+    'b.ts:2: qa-tools-ci',
+    'b.ts:2: FirstVDS',
     'c.txt:1: docs/DELIVERY.md',
     'c.txt:1: docs/RESOURCES.md',
     'c.txt:1: FirstVDS',
+    'd.md:1: FirstVDS',
+    'd.md:2: docs/DECISIONS.md',
+    'd.md:3: docs/DECISIONS.md',
     'apps/CHANGELOG.md:1: FirstVDS',
     'changelog.md:1: FirstVDS',
     '.claude/agents/developer.md: its path names .claude/',
     'docs/runbooks/restore.md: its path names docs/runbooks/',
+    '.Claude/agents/x.md: its path names .claude/',
+    'docs/Runbooks/x.md: its path names docs/runbooks/',
   ]);
+});
+
+test('on made-up files: each name in upper case, in mixed case and regex-escaped, each with its file and line (#410)', () => {
+  // Every letter one way, then every other letter each way; a backslash
+  // before every character a pattern would escape, the first one included,
+  // in the name's own case and in another.
+  const alternating = (name, first) =>
+    [...name]
+      .map((char, at) => (at % 2 === first ? char.toUpperCase() : char.toLowerCase()))
+      .join('');
+  const escaped = (name) => name.replace(/[^A-Za-z0-9]/g, '\\$&');
+  const spellings = NAMES.flatMap((name) =>
+    [
+      name.toUpperCase(),
+      name.toLowerCase(),
+      alternating(name, 0),
+      alternating(name, 1),
+      escaped(name),
+      escaped(alternating(name, 1)),
+    ].map((spelling) => [spelling, name]),
+  );
+  const { problems } = check(
+    [
+      ['spellings.txt', spellings.map(([spelling]) => `x ${spelling} x`).join('\r\n')],
+      [
+        'examples.mjs',
+        [
+          "const host = 'HB.STATUSER.CLOUD';",
+          '// Hosted at FirstVds.',
+          'assert.match(log, /hb\\.statuser\\.cloud/);',
+          'assert.doesNotMatch(text, /docs\\/DECISIONS\\.md|\\.claude\\//);',
+          "const tag = 'Qa\\-Tools\\-CI';",
+          'const dir = /\\/var\\/backups\\/qa-tools\\//;',
+          'Under docs\\/runbooks/ and docs/DELIVERY\\.md.',
+        ].join('\n'),
+      ],
+    ],
+    [],
+  );
+  assert.deepEqual(problems, [
+    ...spellings.map(([, name], at) => `spellings.txt:${at + 1}: ${name}`),
+    'examples.mjs:1: hb.statuser.cloud',
+    'examples.mjs:2: FirstVDS',
+    'examples.mjs:3: hb.statuser.cloud',
+    'examples.mjs:4: .claude/',
+    'examples.mjs:4: docs/DECISIONS.md',
+    'examples.mjs:5: qa-tools-ci',
+    'examples.mjs:6: /var/backups/qa-tools',
+    'examples.mjs:7: docs/DELIVERY.md',
+    'examples.mjs:7: docs/runbooks/',
+  ]);
+});
+
+test("on made-up files: production's CI runner's tag in any tracked file, in any case and escaped, but in the changelog (#410)", () => {
+  const { problems } = check(
+    [
+      ['.gitlab-ci.yml', 'deploy:\n  tags:\n    - qa-tools-ci\n'],
+      ['.gitlab/ci/validate.yml', "variables:\n  QA_TOOLS_RUNNER_TAG: 'QA-Tools-CI'\n"],
+      ['deploy/helm/x/values.yaml', '# Was run on qa-tools-ci-2.\n'],
+      ['scripts/x.test.mjs', 'assert.doesNotMatch(log, /qa-tools\\-ci/);\n'],
+      // Near misses: the variable's name, the tag cut short or changed.
+      ['README.md', 'QA_TOOLS_RUNNER_TAG names it: not qa-tools-c, qa_tools_ci or qa-tools-cl.\n'],
+      ['CHANGELOG.md', 'Runs on qa-tools-ci.\n'],
+    ],
+    [],
+  );
+  assert.deepEqual(problems, [
+    '.gitlab-ci.yml:3: qa-tools-ci',
+    '.gitlab/ci/validate.yml:2: qa-tools-ci',
+    'deploy/helm/x/values.yaml:1: qa-tools-ci',
+    'scripts/x.test.mjs:1: qa-tools-ci',
+  ]);
+  assert.match(report(problems), /^ {2}\.gitlab-ci\.yml:3: qa-tools-ci$/m);
 });
 
 test('on made-up files: an allowed line only as it is, a whole file anywhere, and an entry that allows nothing named', () => {
@@ -244,13 +378,15 @@ test('on made-up files: an allowed line only as it is, a whole file anywhere, an
     '!.claude/worktrees/',
     '.claude/worktrees/*',
     '.claude/settings.local.json .claude/x',
+    '.Claude/worktrees/',
+    '\\.claude\\/worktrees/',
   ].join('\n');
   const { problems, unused } = check(
     [
       ['.gitignore', ignore],
       ['apps/.gitignore', '.claude/worktrees/'],
-      ['guard.mjs', 'const refused = ["FirstVDS", "docs/DECISIONS.md"];\nFirstVDS'],
-      ['kept.ts', '  "FirstVDS",\n "FirstVDS",'],
+      ['guard.mjs', 'const refused = ["FirstVDS", "docs/DECISIONS.md"];\nFirstVDS\nfirstvds'],
+      ['kept.ts', '  "FirstVDS",\n "FirstVDS",\n  "firstvds",'],
     ],
     allowed,
   );
@@ -262,8 +398,11 @@ test('on made-up files: an allowed line only as it is, a whole file anywhere, an
     '.gitignore:7: .claude/',
     '.gitignore:8: .claude/',
     '.gitignore:9: .claude/',
+    '.gitignore:10: .claude/',
+    '.gitignore:11: .claude/',
     'apps/.gitignore:1: .claude/',
     'kept.ts:2: FirstVDS',
+    'kept.ts:3: FirstVDS',
   ]);
   assert.deepEqual(unused, ['gone.mjs', 'kept.ts, the line "never there"']);
 });
@@ -304,23 +443,27 @@ test("on made-up files: production's variable values and a runner's build direct
           'runner-jq_m-5oe9-project-7',
           `runner-${'a'.repeat(40)}-project-1`,
           'xrunner-abcdefgh-project-0x',
+          'Runner-AbCd1234-PROJECT-5',
         ].join('\r\n'),
       ],
       ['runner-ab12cd34-project-9/x.log', ''],
-      // Near misses: another case, a name cut short or changed, the README's
-      // own directory, a placeholder token, a token of 7 or 41 characters,
-      // no project number, `projects`.
+      // Another case, near misses until #410.
+      ['j.md', 'QA-TOOLS-VPS\nHB.STATUSER.CLOUD\nRunner-abcdefgh-project-1'],
+      // Near misses: a name cut short or changed, the README's own directory,
+      // a placeholder token, a token of 7 or 41 characters, no project
+      // number, `projects`, the form regex-escaped.
       [
         'i.md',
         [
-          'QA-TOOLS-VPS qa-tools-vp qa-tools-backup qa_tools-backups',
+          'qa-tools-vp qa-tools-backup qa_tools-backups',
           '/var/backups/webhook-inspector /var/backups/qa_tools /var/backup/qa-tools',
-          'hb.statuser.clou hb-statuser.cloud HB.STATUSER.CLOUD statuser.cloud',
+          'hb.statuser.clou hb-statuser.cloud statuser.cloud',
           'runner-<token>-project-<project>-concurrent-0 runner-…-project-1',
           'runner-abcdefg-project-1',
           `runner-${'a'.repeat(41)}-project-1`,
-          'runner-abcdefgh-project-x runner-abcdefgh-projects-1 Runner-abcdefgh-project-1',
+          'runner-abcdefgh-project-x runner-abcdefgh-projects-1',
           'runner-abcd efgh-project-1 runner-abcdefgh_project-1',
+          'runner\\-abcdefgh\\-project\\-1',
         ].join('\n'),
       ],
     ],
@@ -335,7 +478,11 @@ test("on made-up files: production's variable values and a runner's build direct
     'h.txt:2: runner-<token>-project-',
     'h.txt:3: runner-<token>-project-',
     'h.txt:4: runner-<token>-project-',
+    'h.txt:5: runner-<token>-project-',
     'runner-ab12cd34-project-9/x.log: its path names runner-<token>-project-',
+    'j.md:1: qa-tools-vps',
+    'j.md:2: hb.statuser.cloud',
+    'j.md:3: runner-<token>-project-',
   ]);
 });
 
@@ -369,6 +516,44 @@ test("on made-up content at growing sizes: a runner's build directory found afte
     assert.deepEqual(problems, [
       `end.txt:${size / 100 + 1}: runner-<token>-project-`,
       `crlf.txt:${size / 10 + 1}: runner-<token>-project-`,
+    ]);
+    assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
+  }
+});
+
+test('on made-up content at growing sizes: a name found after runs built for its case and escapes, and none in them, quickly (#410)', () => {
+  for (const size of [1_000, 100_000, 10_000_000]) {
+    const started = performance.now();
+    // Runs of backslashes, alone and one more than a name allows; and runs of
+    // a name's start, escaped or not, and of the runner form's words, in
+    // alternating case.
+    const slashes = `${'\\'.repeat(size)}\\.claude\\/`;
+    const doubled = `${'docs\\\\'.repeat(size / 6)}docs\\/DECISIONS\\.md`;
+    const alternating = `${'fIrStVd'.repeat(size / 7)}FiRsTvDs`;
+    const escaped = `${'Hb\\.StAtUsEr\\.ClOu'.repeat(size / 19)}HB\\.STATUSER\\.CLOUD`;
+    const runners = `${'RuNnEr-'.repeat(size / 7)}x`;
+    const projects = `x${'-PrOjEcT-1'.repeat(size / 10)}`;
+    const near = Array.from({ length: size / 100 }, (_, i) =>
+      i % 2 ? 'Hb\\.StAtUsEr\\\\.ClOuD' : '\\/VaR\\/bAcKuPs\\/Qa\\-ToOl',
+    ).join('\n');
+    const { problems } = check(
+      [
+        ['slashes.txt', slashes],
+        ['doubled.txt', doubled],
+        ['alternating.txt', alternating],
+        ['escaped.txt', escaped],
+        ['runners.txt', runners],
+        ['projects.txt', projects],
+        ['near.txt', `${near}\nRuNnEr-Ab12Cd34-PrOjEcT-1`],
+      ],
+      [],
+    );
+    assert.deepEqual(problems, [
+      'slashes.txt:1: .claude/',
+      'doubled.txt:1: docs/DECISIONS.md',
+      'alternating.txt:1: FirstVDS',
+      'escaped.txt:1: hb.statuser.cloud',
+      `near.txt:${size / 100 + 1}: runner-<token>-project-`,
     ]);
     assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
   }
