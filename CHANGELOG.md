@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.23
+
+2026-11-06
+
+**Nothing changes on this site; the session page's code keeps its list
+filter and what has been read in parts of their own.** The filter, its search
+of headers and bodies, the unread requests and the count in the tab title
+work exactly as before. (#406)
+
 ## 1.19.22
 
 2026-11-06
