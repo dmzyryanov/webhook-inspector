@@ -265,6 +265,24 @@ export function classifySessionError(error: unknown): SessionPageStatus {
 }
 
 /**
+ * The page's status after an action on its session failed - a request
+ * opened, or the one chosen to compare with loaded: a session-level failure
+ * takes the page over, and anything else is reported in place by `report`,
+ * leaving the captured requests on screen (`ready`).
+ */
+export function classifySessionFailure(error: unknown, report: () => void): SessionPageStatus {
+  const classified = classifySessionError(error);
+
+  if (classified === 'error') {
+    report();
+
+    return 'ready';
+  }
+
+  return classified;
+}
+
+/**
  * The page's next status after its first load failed (D133), letting go of
  * the key this tab held for the session when the API refused it (D259): a
  * link's key, unchecked until then, that opened nothing. A stored key stays;
