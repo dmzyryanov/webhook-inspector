@@ -19,31 +19,44 @@
  *
  * The source is the repository's `CHANGELOG.md` unless another file is given,
  * which a test build does to show what a sample entry becomes.
+ *
+ * The changelog is among the operator's texts (issue #396): a build that does
+ * not show them (`OPERATOR_TEXTS`, `src/lib/operator.ts`) writes none of the
+ * three files, and says so, and nginx answers their addresses with the
+ * application's 404 (`scripts/nginx-conf.mjs`). The source is still read, so
+ * a malformed entry fails every build alike.
  */
 import { Buffer } from 'node:buffer';
 import console from 'node:console';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { changelogShown } from '../src/lib/changelog-link.ts';
 import { changelogFeed, changelogMarkdown, FEEDS, readChangelog } from './changelog.mjs';
 
 const dist = resolve(process.argv[2] ?? 'dist');
 const entries =
   process.argv[3] === undefined ? readChangelog() : readChangelog(resolve(process.argv[3]));
 const text = changelogMarkdown(entries);
+const feeds = Object.entries(FEEDS).map(([kind, feed]) => ({
+  file: feed.path.slice(1),
+  xml: changelogFeed(entries, kind),
+  count: entries.filter(feed.includes).length,
+}));
 
-mkdirSync(dist, { recursive: true });
-writeFileSync(join(dist, 'changelog.md'), text);
-console.log(
-  `changelog: wrote changelog.md, ${entries.length} versions (${Buffer.byteLength(text)} bytes)`,
-);
-
-for (const [kind, feed] of Object.entries(FEEDS)) {
-  const file = feed.path.slice(1);
-  const xml = changelogFeed(entries, kind);
-
-  writeFileSync(join(dist, file), xml);
+if (!changelogShown()) {
   console.log(
-    `changelog: wrote ${file}, ${entries.filter(feed.includes).length} entries (${Buffer.byteLength(xml)} bytes)`,
+    `changelog: wrote nothing, as OPERATOR_TEXTS does not show the operator's texts (${entries.length} versions read)`,
   );
+} else {
+  mkdirSync(dist, { recursive: true });
+  writeFileSync(join(dist, 'changelog.md'), text);
+  console.log(
+    `changelog: wrote changelog.md, ${entries.length} versions (${Buffer.byteLength(text)} bytes)`,
+  );
+
+  for (const { file, xml, count } of feeds) {
+    writeFileSync(join(dist, file), xml);
+    console.log(`changelog: wrote ${file}, ${count} entries (${Buffer.byteLength(xml)} bytes)`);
+  }
 }

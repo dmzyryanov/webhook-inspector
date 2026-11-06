@@ -275,6 +275,14 @@ export const CHANGELOG_FEEDS = ['/changelog.xml', '/changelog-breaking.xml'];
 export const ATOM_CONTENT_TYPE = 'application/atom+xml; charset=utf-8';
 export const ATOM_FEED_ROOT = '<feed xmlns="http://www.w3.org/2005/Atom"';
 
+/**
+ * The changelog's four addresses (D184, D212): the page, its text and the
+ * two feeds, which an image built without the operator's texts serves none
+ * of (#396), each then the site's `Page not found`. The smoke keeps its own
+ * copy; `scripts/delivery.test.mjs` keeps it equal to the frontend's.
+ */
+export const CHANGELOG_PATHS = ['/changelog', '/changelog.md', ...CHANGELOG_FEEDS];
+
 /** The line `/robots.txt` must carry (D183): the sitemap on the site checked (D274). */
 export function sitemapLine(origin) {
   return `Sitemap: ${origin}/sitemap.xml`;
@@ -405,7 +413,10 @@ export function ogImage(html) {
  * - `operator`, the operator's details its image was built with
  *   (`OPERATOR_NOT_GIVEN`, by default none of them given): the legal pages,
  *   `security.txt` and the status page's redirect are each checked as the
- *   detail says, and not asked for when it is not given (#381).
+ *   detail says, and not asked for when it is not given (#381); the
+ *   changelog's feeds are checked as served unless the operator's texts are
+ *   given as none, and the changelog's four addresses are then checked as
+ *   `Page not found` (#396).
  */
 export async function checkDeployment(
   base,
@@ -581,9 +592,22 @@ export async function checkDeployment(
   ) {
     throw new Error('/ru/ did not return the Russian home page, uncached and indexable');
   }
-  // The changelog's two Atom feeds (D212): files of their own, never the
-  // application shell, revalidated on every use.
-  for (const path of CHANGELOG_FEEDS) {
+  // The changelog (D184, D212), as the image's OPERATOR_TEXTS says (#396):
+  // without the operator's texts, its four addresses the site's Page not
+  // found; with them, or when the setting is not given, as before #396, the
+  // two Atom feeds, files of their own, never the application shell,
+  // revalidated on every use.
+  if (operator.texts === false) {
+    for (const path of CHANGELOG_PATHS) {
+      const answer = await get(path);
+      if (!isPageNotFound(answer)) {
+        throw new Error(
+          `${path} did not answer the site's Page not found, as an image without the operator's texts does`,
+        );
+      }
+    }
+  }
+  for (const path of operator.texts === false ? [] : CHANGELOG_FEEDS) {
     const feed = await get(path);
     if (
       feed.status !== 200 ||
@@ -830,7 +854,12 @@ export function checkedList(operator) {
 
   if (operator.texts === true) parts.push('the Terms of Use and the Privacy Policy');
   if (operator.texts === false) parts.push('no Terms of Use or Privacy Policy (Page not found)');
-  parts.push('the Russian home page', 'the two changelog feeds');
+  parts.push(
+    'the Russian home page',
+    operator.texts === false
+      ? 'no changelog, changelog text or feeds (Page not found)'
+      : 'the two changelog feeds',
+  );
   if (typeof operator.contactEmail === 'string') {
     parts.push('security.txt with the contact address given');
   }

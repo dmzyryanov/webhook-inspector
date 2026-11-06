@@ -14,10 +14,13 @@ import { CHANGELOG_LINK } from './changelog-link.ts';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { privacyPage, termsPage } from './legal-copy.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
+import { NO_OPERATOR, parseOperator } from './operator.ts';
 import {
   FOOTER_LINKS,
   FOOTER_SEPARATOR,
+  footerLine,
   footerLinks,
+  footerText,
   PRIVACY_FOOTER,
   PRIVACY_FOOTER_TEXT,
 } from './privacy-footer.ts';
@@ -73,6 +76,86 @@ describe('the privacy footer', () => {
     assert.equal(
       PRIVACY_FOOTER_TEXT,
       `${PRIVACY_FOOTER.line} About${FOOTER_SEPARATOR}Terms${FOOTER_SEPARATOR}Privacy${FOOTER_SEPARATOR}${PRIVACY_FOOTER.contactLabel}${NBSP}${PRIVACY_FOOTER.address}`,
+    );
+  });
+
+  it('ends after the session’s 7 days without the operator’s texts, in both languages, and is D265’s with production’s (issue #396)', () => {
+    // A copy built without OPERATOR_TEXTS: D265's words to the semicolon,
+    // then a full stop (Decision 2), byte for byte.
+    const english =
+      'Captured requests \u2014 headers, body and the sender\u0027s IP \u2014 are kept until you ' +
+      'delete them or the session expires, at most 7\u00a0days unused.';
+    const russian =
+      'Запросы \u2014 заголовки, тело и IP отправителя \u2014 хранятся, пока вы их не удалите ' +
+      'или сессия не истечёт (до 7\u00a0дней простоя).';
+    // A copy with every other detail of its own still has no texts.
+    const copyWithDetails = parseOperator({
+      STATUS_PAGE_URL: 'https://status.inspector.example/',
+      CONTACT_EMAIL: 'hello@inspector.example',
+    });
+
+    for (const operator of [NO_OPERATOR, copyWithDetails]) {
+      assert.equal(footerLine(en, operator), english);
+      assert.equal(footerLine(ru, operator), russian);
+      assert.equal(footerLine(undefined, operator), english);
+      assert.ok(footerText(en, operator).startsWith(`${english} About`));
+      assert.ok(footerText(ru, operator).startsWith(`${russian} О сервисе`));
+    }
+    assert.equal(en.footer.lineWithoutBackups, english);
+    assert.equal(ru.footer.lineWithoutBackups, russian);
+
+    // Production's settings: D265's lines, byte for byte, as the build draws them.
+    assert.equal(
+      footerLine(en, PRODUCTION_OPERATOR),
+      'Captured requests \u2014 headers, body and the sender\u0027s IP \u2014 are kept until you ' +
+        'delete them or the session expires, at most 7\u00a0days unused; backups keep them up ' +
+        'to 3\u00a0days longer.',
+    );
+    assert.equal(
+      footerLine(ru, PRODUCTION_OPERATOR),
+      'Запросы \u2014 заголовки, тело и IP отправителя \u2014 хранятся, пока вы их не удалите ' +
+        'или сессия не истечёт (до 7\u00a0дней простоя); в копиях \u2014 ещё до 3\u00a0дней.',
+    );
+    assert.equal(footerLine(), PRIVACY_FOOTER.line);
+    assert.equal(PRIVACY_FOOTER.line, en.footer.line);
+
+    // No other word changes: the approved line cut at its semicolon.
+    for (const m of [en, ru]) {
+      assert.equal(
+        m.footer.lineWithoutBackups,
+        `${m.footer.line.slice(0, m.footer.line.indexOf(';'))}.`,
+        m.lang,
+      );
+      assert.equal(m.footer.line.split(';').length, 2, m.lang);
+    }
+    // The number keeps its no-break space, and no other is added.
+    assert.deepEqual(
+      [...english.matchAll(/\S+\u00a0\S+/g)].map((match) => match[0]),
+      ['7\u00a0days'],
+    );
+    assert.deepEqual(
+      [...russian.matchAll(/\S+\u00a0\S+/g)].map((match) => match[0]),
+      ['7\u00a0дней'],
+    );
+  });
+
+  it('draws the copy’s line on every static page, in English and on /ru/about, with the band otherwise as the copy’s (issue #396)', () => {
+    const lineOf = (footer: string) =>
+      /<footer class="site-footer">\n {2}<p><span>([^<]*)<\/span>/.exec(footer)?.[1];
+
+    for (const page of [CHANGELOG_LINK.href, ABOUT_LINK.href, TERMS_LINK.href, PRIVACY_LINK.href]) {
+      assert.equal(lineOf(siteFooter(page, 'en', NO_OPERATOR)), en.footer.lineWithoutBackups, page);
+      assert.equal(lineOf(siteFooter(page)), en.footer.line, page);
+    }
+    assert.equal(
+      lineOf(siteFooter(ABOUT_RU.path, 'ru', NO_OPERATOR)),
+      ru.footer.lineWithoutBackups,
+    );
+    assert.equal(lineOf(siteFooter(ABOUT_RU.path, 'ru')), ru.footer.line);
+    // The application's band draws the build's line, read from its source
+    // here and rendered for both operators in operator.test.ts.
+    assert.ok(
+      read('../components/AppFooter.tsx').includes('<span>{footerLine(m, operator)}</span>'),
     );
   });
 
@@ -138,6 +221,15 @@ describe('the privacy footer', () => {
       ru.footer.line.includes(`(до ${SESSION_IDLE_DAYS}${NBSP}дней простоя);`),
       `the Russian line does not say ${SESSION_IDLE_DAYS} days`,
     );
+    // And so does a copy's, which ends there (issue #396).
+    assert.ok(
+      en.footer.lineWithoutBackups.endsWith(`at most ${SESSION_IDLE_DAYS}${NBSP}days unused.`),
+      `the copy's line does not say ${SESSION_IDLE_DAYS} days`,
+    );
+    assert.ok(
+      ru.footer.lineWithoutBackups.endsWith(`(до ${SESSION_IDLE_DAYS}${NBSP}дней простоя).`),
+      `the copy's Russian line does not say ${SESSION_IDLE_DAYS} days`,
+    );
   });
 
   it('states the number of nightly dumps the chart keeps (D176)', () => {
@@ -168,8 +260,9 @@ describe('the privacy footer', () => {
 
     assert.ok(footer.includes('<footer'));
     // The words are the interface's language's, `m.footer` (D222), whose
-    // English the constants hold.
-    assert.ok(footer.includes('<span>{m.footer.line}</span>'));
+    // English the constants hold: the line the build's operator draws (issue
+    // #396).
+    assert.ok(footer.includes('<span>{footerLine(m, operator)}</span>'));
     assert.ok(footer.includes('{m.footer.contact}'));
     assert.equal(PRIVACY_FOOTER.line, en.footer.line);
     assert.equal(PRIVACY_FOOTER.contactLabel, en.footer.contact);

@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { docsPagePlugin } from './scripts/site-operator.mjs';
 
 /*
  * The API reference at /docs (D155), built after the application into the
@@ -13,8 +14,13 @@ import { defineConfig } from 'vite';
  * nginx caches it for a year; `docs/index.html` is the page nginx serves at
  * /docs with `Cache-Control: no-cache`. The dev server needs none of this: it
  * serves `docs/index.html` from the source tree (`vite.config.ts`).
+ *
+ * The page's head links the changelog's two feeds, which only a build with
+ * the operator's texts publishes (issue #396): `docsPagePlugin()` leaves the
+ * links out of any other, here and in the dev server.
  */
 export default defineConfig({
+  plugins: [docsPagePlugin()],
   // Scalar is built on Vue's esm-bundler build, which expects its bundler to
   // set these. Options API on as Vue's default; the devtools hooks off.
   define: {

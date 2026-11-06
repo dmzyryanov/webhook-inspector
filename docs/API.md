@@ -151,7 +151,12 @@ the description it serves at `/openapi.json`, which `/docs` and
 `info.contact` without `CONTACT_EMAIL`, the status page's sentence without
 `STATUS_PAGE_URL`, the about page's and the Terms' without `OPERATOR_TEXTS` —
 and one with another operator's names that operator's address and status page
-in their place. The settings are the frontend image's build arguments in the
+in their place. The changelog is the operator's too (#396): a build without
+`OPERATOR_TEXTS` publishes none, and its description leaves out every link to
+it — the addresses of the changelog and its text in Conventions and the
+relay's and Network's dates, each with the words that only introduce it — and
+the feeds' `Subscribe with a feed reader …` sentence whole, keeping the words
+that name the changelog without a link. The settings are the frontend image's build arguments in the
 table of [README.md](../README.md#installing-on-k3s-with-the-chart),
 Installing on k3s with the chart.
 

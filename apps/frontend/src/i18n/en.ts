@@ -126,7 +126,15 @@ export const en = {
 
   /** The footer band every page closes with (D177, D211, D217). */
   footer: {
+    /** The privacy line, D265's, its last clause on the backups the operator's (issue #396). */
     line: "Captured requests — headers, body and the sender's IP — are kept until you delete them or the session expires, at most 7\u00a0days unused; backups keep them up to 3\u00a0days longer.",
+    /**
+     * The line of a build without the operator's texts (issue #396): D265's,
+     * ending after the session's 7 days, with no promise about backups the
+     * copy may not keep.
+     */
+    lineWithoutBackups:
+      "Captured requests — headers, body and the sender's IP — are kept until you delete them or the session expires, at most 7\u00a0days unused.",
     about: 'About',
     terms: 'Terms',
     privacy: 'Privacy',

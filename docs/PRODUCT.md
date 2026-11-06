@@ -46,7 +46,10 @@ nothing added for `/about`; `/ru/about` draws it in Russian, `Изменения
 Статус ↗ | API docs ↗`, its wordmark leading to `/ru/` (v1.13.0, issue #170,
 D255). Every width shows
 all three links, both dividers and both arrows, a phone included; no page
-scrolls sideways at 320 px.
+scrolls sideways at 320 px. `Changelog` and `Status ↗` are this site's
+operator's (see [Status page](#status-page)): a copy built without the
+settings draws neither, nor the divider after each, and its header reads
+`API docs ↗` alone (v1.19.20, issue #396, for `Changelog`).
 
 ## Status page
 
@@ -70,7 +73,12 @@ are settings of the frontend build — `STATUS_PAGE_URL`, `CONTACT_EMAIL` and
 build sets all three, so everything this document says of them holds here. A
 copy of the inspector built without them shows none of them: no `Status ↗`,
 no `Contact:` and no `Terms` or `Privacy` in the footer, no `security.txt`,
-and `/status`, `/terms` and `/privacy` are `Page not found`.
+and `/status`, `/terms` and `/privacy` are `Page not found`. Since 1.19.20
+(issue #396) `OPERATOR_TEXTS` also covers the [changelog](#changelog), which
+tells this site's releases, and the [footer](#footer)'s clause on backups,
+which states this site's backup period: such a copy has no `Changelog` in
+the header and no changelog at its four addresses, and its footer line ends
+after the session's 7 days.
 
 ## Footer
 
@@ -93,6 +101,17 @@ for 7 days; nightly backups keep them …` (`… или сессия 7 дней 
 made untrue; the owner's words of 2026-10-25 name 7 days as the most a session
 lives unused, and drop `nightly` so that the line keeps its height on the
 desktop (issue #274, D265).
+
+The clause on backups is this site's: its 3 days are the backup period of
+this site's install, which a copy run with `npm run dev` does not have and a
+copy installed with another `backup.keep` does not keep. A copy built without
+`OPERATOR_TEXTS` (see [Status page](#status-page)) ends the line after the
+session's 7 days, `Captured requests — headers, body and the sender's IP —
+are kept until you delete them or the session expires, at most 7 days
+unused.`, in Russian `Запросы — заголовки, тело и IP отправителя — хранятся,
+пока вы их не удалите или сессия не истечёт (до 7 дней простоя).`, the same
+words cut at the semicolon, in the application's band, the static pages and
+`/ru/about` (v1.19.20, issue #396). This site's line is unchanged.
 
 The address is a `mailto:` link, and `About`, `Terms` and `Privacy` links to
 `/about`, `/terms` and `/privacy` in the same tab. `7 days` and `3 days` never
@@ -150,6 +169,16 @@ Entries before 1.0.0 marked a breaking change with no fixed notice period and
 no support period for an old version: the mark was the notice. Entries are
 written for the public: no issue or decision number, repository path or
 infrastructure name is published.
+
+The changelog tells this site's releases, for its readers — its hosts, its
+moves, how its owner is alerted — so it is this site's operator's text
+(v1.19.20, issue #396): a copy built without `OPERATOR_TEXTS` (see
+[Status page](#status-page)) publishes no `/changelog`, `/changelog.md` or
+feed, each address answering `Page not found`, and links none of them — not
+the header, the sitemap, `/llms.txt`, the head of `/docs` or the API
+reference, whose sentence naming the feeds it leaves out and whose other
+sentences keep their words without the link. `CHANGELOG.md` stays in the
+repository, which is where a copy's operator reads what changed.
 
 Since 1.0.0 (2026-10-14, D233) the API is under the stability policy published
 with v0.51.0 (issue #133, D212), in the same words in `/docs`'s Stability
@@ -541,7 +570,7 @@ https://qa-tools.ru/changelog.xml
 https://qa-tools.ru/changelog-breaking.xml
 ```
 
-`/changelog` and `/changelog/` answer `200` with the page, `text/html`, `/changelog.md` answers `200` as `text/markdown; charset=utf-8`, and the two feeds `200` as `application/atom+xml; charset=utf-8`, each with `Cache-Control: no-cache` and never the application page; a missing feed is a plain `404`. The heads of `/changelog` and `/docs` name both feeds. The page's title is `Changelog — Webhook Inspector`, its lead, the heading of `/changelog.md` and the feeds' titles and subtitles name Webhook Inspector (v1.18.0, D277), it has a description, and its canonical address is `https://qa-tools.ru/changelog`. `/llms.txt` links `/changelog.md`.
+`/changelog` and `/changelog/` answer `200` with the page, `text/html`, `/changelog.md` answers `200` as `text/markdown; charset=utf-8`, and the two feeds `200` as `application/atom+xml; charset=utf-8`, each with `Cache-Control: no-cache` and never the application page; a missing feed is a plain `404`. The heads of `/changelog` and `/docs` name both feeds. The page's title is `Changelog — Webhook Inspector`, its lead, the heading of `/changelog.md` and the feeds' titles and subtitles name Webhook Inspector (v1.18.0, D277), it has a description, and its canonical address is `https://qa-tools.ru/changelog`. `/llms.txt` links `/changelog.md`. A copy built without `OPERATOR_TEXTS` serves none of the four, each `Page not found`, and links none (v1.19.20, issue #396, see [Changelog](#changelog)).
 
 About page (v0.50.0, issue #131, D211; see [About page](#about-page)):
 ```text
@@ -601,7 +630,7 @@ An address the application does not serve says so; it is not redirected to the l
 | `/v/<43 characters of A–Z a–z 0–9 _ ->`, with or without a trailing slash — a new session id or an older one | the session, or **`Session not found`** when the API says it is not available (`404` or `410`) | `200` — the server cannot know whether the session exists, so the page asks — with `X-Robots-Tag: noindex` |
 | any other address: `/anything`, `/v/`, `/v/<value that cannot be a session id>`, `/v/<session-id>/<more>`, `/RU/`, `/ru/<more>` | **`Page not found`**, shown at once, with no request to the API and no WebSocket | `404`, with the application as the page |
 
-Addresses under `/api/`, `/ws/` and `/s/`, and every address that starts with `/mcp` (v0.45.1, D203), belong to the backend and keep their own answers — under `/s/`, since v0.36.0, the `410` / `1009` naming the webhook host (D187), and anything after `/mcp`, such as `/mcp/` or `/mcpx`, `404` with `errorCode` `1000`; a bare `/api`, `/ws` or `/s`, and an address such as `/sxyz`, is an address like any other above (v0.32.0, D183). `/docs` and `/docs/` are the API reference above, `/changelog`, `/changelog/` and `/changelog.md` the changelog above, `/about` and `/about/` the about page above, `/llms.txt` and `/llms-full.txt` are the agent documentation above, `/.well-known/security.txt` is the security contact above, `/robots.txt`, `/sitemap.xml`, `/favicon.ico`, `/favicon-192.png` and `/logo-512.png` are the files for search engines above, and a file the application ships under `/assets/` is served as a file; a missing one is a plain `404`. Every answer that carries the application, `200` or `404`, is sent with `Cache-Control: no-cache`, so a browser never keeps a previous release's page.
+Addresses under `/api/`, `/ws/` and `/s/`, and every address that starts with `/mcp` (v0.45.1, D203), belong to the backend and keep their own answers — under `/s/`, since v0.36.0, the `410` / `1009` naming the webhook host (D187), and anything after `/mcp`, such as `/mcp/` or `/mcpx`, `404` with `errorCode` `1000`; a bare `/api`, `/ws` or `/s`, and an address such as `/sxyz`, is an address like any other above (v0.32.0, D183). `/docs` and `/docs/` are the API reference above, `/changelog`, `/changelog/`, `/changelog.md` and the two feeds the changelog above (`Page not found` in a copy without the operator's texts), `/about` and `/about/` the about page above, `/llms.txt` and `/llms-full.txt` are the agent documentation above, `/.well-known/security.txt` is the security contact above, `/robots.txt`, `/sitemap.xml`, `/favicon.ico`, `/favicon-192.png` and `/logo-512.png` are the files for search engines above, and a file the application ships under `/assets/` is served as a file; a missing one is a plain `404`. Every answer that carries the application, `200` or `404`, is sent with `Cache-Control: no-cache`, so a browser never keeps a previous release's page.
 
 Both screens share one layout (Figma page `Webhook Inspector · Not found`, frames `2A` and `2B`, D147): a title, a code block, one line of text and a `Go to home page` button that leads to `/` — in Russian `На главную`, which leads to `/ru/` (D226). The code block is a stylised request and its answer — the address actually opened, path and query without the fragment, then `Host:` with the page's own host, a blank line, and the answer. It wraps like `Raw` and has no copy control: it illustrates, it is not a capture.
 

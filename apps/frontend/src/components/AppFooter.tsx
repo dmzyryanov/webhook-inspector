@@ -3,7 +3,7 @@ import { usePhoneLayout } from '../hooks/useDesktopLayout.ts';
 import { useMessages } from '../i18n/LanguageProvider.tsx';
 import { cn } from '../lib/cn.ts';
 import { mailtoOf, OPERATOR, type Operator } from '../lib/operator.ts';
-import { FOOTER_SEPARATOR, footerLinks } from '../lib/privacy-footer.ts';
+import { FOOTER_SEPARATOR, footerLine, footerLinks } from '../lib/privacy-footer.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
 
 /**
@@ -49,7 +49,9 @@ import { LanguageSwitch } from './LanguageSwitch.tsx';
  * What the band holds is the build's (issue #369, `operator.ts`): without the
  * operator's texts `Terms` and `Privacy` are not there, and without a contact
  * address neither is `Contact:`; a dot then follows every part but the last.
- * `operator` is the build's unless a test gives another.
+ * Without the operator's texts the line also ends after the session's 7 days,
+ * with no clause on the backups (issue #396, `footerLine`). `operator` is the
+ * build's unless a test gives another.
  */
 export function AppFooter({
   className,
@@ -71,7 +73,7 @@ export function AppFooter({
       )}
     >
       <p className="flex items-center justify-between gap-6 text-[12px] leading-[17px] text-ink-muted max-lg:block">
-        <span>{m.footer.line}</span>{' '}
+        <span>{footerLine(m, operator)}</span>{' '}
         <span className="flex shrink-0 items-center gap-4 whitespace-nowrap max-lg:inline-block max-lg:whitespace-normal">
           {links.map((link, index) => (
             <Fragment key={link.href}>

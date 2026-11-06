@@ -15,6 +15,7 @@ import {
   ATOM_CONTENT_TYPE,
   ATOM_FEED_ROOT,
   CHANGELOG_FEEDS,
+  CHANGELOG_PATHS,
   CERTIFICATE_PENDING_CODES,
   CERTIFICATE_WAIT,
   checkDeployment,
@@ -52,7 +53,8 @@ import {
 // The frontend build's own writers of security.txt and of the /status
 // locations, which import nothing installed either.
 import { securityTxt } from '../apps/frontend/scripts/build-security-txt.mjs';
-import { statusLocations } from '../apps/frontend/scripts/nginx-conf.mjs';
+import { CHANGELOG_FILE_LOCATIONS, statusLocations } from '../apps/frontend/scripts/nginx-conf.mjs';
+import { CHANGELOG_LINK } from '../apps/frontend/src/lib/changelog-link.ts';
 import { SESSION_ID_PATTERN } from '../packages/shared/src/index.ts';
 import {
   MAX_LIMIT_SECONDS,
@@ -433,6 +435,18 @@ const atomFeed = (headers = {}, status = 200, text = FEED_XML) =>
     headers: { 'content-type': ATOM_CONTENT_TYPE, 'cache-control': 'no-cache', ...headers },
   });
 const breakingFeed = () => atomFeed({}, 200, BREAKING_FEED_XML);
+// The changelog page and its text (D184), as nginx answers them in an image
+// built with the operator's texts: a static page and Markdown, revalidated.
+const changelogPage = () =>
+  aboutPage(
+    {},
+    200,
+    '<!doctype html><html lang="en"><head><title>Changelog — Webhook Inspector</title></head><body></body></html>',
+  );
+const changelogText = () =>
+  new Response('# Webhook Inspector changelog\n', {
+    headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-cache' },
+  });
 // The smoke's clock in these tests, and a security.txt built the day before.
 const NOW = new Date('2026-09-30T12:00:00Z');
 const SECURITY_TXT = [
@@ -2304,8 +2318,12 @@ function deployment(built, seen = [], answers = {}) {
     '/terms': () => (built.texts ? termsPage() : pageNotFound()),
     '/privacy': () => (built.texts ? privacyPage() : pageNotFound()),
     '/ru/': russianHome,
-    '/changelog.xml': atomFeed,
-    '/changelog-breaking.xml': breakingFeed,
+    // The changelog is the operator's texts (#396): without them, its four
+    // addresses are the site's Page not found.
+    '/changelog': () => (built.texts ? changelogPage() : pageNotFound()),
+    '/changelog.md': () => (built.texts ? changelogText() : pageNotFound()),
+    '/changelog.xml': () => (built.texts ? atomFeed() : pageNotFound()),
+    '/changelog-breaking.xml': () => (built.texts ? breakingFeed() : pageNotFound()),
     '/.well-known/security.txt': () =>
       built.contactEmail
         ? security(SECURITY_TXT.replace('contact@qa-tools.ru', built.contactEmail))
@@ -2358,14 +2376,22 @@ test("smoke checks the operator's details as the deployment's settings give them
     }
   }
   // Not given, not asked for: whatever the image was built with, and
-  // whatever those addresses would answer.
+  // whatever those addresses would answer. The changelog's feeds are still
+  // checked as served (#396, Decision 4), so the feeds of an image without
+  // the texts answer as they would with them.
   const never = Object.fromEntries(
     OPERATOR_PATHS.map((path) => [path, () => assert.fail(`${path} was asked for`)]),
   );
+  const feedsServed = { '/changelog.xml': atomFeed, '/changelog-breaking.xml': breakingFeed };
   for (const built of [OPERATOR, NO_OPERATOR]) {
     const seen = [];
-    await smokeOf(built, OPERATOR_NOT_GIVEN, seen, never);
-    await checkDeployment('https://qa-tools.ru', deployment(built, [], never), NOW, RECEIVE);
+    await smokeOf(built, OPERATOR_NOT_GIVEN, seen, { ...never, ...feedsServed });
+    await checkDeployment(
+      'https://qa-tools.ru',
+      deployment(built, [], { ...never, ...feedsServed }),
+      NOW,
+      RECEIVE,
+    );
     assert.equal(seen.length, 24 - OPERATOR_PATHS.length);
   }
   // Each one alone, given: that one is asked for, the others are not.
@@ -2379,7 +2405,10 @@ test("smoke checks the operator's details as the deployment's settings give them
       const others = Object.fromEntries(
         OPERATOR_PATHS.filter((path) => !paths.includes(path)).map((path) => [path, never[path]]),
       );
-      await smokeOf(built, { ...OPERATOR_NOT_GIVEN, [name]: built[name] }, seen, others);
+      await smokeOf(built, { ...OPERATOR_NOT_GIVEN, [name]: built[name] }, seen, {
+        ...others,
+        ...(name === 'texts' ? {} : feedsServed),
+      });
       assert.deepEqual(
         seen.map(({ path }) => path).filter((path) => OPERATOR_PATHS.includes(path)),
         paths,
@@ -2515,6 +2544,149 @@ test("smoke refuses /status and /status/ unlike STATUS_PAGE_URL: anything but a 
 
 // The smoke keeps its own copy of the two addresses rather than importing the
 // frontend's build script; this keeps them equal to the locations it writes.
+test("smoke checks the changelog as OPERATOR_TEXTS says: its four addresses the site's Page not found without the texts, the feeds as before with them or not given (#396)", async () => {
+  // Without the texts: each of the four asked once, each Page not found, and
+  // nothing else of the changelog.
+  for (const built of [NO_OPERATOR, CONTACT_ONLY]) {
+    const seen = [];
+    await smokeOf(built, built, seen);
+    const asked = seen.map(({ path }) => path);
+    for (const path of CHANGELOG_PATHS) {
+      assert.equal(asked.filter((each) => each === path).length, 1, path);
+    }
+    assert.deepEqual(
+      asked.filter((path) => path.startsWith('/changelog')),
+      CHANGELOG_PATHS,
+    );
+    assert.equal(seen.length, 24 + 2);
+  }
+  // With them, or not given: the two feeds alone, as before #396, checked as
+  // served; the page and the text are not asked for.
+  const neverPage = {
+    '/changelog': () => assert.fail('/changelog was asked for'),
+    '/changelog.md': () => assert.fail('/changelog.md was asked for'),
+  };
+  for (const operator of [OPERATOR, OPERATOR_NOT_GIVEN, { ...OPERATOR, texts: undefined }]) {
+    const seen = [];
+    await smokeOf(OPERATOR, operator, seen, neverPage);
+    assert.deepEqual(
+      seen.map(({ path }) => path).filter((path) => path.startsWith('/changelog')),
+      CHANGELOG_FEEDS,
+    );
+  }
+
+  // Without the texts, anything but the site's Page not found at any of the
+  // four is refused, naming the address.
+  for (const path of CHANGELOG_PATHS) {
+    const refused = new RegExp(
+      `^Error: ${path.replaceAll('.', '\\.')} did not answer the site's Page not found, as an image without the operator's texts does$`,
+    );
+    const served = {
+      '/changelog': changelogPage,
+      '/changelog.md': changelogText,
+      '/changelog.xml': atomFeed,
+      '/changelog-breaking.xml': breakingFeed,
+    }[path];
+    for (const answer of [
+      // What an image with the texts serves there.
+      served,
+      // nginx's plain 404, as for a file missing in a location of its own:
+      // the configuration of an image with the texts.
+      plainNotFound,
+      // The application shell with 200, a 404 that is not the application,
+      // kept out of search, not HTML, or another status.
+      () => pageNotFound({}, 200),
+      notFoundPage,
+      () => pageNotFound({ 'x-robots-tag': 'noindex' }),
+      () => pageNotFound({ 'content-type': 'text/plain' }),
+      () => pageNotFound({}, 410),
+      () => statusRedirect('https://qa-tools.ru/'),
+    ]) {
+      await assert.rejects(smokeOf(NO_OPERATOR, NO_OPERATOR, [], { [path]: answer }), refused);
+    }
+  }
+
+  // With the texts, or not given, a feed answering Page not found is refused.
+  for (const operator of [OPERATOR, OPERATOR_NOT_GIVEN]) {
+    for (const path of CHANGELOG_FEEDS) {
+      await assert.rejects(
+        smokeOf(OPERATOR, operator, [], { [path]: pageNotFound }),
+        new RegExp(
+          `^Error: ${path.replaceAll('.', '\\.')} did not return the changelog's Atom feed, uncached$`,
+        ),
+      );
+    }
+  }
+});
+
+test("the smoke's command line checks the changelog as --operator-texts says: Page not found with false or empty, the feeds with true and with no option (#396, criterion 5)", async () => {
+  const run = (built, options, answers = {}) => {
+    const lines = [];
+    return checkDeploymentMain(
+      [SITE, RECEIVE, ...options],
+      deployment(built, [], answers),
+      NOW,
+      async () => assert.fail('no wait'),
+      (line) => lines.push(line),
+    ).then(() => lines);
+  };
+
+  for (const value of ['false', '', ' ']) {
+    const lines = await run(NO_OPERATOR, [`--operator-texts=${value}`]);
+    assert.match(lines.at(-1), /, no changelog, changelog text or feeds \(Page not found\), /);
+    assert.doesNotMatch(lines.at(-1), /the two changelog feeds/);
+    // An image that serves a feed, or any of the four, fails.
+    for (const [path, served] of [
+      ['/changelog.xml', atomFeed],
+      ['/changelog-breaking.xml', breakingFeed],
+      ['/changelog', changelogPage],
+      ['/changelog.md', changelogText],
+    ]) {
+      await assert.rejects(
+        run(NO_OPERATOR, [`--operator-texts=${value}`], { [path]: served }),
+        /did not answer the site's Page not found, as an image without the operator's texts does$/,
+      );
+    }
+  }
+
+  // true, and no option at all — D187's call, which qa-tools' availability
+  // smoke makes against production: the feeds, as before.
+  for (const options of [
+    [
+      '--operator-texts=true',
+      '--status-page=https://status.qa-tools.ru/',
+      '--contact-email=contact@qa-tools.ru',
+    ],
+    [],
+  ]) {
+    const lines = await run(OPERATOR, options);
+    assert.match(lines.at(-1), /, the Russian home page, the two changelog feeds, /);
+    await assert.rejects(
+      run(OPERATOR, options, { '/changelog.xml': pageNotFound }),
+      /^Error: \/changelog\.xml did not return the changelog's Atom feed, uncached$/,
+    );
+    await assert.rejects(
+      run(OPERATOR, options, { '/changelog-breaking.xml': plainNotFound }),
+      /^Error: \/changelog-breaking\.xml did not return the changelog's Atom feed, uncached$/,
+    );
+  }
+  assert.match(checkedList(OPERATOR_NOT_GIVEN), /the two changelog feeds/);
+  assert.match(checkedList(OPERATOR), /the two changelog feeds/);
+  assert.match(
+    checkedList(NO_OPERATOR),
+    /no changelog, changelog text or feeds \(Page not found\)/,
+  );
+});
+
+// The smoke keeps its own copy of the changelog's addresses rather than
+// importing the frontend's build; this keeps them equal to the page's
+// address and to the files whose locations the image's configuration
+// leaves out without the operator's texts (#396).
+test("the smoke asks for the changelog's addresses the image without the operator's texts leaves to its Page not found (#396)", () => {
+  assert.deepEqual(CHANGELOG_PATHS, ['/changelog', '/changelog.md', ...CHANGELOG_FEEDS]);
+  assert.deepEqual(CHANGELOG_PATHS, [CHANGELOG_LINK.href, ...CHANGELOG_FILE_LOCATIONS]);
+});
+
 test('the smoke asks for the status page at the addresses the image build redirects (#369, #381)', () => {
   const written = statusLocations('https://status.example.com/');
   assert.deepEqual(
@@ -2950,14 +3122,29 @@ test("the smoke's command line says what it checked of the operator's details, a
   assert.deepEqual(
     await run(NO_OPERATOR, ['--status-page=', '--contact-email=', '--operator-texts=']),
     [
-      `Deployed ${common[0]}, no Terms of Use or Privacy Policy (Page not found), ${common[1]}, no security.txt (404), ${common[2]}, no status page (Page not found) and the receive host passed on qa-tools.ru (read-only)`,
+      `Deployed ${common[0]}, no Terms of Use or Privacy Policy (Page not found), the Russian home page, no changelog, changelog text or feeds (Page not found), no security.txt (404), ${common[2]}, no status page (Page not found) and the receive host passed on qa-tools.ru (read-only)`,
     ],
   );
   // One given: the other two are named.
-  assert.deepEqual(await run(CONTACT_ONLY, ['--contact-email=hello@inspector.example']), [
+  assert.deepEqual(await run(COPY_OPERATOR, ['--contact-email=hello@inspector.example']), [
     'Not checked, as their setting is not given: the Terms of Use and the Privacy Policy (--operator-texts) and /status (--status-page)',
     `Deployed ${common[0]}, ${common[1]}, security.txt with the contact address given, ${common[2]} and the receive host passed on qa-tools.ru (read-only)`,
   ]);
+  // The texts given as none: the changelog's four addresses are checked as
+  // Page not found, and the line says so (#396).
+  assert.deepEqual(
+    await run(CONTACT_ONLY, ['--contact-email=hello@inspector.example', '--operator-texts=false']),
+    [
+      'Not checked, as their setting is not given: /status (--status-page)',
+      `Deployed ${common[0]}, no Terms of Use or Privacy Policy (Page not found), the Russian home page, no changelog, changelog text or feeds (Page not found), security.txt with the contact address given, ${common[2]} and the receive host passed on qa-tools.ru (read-only)`,
+    ],
+  );
+  // Not given, they are checked as served, as before #396: an image without
+  // the texts then fails on its first feed (Decision 4).
+  await assert.rejects(
+    run(CONTACT_ONLY, ['--contact-email=hello@inspector.example']),
+    /^Error: \/changelog\.xml did not return the changelog's Atom feed, uncached$/,
+  );
   assert.equal(
     notCheckedLine({ ...OPERATOR, texts: undefined }),
     'Not checked, as their setting is not given: the Terms of Use and the Privacy Policy (--operator-texts)',
