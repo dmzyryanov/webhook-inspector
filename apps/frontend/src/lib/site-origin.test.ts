@@ -31,6 +31,7 @@ import {
 } from '../../scripts/changelog.mjs';
 import { MOVE_DAY_SENTENCE, moveDay, moveSetting } from '../../scripts/move-setting.mjs';
 import { sha256Hex } from '../../scripts/relay-script.mjs';
+import { MOVE_BULLET } from '../../scripts/site-operator.mjs';
 import {
   isProduction,
   nameSite,
@@ -829,6 +830,47 @@ describe('the files the build writes from public/ and the description', () => {
       assert.ok(script.includes(`${origins.receive}/s/<session id>`), api);
     }
   });
+
+  it('write the description’s Network section as before with a second origin, and without the bullet on production’s move with none (#386)', () => {
+    const source = read('../../../../packages/shared/openapi.json');
+    // What the build wrote before #386 with production's operator settings,
+    // which this suite's environment gives: named, with the built relay
+    // script's SHA-256.
+    const before = (origins: SiteOrigins) =>
+      nameSite(source, origins).replaceAll(
+        sha256Hex(productionRelayScriptText()),
+        sha256Hex(relayScriptText(origins)),
+      );
+    const description = (text: string) =>
+      (JSON.parse(text) as { info: { description: string } }).info.description;
+
+    // Production's, and a copy with a second origin of its own: byte for byte.
+    assert.equal(openApiText(PRODUCTION_ORIGINS), source);
+    assert.equal(openApiText(OTHER_ALIAS), before(OTHER_ALIAS));
+    assert.ok(
+      description(openApiText(OTHER_ALIAS)).includes(
+        `${MOVE_BULLET}\`next.inspector.example\`.** Since 1.16.0`,
+      ),
+    );
+
+    // No second origin: the bullet would move the site from its origin to
+    // the same one, and goes; every other byte is as before.
+    for (const origins of [OTHER, LOCAL, DAY_X, PORTED]) {
+      const named = description(before(origins));
+      const host = new URL(origins.app).host;
+      const line = named.split('\n').find((each) => each.startsWith(MOVE_BULLET)) as string;
+
+      assert.ok(line.startsWith(`${MOVE_BULLET}\`${host}\`.** Since 1.16.0`), host);
+      assert.ok(line.includes(`The ones on \`${host}\` keep working`), host);
+      assert.equal(
+        openApiText(origins),
+        before(origins).replace(JSON.stringify(`${line}\n`).slice(1, -1), ''),
+        host,
+      );
+      assert.ok(!description(openApiText(origins)).includes('**Moving to '), host);
+      assert.ok(description(openApiText(origins)).includes('\n\n## Network\n\n'), host);
+    }
+  });
 });
 
 /**
@@ -1542,6 +1584,46 @@ describe('a build for another address (issue #320, criterion 2)', () => {
     assert.ok(!ids('changelog-breaking.xml').includes(feedEntryId('1.16.0')));
     assert.ok(ids('changelog-breaking.xml').includes(feedEntryId('1.19.0')));
     assert.ok(built('changelog/index.html').includes('<details class="version" id="v1.16.0">'));
+  });
+
+  it('serves the API description’s Network section without the bullet on production’s move, every other bullet as written (#386, criterion 2)', () => {
+    const description = (JSON.parse(built('openapi.json')) as { info: { description: string } })
+      .info.description;
+
+    // /docs shows openapi.json as it is served; llms-full.txt carries it.
+    for (const [path, text] of [
+      ['openapi.json', description],
+      ['llms-full.txt', built('llms-full.txt')],
+    ] as const) {
+      const start = text.indexOf('\n\n## Network\n\n');
+      const section = text.slice(start, text.indexOf('\n\n## Security\n\n', start));
+      const titles = section
+        .split('\n')
+        .filter((line) => line.startsWith('- **'))
+        .map((line) => /^- \*\*([^*]*)\*\*/.exec(line)?.[1]);
+
+      assert.ok(start > 0, path);
+      assert.ok(section.includes('For a CI runner or a network that may reach only'), path);
+      assert.deepEqual(
+        titles,
+        [
+          'One address: `80.87.198.166`.',
+          'HTTPS on TCP port 443.',
+          'IPv4 only.',
+          'No CDN or proxy service in front.',
+          'Outgoing connections only.',
+          'A change of address is announced at least 14 days ahead',
+        ],
+        path,
+      );
+      assert.doesNotMatch(section, /Moving to|1\.16\.0/, path);
+      assert.ok(section.includes(`${OTHER.app}/changelog`), path);
+      // The sentence pointing at it stays with it.
+      assert.ok(text.includes('has a notice of its own, under Network above.'), path);
+    }
+    // The build check passed it: the operator's texts, which this build
+    // shows, name the server's address.
+    assert.ok(built('openapi.json').includes('80.87.198.166'));
   });
 });
 

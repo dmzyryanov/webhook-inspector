@@ -31,7 +31,10 @@ import { operatorOpenApi, operatorSitemap } from './site-operator.mjs';
  * Since issue #369 the sitemap and the description also name the build's
  * operator (`site-operator.mjs`): the sitemap lists `/terms` and `/privacy`
  * only for a build with the operator's texts, and the description gives the
- * operator's contact address and status page, or leaves them out.
+ * operator's contact address and status page, or leaves them out. Since
+ * #386 the description's Network section, this site's server, is left out
+ * without the texts, and its bullet on production's move in a build with no
+ * second origin.
  *
  * Built for production, each is its source byte for byte, and the old name
  * the script's source. nginx serves them all from the image's copy of
@@ -64,12 +67,17 @@ export function relayScriptText(origins = SITE_ORIGINS) {
 
 /**
  * The OpenAPI description as the build writes it: named, with the
- * operator's details (`operatorOpenApi`), and with the SHA-256 of the script
+ * operator's details (`operatorOpenApi`), told whether the build has a
+ * second origin to move to (#386), and with the SHA-256 of the script
  * written for production replaced by the built one's, which differs
  * whenever the script names another origin.
  */
 export function openApiText(origins = SITE_ORIGINS, operator = OPERATOR) {
-  const named = operatorOpenApi(nameSite(readFileSync(OPENAPI_SOURCE, 'utf8'), origins), operator);
+  const named = operatorOpenApi(
+    nameSite(readFileSync(OPENAPI_SOURCE, 'utf8'), origins),
+    operator,
+    (origins.alias ?? null) !== null,
+  );
   const sourceHash = sha256Hex(productionRelayScriptText());
   const builtHash = sha256Hex(relayScriptText(origins));
 
