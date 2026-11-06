@@ -935,7 +935,7 @@ describe('a move link opened over a session page (#345)', () => {
     }
   });
 
-  /** Criterion 3: `#key=` and `#request=` are read as before #345. */
+  /** `#key=` and `#request=` are read as before #345. */
   it('reads every other fragment exactly as takeKeyFromAddress does: the key held, the request id left', () => {
     for (const href of [
       PAGE,
@@ -1128,7 +1128,7 @@ describe('a move link pasted over a session page during its first list load (#36
     }
   });
 
-  /** Criterion 2: `#<request-id>`, `#request=`, `#key=` and an unknown fragment as before (D182). */
+  /** `#<request-id>`, `#request=`, `#key=` and an unknown fragment are read as before (D182). */
   it('reads every other fragment exactly as readRequestLink and resolveRequestLink do', () => {
     for (const href of [
       PAGE,

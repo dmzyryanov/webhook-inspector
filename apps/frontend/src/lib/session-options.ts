@@ -17,7 +17,7 @@ const HOUR = 3_600;
 
 /**
  * The three windows the page offers, in the menu's order: 7 days, 1 day and
- * 1 hour (the owner's decision 2 of 2026-10-18). Every one counts from the
+ * 1 hour (Decision 2 of 2026-10-18). Every one counts from the
  * last use; a fixed lifetime stays the API's (D220, D242).
  */
 export const SESSION_WINDOWS = [SESSION_IDLE_WINDOW_MAX_SECONDS, DAY, HOUR] as const;
@@ -38,8 +38,8 @@ export interface NewSessionOptions {
 }
 
 /**
- * Today's session: 7 days after its last use, the address kept (the owner's
- * decision 4 of #216), public (decision 6 of #228: never remembered).
+ * Today's session: 7 days after its last use, the address kept (#216's
+ * Decision 4), public (#228's Decision 6: never remembered).
  */
 export const DEFAULT_SESSION_OPTIONS: NewSessionOptions = {
   idleSeconds: SESSION_IDLE_WINDOW_MAX_SECONDS,

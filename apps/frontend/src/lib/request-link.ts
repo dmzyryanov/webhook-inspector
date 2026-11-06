@@ -216,7 +216,7 @@ export const MAX_PASTED_LENGTH = 2_048;
 
 /**
  * What a value pasted into the field of `Session not found` asks to open
- * (R7, R8; the owner's decision 10 of #228):
+ * (R7, R8; #228's Decision 10):
  *
  * - `empty`: nothing but spaces, which does nothing;
  * - `open`: the key alone, for the page's own session, or a link with access

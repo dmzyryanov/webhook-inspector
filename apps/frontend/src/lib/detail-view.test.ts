@@ -49,13 +49,13 @@ const REQUEST_HEADERS = 'Headers as received by the server.';
 /** Why a text body is shown as stored, by what it looks like (D112, D163). */
 const OVER_CEILING = 'Formatting unavailable above 256 KiB. Original content remains accessible.';
 const NOT_JSON = 'Formatting unavailable: this body is not valid JSON.';
-/** Written out rather than built from `JSON_MAX_DEPTH`: the owner settled this wording (#59, D169). */
+/** Written out, not built from `JSON_MAX_DEPTH`, so the settled wording is pinned (#59, D169). */
 const JSON_TOO_DEEP =
   'Formatting unavailable: JSON nested more than 100 levels deep is shown as stored.';
 const NOT_XML = 'Formatting unavailable: this body is not well-formed XML.';
 const XML_WITH_DOCTYPE = 'Formatting unavailable: XML with a DOCTYPE is shown as stored.';
 const XML_TOO_DEEP = `Formatting unavailable: XML nested more than ${XML_MAX_DEPTH} levels deep is shown as stored.`;
-/** Written out rather than built from the cap: the owner settled this wording (#64). */
+/** Written out rather than built from the cap, so the settled wording is pinned (#64). */
 const JSON_TOO_LONG =
   'Formatting unavailable: JSON that formats to more than 2,000,000 characters is shown as stored.';
 const XML_TOO_LONG =
@@ -621,7 +621,7 @@ describe('Raw of a representation with no body', () => {
     );
   });
 
-  /** With a body the blank line parts head from body, and stays (criterion 4). */
+  /** With a body the blank line parts head from body, and stays (#51). */
   it('draws a representation with a body exactly as stored, blank line included', () => {
     const withBody = `${GET_HEAD.replace('GET', 'POST')}{"runId":1842}`;
     const request = requestRawBlock(details({ raw: withBody }));
@@ -1261,7 +1261,7 @@ describe('the Body block of a form', () => {
     assert.equal(requestBodyBlock(textFirst).content.kind, 'text');
   });
 
-  /** Criterion 2: the decoded rows as `Query` copies them; `Raw` stays encoded. */
+  /** The decoded rows as `Query` copies them; `Raw` stays encoded. */
   it('copies the decoded rows, one name=value per line, and leaves Raw encoded', () => {
     const body = 'name=%D0%98%D0%B2%D0%B0%D0%BD&tag=a&tag=b&note=a+b';
     const raw = composeHead('POST /s/session HTTP/1.1', [['Content-Type', FORM]]) + body;
@@ -1279,7 +1279,7 @@ describe('the Body block of a form', () => {
     );
   });
 
-  /** Criterion 3: a header never overrides a successful sniff. */
+  /** A header never overrides a successful sniff. */
   it('re-indents a valid JSON body labelled as a form', () => {
     const block = requestBodyBlock(form('{"a":"b=c&d=e","n":12345678901234567890}'));
 
@@ -1294,7 +1294,7 @@ describe('the Body block of a form', () => {
   });
 
   /**
-   * Criterion 3: without the label, a form-shaped body is not sniffed as one.
+   * Without the label, a form-shaped body is not sniffed as one.
    * It claims no format, so it gets the neutral line since #28 (D163) - and,
    * under a multipart label without a boundary, the reason it was not split
    * after it (D164).
@@ -1381,7 +1381,7 @@ describe('the Body block of a form', () => {
     });
   });
 
-  /** Criterion 4, with the owner's example: "Иван" in windows-1251. */
+  /** Issue #27's example: "Иван" in windows-1251, an escape that is not UTF-8. */
   it('shows a body with an escape that is not UTF-8 as stored, with a reason line and no rows', () => {
     const body = 'name=%C8%E2%E0%ED';
     const block = requestBodyBlock(form(body));
@@ -1417,7 +1417,7 @@ describe('the Body block of a form', () => {
     assert.equal(block.caption, null);
   });
 
-  /** Criterion 5: no empty grid, and an empty body is still no body. */
+  /** No empty grid, and an empty body is still no body. */
   it('shows a body with no pairs at all as stored, with a reason line', () => {
     for (const body of ['&&&', '&']) {
       assert.deepEqual(requestBodyBlock(form(body)), {
@@ -1450,7 +1450,7 @@ describe('the Body block of a form', () => {
     }
   });
 
-  /** Criterion 6: the JSON ceiling, by the same UTF-8 byte measure. */
+  /** The JSON ceiling, by the same UTF-8 byte measure. */
   it('shows a form body above 256 KiB as stored, with the ceiling reason line', () => {
     const body = `a=${'x'.repeat(JSON_FORMAT_MAX_BYTES)}`;
     const block = requestBodyBlock(form(body));
@@ -2336,7 +2336,7 @@ describe('how every block wraps', () => {
   });
 
   /**
-   * Criterion 5 of issue #26: re-indented JSON wraps too, with its
+   * Issue #26: re-indented JSON wraps too, with its
    * continuation hanging under the line's own content, and its text - numbers,
    * duplicate keys, escapes - is exactly what it was (D112).
    */
@@ -2679,7 +2679,7 @@ describe('the hanging indent of re-indented JSON', () => {
   }
 
   /**
-   * Issue #28 review: XML shown as stored can hold empty lines, and one
+   * Issue #28: XML shown as stored can hold empty lines, and one
    * between two lines that wrap, or after a short line before one that does,
    * was drawn as no row at all. `drawn` keeps it; the copy text is unchanged.
    */

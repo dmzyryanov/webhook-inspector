@@ -253,7 +253,7 @@ describe('evaluateEditorDraft', () => {
     }
   });
 
-  /** Owner's rule 2, reported on the body field (D5). */
+  /** 204, 205 and 304 take no body: the refusal is reported on the body field (D5). */
   it('refuses 204, 205 and 304 while a body is set, on the body', () => {
     for (const status of ['204', '205', '304']) {
       const evaluation = evaluateEditorDraft({
@@ -267,7 +267,7 @@ describe('evaluateEditorDraft', () => {
     }
   });
 
-  /** Owner's rule 1: the custom fields are hidden and kept (D6). */
+  /** Picking Default hides the custom fields and keeps them (D6). */
   it('sends the mode alone for Default, whatever the hidden fields hold', () => {
     for (const form of [
       formFromResponse(KEPT),
@@ -387,7 +387,7 @@ describe('describeChangeFailure', () => {
 /**
  * A failure is held as its error and put into words each time it is shown,
  * so one on screen in the non-modal quick switch follows the `EN | RU`
- * switch (D222; correction round 1, the Tester's finding F1).
+ * switch (D222).
  */
 describe('shownChangeFailure', () => {
   const refused = new ApiError(

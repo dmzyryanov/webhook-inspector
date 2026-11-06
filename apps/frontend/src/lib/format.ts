@@ -11,8 +11,8 @@ import { en, type Messages } from '../i18n/en.ts';
  * `1.0 MB`.
  *
  * There used to be a second, long form - `61 bytes` - for the list rows, and
- * the two were a documented split between a row and a summary (D014). The owner
- * closed it in favour of the compact form everywhere, so `formatBytes` is gone
+ * the two were a documented split between a row and a summary (D014). It was
+ * closed in favour of the compact form everywhere, so `formatBytes` is gone
  * rather than left beside this one: two functions differing only in their units
  * are an invitation for the split to come back (D014, D071).
  */

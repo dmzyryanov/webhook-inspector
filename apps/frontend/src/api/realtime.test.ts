@@ -393,7 +393,7 @@ describe('openSessionSocket', () => {
   });
 
   /**
-   * The order the outside review traced on MR !130. The page's load on mount
+   * The order traced on !130. The page's load on mount
    * reads the session and its list before the session is deleted, and its
    * answers arrive only after the deletion has closed the socket with `4404`.
    * The socket is not reopened after a refusal, so nothing would correct a
@@ -453,7 +453,7 @@ describe('openSessionSocket', () => {
 });
 
 /**
- * Criterion 2 of #228 (D245 point 5, D259): a private session's socket offers
+ * Issue #228 (D245 point 5, D259): a private session's socket offers
  * its key beside the protocol the server echoes, on its first connection and
  * on every retry, and the key is never in the URL; a public session's socket
  * is opened exactly as before, with no subprotocol argument at all. Since

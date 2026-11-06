@@ -172,7 +172,7 @@ describe('without storage', () => {
   });
 
   it('opens collapsed, with no error, where storage can be written but not read (issue #143)', () => {
-    // An artificial case the owner left unhandled on 2026-10-18: the state is
+    // An artificial case, left unhandled on purpose on 2026-10-18: the state is
     // stored, so it is read back from storage, whose read answers collapsed.
     const items = new Map<string, string>();
     const writeOnly: QueueSectionStorage = {

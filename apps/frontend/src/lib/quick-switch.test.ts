@@ -258,7 +258,7 @@ describe('evaluateQuickDraft', () => {
     }
   });
 
-  /** Owner's rule 2: 204, 205 and 304 while a body is set are an error. */
+  /** 204, 205 and 304 while a body is set are an error. */
   it('refuses a typed 205 or 304 while a body is set, under its field (C6)', () => {
     const state = answering(custom());
 

@@ -69,7 +69,7 @@ export function heldRules(state: {
   return state.rules ?? [];
 }
 
-/** The endpoint label's part, `3 rules`, or `null` with none (criterion 5). */
+/** The endpoint label's part, `3 rules`, or `null` with none (#226). */
 export function formatRulesSuffix(rules: readonly ResponseRule[], m: Messages = en): string | null {
   return rules.length === 0 ? null : m.rules.count(rules.length);
 }
@@ -850,7 +850,7 @@ export function rulesSectionFocusTarget(
 // The toasts.
 
 /**
- * The toast after a save (criterion 4), worded from the state the page hands
+ * The toast after a save (#226), worded from the state the page hands
  * back for it (`ownChangeState`): how many rules the session holds now.
  */
 export function formatRulesSavedToast(state: SessionResponseState, m: Messages = en): string {

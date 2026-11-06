@@ -144,7 +144,7 @@ export function OptionsMenu({ options, onChange, disabled, className }: NewSessi
 const DIVIDER_STROKE = { stroke: 'currentColor', strokeWidth: 1.5, strokeDasharray: '6 4' };
 
 /**
- * The line that splits the tile from 768 px (issue #248, the owner's A1): the
+ * The line that splits the tile from 768 px (issue #248, variant A1): the
  * trigger's first 1.5 px, the tile's full height, dashed exactly as the tile's
  * border is, in the same stroke, dashes and `--color-tile-dash`. Like the
  * border it is an SVG stroke rather than `border-dashed`, whose dash length

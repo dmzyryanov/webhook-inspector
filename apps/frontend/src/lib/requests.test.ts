@@ -1239,7 +1239,7 @@ describe('detailToShow', () => {
   });
 
   /**
-   * The race of the outside review in both orders: the opening answer, or the
+   * A race, in both orders: the opening answer, or the
    * fetch a `ready` started, read the overdue record as `unknown`; the refresh
    * `response.recorded` started read it recorded. The panel ends on the
    * recorded response whichever lands first.

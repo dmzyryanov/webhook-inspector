@@ -84,7 +84,7 @@ const DESCRIPTION =
   'Generate a temporary URL and inspect incoming HTTP requests and webhooks in real time. No registration, no setup.';
 
 /**
- * The Russian home page's title and description, the owner's Decision 4 of
+ * The Russian home page's title and description, Decision 4 of
  * issue #109 (D226), the title renamed by Decision 4 of issue #322 (D277).
  */
 const RUSSIAN_TITLE = 'Webhook Inspector — проверка вебхуков';

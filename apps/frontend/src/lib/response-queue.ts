@@ -298,9 +298,8 @@ function statusesAhead(queue: ResponseQueue): number[] {
  * hands back for it (`ownChangeState` in `session-response.ts`): the save's
  * answer, or, once the page holds the save's own `session.updated`, what the
  * page shows - a capture may already have taken a step of the saved queue,
- * and the answer, which says step 1, was then set aside (correction round 5,
- * the Reviewer's finding). Usually the two are the same, and the toast is
- * U6's.
+ * and the answer, which says step 1, was then set aside. Usually the two are
+ * the same, and the toast is U6's.
  */
 export function formatQueueSavedToast(state: SessionResponseState, m: Messages = en): string {
   const queue = heldQueue(state);
@@ -333,11 +332,11 @@ export const RESTART_FAILED = en.queue.restartFailed;
  * (L1). A failed restart's message is said only then, beside the link it
  * asks to try again: a restart whose answer was lost usually has its own
  * `session.updated` arrive first, and the section already shows `Step 1 of
- * N` when the failure is set (correction round 6, the Reviewer's finding);
+ * N` when the failure is set;
  * another viewer's restart, save or removal takes the message away too. A
  * failure after the page took a `session.updated` starting the queue from
  * step 1 is not said at all, the section offering `Run again` again or not
- * (`queueStartedSince`, correction round 7).
+ * (`queueStartedSince`).
  */
 export function offersRunAgain(state: SessionResponseState): boolean {
   return queueSectionView(state, en).kind === 'done';
@@ -377,7 +376,7 @@ export function editQueueDraft(
   return { steps: edit(queueDialogSteps(draft, state)) };
 }
 
-/** `+ Add step`: a copy of the session response, last (owner's note on U4). */
+/** `+ Add step`: a copy of the session response, last (U4). */
 export function addQueueStep(
   steps: readonly ResponseForm[],
   sessionResponse: ResponseConfig | null,
@@ -590,8 +589,8 @@ export const QUEUE_SERVER_BUSY = en.queue.serverBusy;
  * for the queue's size would fail the same way again, so it offers none, and
  * the button keeps reading `Save queue`. `Try again` retries the call that
  * failed and no other: a failed save's is the main button, a failed
- * removal's the removal's own button in the row that asked (correction round
- * 4, the outside review's finding: it was the main button, which saved).
+ * removal's the removal's own button in the row that asked, since the main
+ * button would save the queue instead.
  */
 export interface ShownQueueFailure {
   action: QueueCall;
@@ -826,8 +825,7 @@ export interface QueueFooterView {
  * while that row shows: once the session has no queue, the row goes and the
  * message with it, whether the queue went before the removal's answer failed
  * or after - a removal whose `session.updated` arrived and whose answer was
- * lost removed the queue all the same (correction round 5, the Tester's
- * finding).
+ * lost removed the queue all the same.
  */
 export function queueFooterView(
   {
@@ -932,9 +930,9 @@ export const REMOVE_SETTLE_MS = 500;
 
 /**
  * Whether a click on the removal's button of the section's question is one
- * not aimed at it, which does nothing (D206; correction round 2, the Tester's
- * finding). The question appears in place of the links, its `Remove` at the
- * right end of the row, under the pointer that clicked `Remove queue` (as
+ * not aimed at it, which does nothing (D206). The question appears in place
+ * of the links, its `Remove` at the right end of the row, under the pointer
+ * that clicked `Remove queue` (as
  * `716:383` draws it), so the second click of a double-click, or a second
  * tap, would remove the queue with the question unread. A click that is part
  * of a multi-click - `detail` over 1 - or that comes within

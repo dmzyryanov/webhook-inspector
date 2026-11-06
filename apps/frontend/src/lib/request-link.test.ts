@@ -311,7 +311,7 @@ describe('readSessionLink', () => {
     assert.deepEqual(readSessionLink(PAGE), { kind: 'none' });
   });
 
-  /** Criterion 6: every existing `#<request>` link keeps working. */
+  /** Every existing `#<request>` link keeps working (#228). */
   it('reads a D182 link as the request it names, as readRequestLink does', () => {
     for (const href of [`${PAGE}#${REQUEST}`, `${PAGE}#${REQUEST.toUpperCase()}`]) {
       assert.deepEqual(readSessionLink(href), { kind: 'request', requestId: REQUEST });
@@ -336,7 +336,7 @@ describe('readSessionLink', () => {
     });
   });
 
-  /** Criterion 11's fragments, and the attack list's. */
+  /** Fragments that hold no usable key (#228), and the attack list's. */
   it('takes no key from #key=, a wrong-shaped key, two keys or an unknown part', () => {
     for (const fragment of [
       '',
@@ -513,8 +513,8 @@ describe('readPastedAccess: the field of Session not found (R7, R8)', () => {
 });
 
 /**
- * Finding 1 of the outside review of !252: the key is read from the address
- * before a page's first load, and again when only the fragment changes under
+ * The key is read from the address (!252) before a page's first load, and
+ * again when only the fragment changes under
  * a page already shown - a link with access pasted into the address bar of
  * that session's `Session not found`, which loads no new document and mounts
  * no new page. `SessionPage` calls this on `hashchange` and opens afresh on
@@ -598,7 +598,7 @@ describe('takeKeyFromAddress: the key taken out of the address, on load and on a
     }
   });
 
-  /** Criterion 6: every `#<request>` link keeps working, read after the first list load. */
+  /** Every `#<request>` link keeps working (#228), read after the first list load. */
   it('leaves D182’s request link and an address without a fragment as they are', () => {
     for (const href of [PAGE, `${PAGE}#${REQUEST}`]) {
       const bar = addressBar(href);

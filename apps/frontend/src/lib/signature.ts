@@ -1,6 +1,6 @@
 /**
  * `Check signature…` (issue #74, D197): whether a header of a captured request
- * holds the HMAC of its body under a secret the tester types.
+ * holds the HMAC of its body under a secret the user types.
  *
  * Only the body is signed, exactly as it arrived (`receivedBodyBytes`); the
  * key is the secret's UTF-8 bytes; the HMAC is WebCrypto's. Everything here
@@ -485,12 +485,12 @@ export function signatureChoice(
   };
 }
 
-/** The memory after the tester chooses a header: its algorithm is preselected again. */
+/** The memory after the user chooses a header: its algorithm is preselected again. */
 export function chooseHeader(memory: SignatureMemory, header: SignatureHeader): SignatureMemory {
   return { ...memory, headerName: header.name, algorithm: null };
 }
 
-/** The memory after the tester switches the algorithm, for the header on screen. */
+/** The memory after the user switches the algorithm, for the header on screen. */
 export function chooseAlgorithm(
   memory: SignatureMemory,
   header: SignatureHeader | null,

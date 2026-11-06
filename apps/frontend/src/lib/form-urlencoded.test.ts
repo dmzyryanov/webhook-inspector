@@ -50,7 +50,7 @@ describe('decodeFormUrlencoded', () => {
     ]);
   });
 
-  /** The owner's rule of 2026-09-25: no U+FFFD, and no partial table either. */
+  /** No U+FFFD, and no partial table either (decided on 2026-09-25). */
   it('refuses the whole payload where any escape is not UTF-8', () => {
     assert.equal(decodeFormUrlencoded(WINDOWS_1251), null);
     assert.equal(decodeFormUrlencoded(`a=1&${WINDOWS_1251}&b=2`), null);

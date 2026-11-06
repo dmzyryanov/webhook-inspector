@@ -6,9 +6,9 @@ import { OPERATOR, type Operator } from './operator.ts';
 
 /**
  * The footer every page of the application carries (issue #88, D177): what the
- * site stores, for how long, and where to write. The wording is the one the
- * owner approved in Figma on 2026-09-29 (page `Webhook Inspector · Privacy
- * footer`, direction A), its words amended by the owner on 2026-10-25 (issue
+ * site stores, for how long, and where to write. The wording is the one
+ * approved in Figma on 2026-09-29 (page `Webhook Inspector · Privacy
+ * footer`, direction A), its words amended on 2026-10-25 (issue
  * #274, D265), and `privacy-footer.test.ts` pins it byte for byte.
  *
  * Every claim in it is D177's to keep true: the body and headers are stored
@@ -52,8 +52,8 @@ export const PRIVACY_FOOTER = {
 
 /**
  * The footer's links to the site's own pages, left of `Contact:`: `About`
- * (issue #131, D211), then `Terms` and `Privacy` (issue #112, D217), as the
- * owner approved them in frames F1–F3. From 1024 px they stand 16 px apart,
+ * (issue #131, D211), then `Terms` and `Privacy` (issue #112, D217), as
+ * approved in frames F1–F3. From 1024 px they stand 16 px apart,
  * and from `Contact:`; below 1024 px each is followed by ` · ` in the
  * paragraph, so that `About · Terms · Privacy · Contact: contact@qa-tools.ru`
  * is kept whole where it fits and breaks only after a dot where it does not,

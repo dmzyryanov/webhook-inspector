@@ -62,7 +62,7 @@ export function referenceConfiguration(origin: string): ReferenceConfiguration {
     // Scalar's own fonts come from fonts.scalar.com. The page loads Inter from
     // its own origin instead (main.ts).
     withDefaultFonts: false,
-    // The developer toolbar (Configure, Share, Deploy) links to Scalar's
+    // Scalar's developer toolbar (Configure, Share, Deploy) links to its
     // hosted services; its default shows it on localhost.
     showDeveloperTools: 'never',
     // Ask AI and Generate MCP are hosted services too; both default to on
@@ -73,7 +73,7 @@ export function referenceConfiguration(origin: string): ReferenceConfiguration {
     // to client.scalar.com with this page's description URL.
     hideClientButton: true,
     telemetry: false,
-    // Light only, like the application, with no toggle (owner, 2026-09-24).
+    // Light only, like the application, with no toggle (decided on 2026-09-24).
     darkMode: false,
     forceDarkModeState: 'light',
     hideDarkModeToggle: true,

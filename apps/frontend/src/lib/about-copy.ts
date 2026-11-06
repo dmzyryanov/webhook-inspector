@@ -3,8 +3,8 @@ import { mailtoOf, OPERATOR, type Operator } from './operator.ts';
 
 /**
  * The text of `/about` (issue #131, D211): who runs QA Tools, how it is made,
- * who pays for it and what happens to the data people send. The wording is
- * the owner's, approved with direction D1 of the Figma page `Webhook Inspector
+ * who pays for it and what happens to the data people send. The wording was
+ * approved with direction D1 of the Figma page `Webhook Inspector
  * · About page (#131)` on 2026-10-08, the `Security reviews` line as the legal
  * pages' `Contact` line on 2026-10-11 (issue #163, D224), and
  * `about-copy.test.ts` pins every text byte for byte.
@@ -31,7 +31,7 @@ import { mailtoOf, OPERATOR, type Operator } from './operator.ts';
  * `ABOUT_EN` gathers them into the page's object, of the type its Russian
  * twin `ABOUT_RU` (`about-copy-ru.ts`, issue #170, D255) shares, so one
  * renderer writes both pages. A change to any English text here changes the
- * Russian twin in the same merge request, approved by the owner (D255):
+ * Russian twin in the same merge request, approved with it (D255):
  * `about-pair.test.ts` holds the two in step and fails on any English
  * rewording until the Russian is updated.
  */
@@ -129,7 +129,7 @@ export function composeAbout(
   };
 }
 
-/** The English story and facts, in the owner's words. */
+/** The English story and facts, word for word as approved. */
 export const ABOUT_TEXT_EN: AboutText = {
   whoRunsIt: [
     {
@@ -200,7 +200,7 @@ export function aboutEnglish(operator: Operator = OPERATOR): AboutCopy {
 /** The English page, `/about`, from the constants above: this build's. */
 export const ABOUT_EN: AboutCopy = aboutEnglish();
 
-/** The story of this build's English page: three paragraphs in the owner's words, those it has. */
+/** The story of this build's English page: three paragraphs as approved, those it has. */
 export const ABOUT_STORY: readonly (readonly AboutPart[])[] = ABOUT_EN.story;
 
 /** The facts of this build's English page, in the order it lists them. */

@@ -234,7 +234,7 @@ describe('formatListStatus', () => {
 
 /**
  * The look of the cell, state by state (D207). Until 0.48.0 a sent `200` was
- * green text and a `400` to `599` red, so a `500` the tester configured on
+ * green text and a `400` to `599` red, so a `500` the user configured on
  * purpose read as an error of ours; now an answer the session gave is its code
  * in the pill of its class. The cell was once toned from the status alone,
  * which painted `Pending` and a statusless `Failed` in the success green - and
@@ -323,7 +323,7 @@ describe('headingStatusTone', () => {
     }
   });
 
-  /** The owner's case: a configured `500` is no longer red text. */
+  /** The reported case: a configured `500` is no longer red text. */
   it('never draws a sent, aborted or unknown status in red', () => {
     for (const state of ['sent', 'aborted', 'unknown'] as const) {
       for (const status of [200, 301, 400, 404, 500, 503]) {
@@ -377,7 +377,7 @@ describe('describeResponse: the status in the heading', () => {
     assert.equal(lines.reasonPhrase, 'Internal Server Error');
   });
 
-  /** Acceptance criterion 3 of issue #138: the pill alone. */
+  /** Issue #138: the pill alone. */
   it('has no phrase for a code without one, which shows the pill alone', () => {
     for (const status of [299, 599]) {
       const lines = describeResponse(record({ status }), 'UTC');

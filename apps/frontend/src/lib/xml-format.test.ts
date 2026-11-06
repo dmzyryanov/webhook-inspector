@@ -507,7 +507,7 @@ describe('formatXmlForDisplay: xml:space', () => {
     );
   });
 
-  /** One-directional, as the owner settled it: `default` does not undo `preserve`. */
+  /** One-directional, as settled: `default` does not undo `preserve`. */
   it('does not indent inside a preserved element where a descendant says default', () => {
     keptAsStored(`<r xml:space='preserve'> <a xml:space="default"> <b/> </a> </r>`);
   });

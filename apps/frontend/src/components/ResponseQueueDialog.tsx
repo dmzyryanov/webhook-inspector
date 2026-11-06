@@ -181,7 +181,8 @@ function QueuePanel({
   // the question goes with it and does not come back if a queue is saved
   // again (E3). A failed removal's message goes too, whichever came first,
   // the queue's going or the failure: a removal's event can arrive before
-  // its lost answer fails (correction round 5).
+  // its lost answer fails, and its message would then be said about a queue
+  // no longer there.
   if (confirming && !removable) {
     setConfirming(false);
   }

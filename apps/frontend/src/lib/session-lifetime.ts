@@ -345,7 +345,7 @@ export const SESSION_READ_INTERVAL_MS = 10 * 60 * 1000;
 
 /**
  * Reads the session every `intervalMs` while the page shows it, so a tab left
- * open is a use whatever the window (the owner's decision 3 of 2026-10-18).
+ * open is a use whatever the window (Decision 3 of 2026-10-18).
  *
  * A stable connection makes no read after its first, so without this a quiet
  * tab would watch a 1-hour session expire under it. The backend moves a

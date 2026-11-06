@@ -579,11 +579,10 @@ describe('the toasts (U6, U9, E3)', () => {
   });
 
   /**
-   * The Reviewer's finding of correction round 5: the toast is worded from
-   * the state the page shows once it has taken the answer. A capture can take
-   * step 1 before the answer arrives, which is then set aside, and the page
-   * shows step 2: a toast promising the next two requests sat beside
-   * `Step 2 of 2`.
+   * The toast is worded from the state the page shows once it has taken the
+   * answer. A capture can take step 1 before the answer arrives, which is
+   * then set aside, and the page shows step 2: a toast worded from the answer
+   * would promise the next two requests beside `Step 2 of 2`.
    */
   it('words a save’s and a restart’s toast from the steps still to answer, none once used up', () => {
     const twoSteps = [response({ status: 503 }), response({ status: 429 })];
@@ -628,11 +627,10 @@ describe('the toasts (U6, U9, E3)', () => {
 });
 
 /**
- * `Run again` and its failure (U8, L1). Correction round 6, the Reviewer's
- * finding: a restart whose answer was lost while its own `session.updated`
- * arrived left `Could not start the queue again. Try again.` beside
- * `Step 1 of N` until the next `Run again`. The message is said only while
- * the section offers `Run again`.
+ * `Run again` and its failure (U8, L1). The message is said only while the
+ * section offers `Run again`: otherwise a restart whose answer was lost while
+ * its own `session.updated` arrived would leave `Could not start the queue
+ * again. Try again.` beside `Step 1 of N` until the next `Run again`.
  */
 describe('offersRunAgain', () => {
   it('offers Run again, and keeps its failure, only while the queue is used up', () => {
@@ -788,10 +786,10 @@ describe('a failed save or removal (E2)', () => {
   });
 
   /**
-   * The outside review's finding of correction round 4: a failed removal left
-   * the row that asked, and the main button's `Try again` saved the queue,
-   * starting it from step 1 - or, when the removal had succeeded and only its
-   * answer was lost, put the removed queue back.
+   * A failed removal is retried by the removal, in the row that asked, never
+   * by the main button, whose `Try again` would save the queue, starting it from
+   * step 1 - or, when the removal had succeeded and only its answer was lost,
+   * put the removed queue back.
    */
   it('retries a failed removal with the removal, in the row that asked, and never with a save', () => {
     const removal = describeQueueFailure(
@@ -938,10 +936,10 @@ describe('a failed save or removal (E2)', () => {
   });
 
   /**
-   * The Tester's finding of correction round 5: a removal's own
-   * `session.updated` usually arrives before its lost answer fails. The queue
-   * is gone, so the row that asked has gone, and the failure, set after it,
-   * was said beside a disabled Save queue although nothing was left to remove.
+   * A removal's own `session.updated` usually arrives before its lost answer
+   * fails. The queue is gone, so the row that asked has gone, and the failure,
+   * set after it, must not be said beside a disabled Save queue when nothing
+   * is left to remove.
    */
   it('says a failed removal only in the row that asked, never once the queue is gone, in either order', () => {
     const failure = {
@@ -1029,7 +1027,7 @@ describe('a failed save or removal (E2)', () => {
 /**
  * A failure is held as its call and error and put into words each time it is
  * shown, so one on screen in the non-modal quick switch follows the
- * `EN | RU` switch (D222; correction round 1, the Tester's finding F1).
+ * `EN | RU` switch (D222).
  */
 describe('shownQueueFailure', () => {
   const refused = new ApiError(
@@ -1147,7 +1145,7 @@ describe("the section's Remove queue (issue #142, D206)", () => {
       }),
       { offered: true, asking: true, text: 'Remove all 7 steps?', alert: false, label: 'Remove' },
     );
-    // A used-up one-step queue, as the deployed one the owner looked at.
+    // A used-up one-step queue, as seen on the deployed site.
     assert.deepEqual(
       queueSectionRemoval({
         confirming: true,
@@ -1274,7 +1272,8 @@ describe("the section's Remove queue (issue #142, D206)", () => {
     assert.equal(isHastyRemoveClick(2, 120), true);
     assert.equal(isHastyRemoveClick(3, 250), true);
     assert.equal(isHastyRemoveClick(2, 5_000), true);
-    // A second tap or click of its own: the Tester's 0, 120, 250 and 400 ms.
+    // A second tap or click of its own, at 0, 120, 250 and 400 ms and just
+    // under the bound.
     for (const since of [0, 120, 250, 400, 499.9]) {
       assert.equal(isHastyRemoveClick(1, since), true, `${since} ms`);
     }

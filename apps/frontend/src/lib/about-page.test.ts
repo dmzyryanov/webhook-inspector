@@ -114,7 +114,7 @@ function aboutPagePluginHandler(): (html: string, path: string) => string {
   return (html, path) => hook.handler(html, { path });
 }
 
-/** The footer line 1.12.1 drew, before the owner's words of 1.15.16 (D265). */
+/** The footer line 1.12.1 drew, before the wording of 1.15.16 (D265). */
 const FOOTER_LINE_BEFORE =
   "Captured requests \u2014 headers, body and the sender's IP \u2014 are kept until you delete them or the session goes unused for 7\u00a0days; nightly backups keep them up to 3\u00a0days longer.";
 

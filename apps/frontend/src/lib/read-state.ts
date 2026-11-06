@@ -20,7 +20,7 @@
  *   the id was opened before the load started - so the request was already
  *   stored on the server when the list was read - and the list does not
  *   contain it. An id opened after the load started is never dropped by that
- *   load, which is what keeps criterion 2 true;
+ *   load, which keeps a request opened while the list loads read;
  * - an entry not used for longer than a session lives unused
  *   (`SESSION_IDLE_DAYS`) is removed.
  *

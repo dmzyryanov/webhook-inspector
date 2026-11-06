@@ -167,7 +167,7 @@ describe('reloadSessionOnConnection', () => {
   /**
    * The reload is what makes a tab left open a continuing use of its session:
    * the read endpoint slides the expiry, so a forgotten tab keeps its session
-   * alive for as long as it stays open (D133, owner decision 1).
+   * alive for as long as it stays open (D133).
    */
   it('reports the session it loaded, so the page holds the refreshed expiry', async () => {
     let calls = 0;
@@ -229,8 +229,8 @@ describe('settlePageStatus', () => {
     }
   });
 
-  // The order the outside review traced, a refusal and then the load on mount
-  // answering, is pinned through the socket in `api/realtime.test.ts`.
+  // The order of a refusal and then the load on mount answering (!130) is
+  // pinned through the socket in `api/realtime.test.ts`.
 });
 
 const NBSP = ' ';

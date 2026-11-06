@@ -12,7 +12,7 @@ import type { CompareViewName } from './request-diff.ts';
 /** A comparison on screen: the chosen request's row as chosen, and the view picked, if any. */
 export interface Compared<Item> {
   chosen: Item;
-  /** `null` until the tester picks a view: the comparison's opening view is shown. */
+  /** `null` until the user picks a view: the comparison's opening view is shown. */
   view: CompareViewName | null;
 }
 
@@ -48,7 +48,7 @@ export function chooseRequest<Item>(item: Item): ComparisonState<Item> {
   return { phase: 'comparing', chosen: item, view: null };
 }
 
-/** The tester picked a view of the comparison on screen. */
+/** The user picked a view of the comparison on screen. */
 export function withView<Item>(
   current: ComparisonState<Item> | null,
   view: CompareViewName,

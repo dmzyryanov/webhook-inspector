@@ -17,28 +17,28 @@ const TERMS_PAGE = termsPage(PRODUCTION_OPERATOR);
 const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 
 /**
- * The texts of `/terms` and `/privacy` (issue #112, D217), exactly as the
- * owner approved them on 2026-10-09: every text of the issue's Scope 3, byte
+ * The texts of `/terms` and `/privacy` (issue #112, D217), exactly as
+ * approved on 2026-10-09: every text of the issue's Scope 3, byte
  * for byte, its no-break spaces and its no-break hyphen included, the date
  * line the day each page's text ships. The Privacy Policy's `In your browser`
- * (#108, D222) and `Logs` (#155) lines are the owner's amended wording of
- * 2026-10-10. Since issue #163 (D224) with the lines the owner approved on
+ * (#108, D222) and `Logs` (#155) lines are the wording as amended on
+ * 2026-10-10. Since issue #163 (D224) with the lines approved on
  * 2026-10-11: the governing law, the 14 days' notice of a change on each page
  * and the data processing agreement in `Contact`. Since issue #145 (D227),
- * the `Logs` line on limits in the owner's words of 2026-10-11, a correction
+ * the `Logs` line on limits as worded on 2026-10-11, a correction
  * with no notice: limits keep an address while its connection stays open
- * too. Since issue #185 (D231), the `Logs` line on the proxy's error log, the
- * owner's decision of 2026-10-12, a correction with no notice too: the proxy
+ * too. Since issue #185 (D231), the `Logs` line on the proxy's error log,
+ * decided on 2026-10-12, a correction with no notice too: the proxy
  * always recorded a sender's address when a connection failed, and the page
  * did not say so. Since issue #214 (D224), the first dated line of
- * `Changes to this policy`, announcing a change 14 days before it applies in
- * the owner's words of 2026-10-18, beside the section's rule. Since issue
+ * `Changes to this policy`, announcing a change 14 days before it applies, as
+ * worded on 2026-10-18, beside the section's rule. Since issue
  * #166 (D243), the line of `What a session keeps` on a session created with
- * the sender's IP turned off, the owner's decision 7 of 2026-10-18, published
+ * the sender's IP turned off, by Decision 7 of 2026-10-18, published
  * at once: it keeps less. Since issue #165 (D254), the `Usage statistics` line
- * on sender networks says they are kept 90 days, the owner's option (b) of
+ * on sender networks says they are kept 90 days, option (b) of
  * 2026-10-20, published at once for the same reason. Since issue #275 (D224),
- * the second dated line of `Changes to this policy`, the owner's words of
+ * the second dated line of `Changes to this policy`, as worded on
  * 2026-10-24: mail to the contact address moves to Yandex 360, a new provider,
  * so the move is announced 14 days before it applies.
  * `legal-page.test.ts` shows the pages write these constants
@@ -304,7 +304,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
     // the same day, published at once: it keeps less. The response rules
     // joined what a session keeps on 20 October (issue #134, D246), published
     // at once too: they are configuration the user types, not data about
-    // people, which the owner's decision 7 reads D224's notice as being for.
+    // people, which #134's Decision 7 reads D224's notice as being for.
     // A private session's lines shipped on 21 October (issue #227, D253),
     // published at once as well: fewer people can see a session, and the
     // fingerprint of its key says nothing about a person. The 90 days of the
@@ -333,7 +333,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
           approved(
             'The answer the session sent back, and the response, response queue and response rules you set NBSP up.',
           ),
-          // The owner's words of 2026-10-20 (issue #227, D253).
+          // The line as worded on 2026-10-20 (issue #227, D253).
           approved(
             'A private session keeps a fingerprint of its access key, never the key NBSP itself.',
           ),
@@ -372,7 +372,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
           approved(
             "Also each day's 20 most frequent User-Agent values, content types and NBSP methods.",
           ),
-          // The owner's option (b) of 2026-10-20 (issue #165, D254): the
+          // Option (b) of 2026-10-20 (issue #165, D254): the
           // numbers joined to their days, as `How long` joins them, and the
           // last two words; `full address` is no longer the line's end.
           approved(
@@ -440,7 +440,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
           approved(
             `From ${ANNOUNCED_DAY}, the server's log records the IP NBSP address of a sender that sends far more requests than the limits allow, at most once a NBSP minute.`,
           ),
-          // The owner's words of 2026-10-24 (issue #275, Decision 3).
+          // The line as worded on 2026-10-24 (issue #275, Decision 3).
           approved(
             `From ${MAIL_MOVE_DAY}, mail to the contact address is received by Yandex NBSP 360, in Russia, instead of Apple iCloud NBSP Mail.`,
           ),
@@ -604,7 +604,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
     assert.equal(line.split(NBSP).length - 1, 2);
   });
 
-  // Issue #165 (D254): the owner's option (b) of 2026-10-20, the third of the
+  // Issue #165 (D254): option (b) of 2026-10-20, the third of the
   // section's four lines, read with its joints as spaces; the joints are the
   // five the section's pin above gives it.
   it("states the sender networks' 90 days in the owner's words", () => {

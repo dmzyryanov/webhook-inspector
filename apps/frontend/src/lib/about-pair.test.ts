@@ -76,14 +76,14 @@ process.stdout.write(JSON.stringify([ABOUT_EN, ABOUT_RU]));`,
 
 /**
  * `/about` and `/ru/about` held in step (issue #170, D255). The Russian page
- * is the English one's twin, approved by the owner word for word against the
+ * is the English one's twin, approved word for word against the
  * English of 2026-10-20: the same three paragraphs with the same parts, the
  * same four facts with as many lines each, the MCP address and the mail
  * address in the same places. And because a reworded English sentence keeps
  * every one of those, the hash of the English text the Russian was approved
  * against is recorded beside it (`ABOUT_RU_APPROVED_AGAINST`): any change to
- * an English text fails here until the Russian is changed with it, approved
- * by the owner, and the hash recorded again — the lasting rule D255 states.
+ * an English text fails here until the Russian is changed with it and
+ * approved, and the hash recorded again — the lasting rule D255 states.
  */
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');

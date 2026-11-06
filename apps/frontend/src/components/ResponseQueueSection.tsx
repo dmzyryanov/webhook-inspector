@@ -152,8 +152,8 @@ export function ResponseQueueSection({
 
   // A removal that failed: the removal's button, now `Try again`, was
   // disabled while the call was in flight, so the focus it held may have
-  // fallen to the page's body or the popover itself; it goes to `Try again`
-  // (correction round 2).
+  // fallen to the page's body or the popover itself; it goes to `Try again`,
+  // the control that now retries.
   useLayoutEffect(() => {
     if (removal.alert && focusLost(section.current)) {
       removeButton.current?.focus();
@@ -198,7 +198,7 @@ export function ResponseQueueSection({
           aria-expanded={open}
           aria-controls={BODY_ID}
           // Named by the title and the state, never by the example chips,
-          // which only illustrate (correction round 2): `Response queue`,
+          // which only illustrate: `Response queue`,
           // `Response queue Step 2 of 7`, `Response queue Done`.
           aria-labelledby={view.kind === 'none' ? TITLE_ID : `${TITLE_ID} ${STATE_ID}`}
           onClick={toggle}

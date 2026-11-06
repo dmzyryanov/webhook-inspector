@@ -255,8 +255,7 @@ export function useSessionSocket({
          * wins). This viewer's own change arrives here as well, usually before
          * its answer, which it then sets aside (`recordOwnAnswer`); arriving
          * after an answer that was taken, it sets the same state again, and
-         * after one set aside, it is what brings the change to the page
-         * (correction round 6).
+         * after one set aside, it is what brings the change to the page.
          */
         onSessionUpdated: (event) => {
           takeResponseEvent({ type: 'updated', state: event.data });
