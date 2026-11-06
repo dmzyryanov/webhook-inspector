@@ -9,25 +9,25 @@
 // copy, the versioning guard, the listing, pruning to the three newest copies
 // with everything else untouched, an object that sorts after the new copy,
 // each failure reaching the answer db-backup.sh reads, a missing credential,
-// an empty bucket, and no credential in any output. Since the first correction
-// round also: a copy of 256 MiB uploaded without the process growing by it, no
-// signature in any output even when the storage answers with it, a listing
-// that lies about its size refused, and a versioning answer read as off only
-// when it is whole. Since the second: an upload cut for silence and not for
-// its size, a too-slow one cut by the run's limit with a message of its own,
-// and what is read of a listing bounded to what the uploader's memory holds. Since
-// issue #121: an upload cut by the run's limit after an earlier attempt failed
-// names that attempt's problem first, never "too large", within the 240
-// characters of a failure at production lengths. Since issue #122: a limit
-// that fires late fails a test. In this process, where of two timers the one
-// due first always fires first, an exchange must give up on its silence
-// before an answer that comes a quarter later, and the run's limit must cut an
-// upload before the stand-in has made more pauses than fit in it; in the
-// uploader's own process, an answer ten times later than the silence must
-// never be read, and the run's limit must come before twice its pauses. A
-// stop must end a nap of a minute at once. db-backup.sh's half — the
-// encryption, the hand-over and the answer becoming `Off-server copy failed: …`
-// — is pinned in scripts/db-backup.test.mjs, which also runs the two together.
+// an empty bucket, and no credential in any output. Also pinned: a copy of
+// 256 MiB uploaded without the process growing by it, no signature in any
+// output even when the storage answers with it, a listing that lies about its
+// size refused, and a versioning answer read as off only when it is whole.
+// Also: an upload cut for silence and not for its size, a too-slow one cut by
+// the run's limit with a message of its own, and what is read of a listing
+// bounded to what the uploader's memory holds. Since issue #121: an upload cut
+// by the run's limit after an earlier attempt failed names that attempt's
+// problem first, never "too large", within the 240 characters of a failure at
+// production lengths. Since issue #122: a limit that fires late fails a test.
+// In this process, where of two timers the one due first always fires first, an
+// exchange must give up on its silence before an answer that comes a quarter
+// later, and the run's limit must cut an upload before the stand-in has made
+// more pauses than fit in it; in the uploader's own process, an answer ten
+// times later than the silence must never be read, and the run's limit must
+// come before twice its pauses. A stop must end a nap of a minute at once.
+// db-backup.sh's half — the encryption, the hand-over and the answer becoming
+// `Off-server copy failed: …` — is pinned in scripts/db-backup.test.mjs, which
+// also runs the two together.
 
 import assert from 'node:assert/strict';
 import nodeTest from 'node:test';

@@ -1960,13 +1960,12 @@ async function refuseSaves(
 }
 
 /**
- * Issue #232 (D257): a save the server refuses with a
- * `field` naming a rule or a step marks it - selected, its row in error, the
- * server's message at the field - and the footer names it counted from 1, in
- * the language shown; the first edit takes both away. On a phone the row is
- * marked and nothing opens; its screen shows the mark. The refusals are
- * answered by `page.route`, since the page's own checks refuse what the
- * server would.
+ * Issue #232 (D257): a save the server refuses with a `field` naming a rule or
+ * a step marks it - selected, its row in error, the server's message at the
+ * field - and the footer names it counted from 1, in the language shown; the
+ * first edit takes both away. On a phone the row is marked and nothing opens;
+ * its screen shows the mark. The refusals are answered by `page.route`, since
+ * the page's own checks refuse what the server would.
  */
 test('a save the server refuses at a rule or a step marks it at its field, in both languages and on a phone', async ({
   page,

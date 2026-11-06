@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * The production probe of issue #132 (D221): what a deployment
- * does to the site, measured from outside the cluster for the whole of it.
- * Started before the deploy job and stopped once only the new pods run; run
- * from the operator's Mac, never from the VPS, which would reach the site
+ * The production probe of issue #132 (D221): what a deployment does to the
+ * site, measured from outside the cluster for the whole of it. Started
+ * before the deploy job and stopped once only the new pods run; run from
+ * the operator's Mac, never from the VPS, which would reach the site
  * through its own hairpin:
  *
  *   APP_ORIGIN=https://qa-tools.ru RECEIVE_ORIGIN=https://hook.qa-tools.ru \

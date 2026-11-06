@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * The worst-case measurement of issue #130 (D250): header-only
- * queries of requests, which take places of their own beside the search's
- * two, against a session whose stored headers make every header condition as
- * costly as a webhook can make it.
+ * The worst-case measurement of issue #130 (D250): header-only queries of
+ * requests, which take places of their own beside the search's two, against a
+ * session whose stored headers make every header condition as costly as a
+ * webhook can make it.
  *
  * For each shape of stored headers a fresh project of
  * `measure-header-queries.compose.yml` - the backend image built from this

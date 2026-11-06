@@ -1404,10 +1404,9 @@ async function scrollGeometry(locator: Locator) {
 }
 
 /**
- * Issue #26, on the view that is showing: its box
- * scrolls in neither direction, the tab area around it never scrolls sideways,
- * and the block has exactly the caption it is expected to have, ending above
- * the box.
+ * Issue #26, on the view that is showing: its box scrolls in neither direction,
+ * the tab area around it never scrolls sideways, and the block has exactly the
+ * caption it is expected to have, ending above the box.
  *
  * With `deep`, the tab area also scrolls down through several screens, without
  * which a box that had rendered nothing at all would satisfy the rest.

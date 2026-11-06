@@ -796,10 +796,9 @@ test.describe('E2E-21 — a private session', () => {
 
   /**
    * `Remove from list` confirmed in one tab takes the key out of every tab of
-   * the browser (!252). The tab that opened
-   * the session with it goes home within the page and Back - the same
-   * document, whose memory a reload would have cleared - and finds `Session
-   * not found`, storing nothing again.
+   * the browser (!252). The tab that opened the session with it goes home
+   * within the page and Back - the same document, whose memory a reload would
+   * have cleared - and finds `Session not found`, storing nothing again.
    */
   test('Remove from list in one tab takes the key from every tab of the browser', async ({
     browser,
