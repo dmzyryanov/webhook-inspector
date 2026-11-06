@@ -1,25 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  ErrorCode,
-  type RequestDetails,
-  type RequestListItem,
-  type SessionDetails,
-  type SessionResponseState,
+import type {
+  RequestListItem,
+  SessionDetails,
+  SessionResponseState,
 } from '@webhook-inspector/shared';
 import * as api from '../api/client.ts';
-import { ApiError } from '../api/client.ts';
 import { openSessionSocket } from '../api/realtime.ts';
 import { AppFooter } from '../components/AppFooter.tsx';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { BackBar } from '../components/BackBar.tsx';
 import type { ChosenDetails } from '../components/CompareView.tsx';
-import {
-  cancelPicking,
-  chooseRequest,
-  startPicking as pickingFrom,
-  withView,
-  type ComparisonState,
-} from '../lib/compare-state.ts';
 import { EndpointCard } from '../components/EndpointCard.tsx';
 import { SessionNotFound } from '../components/NotFound.tsx';
 import { RequestDetail } from '../components/RequestDetail.tsx';
@@ -27,10 +17,12 @@ import { RequestActionsSheet } from '../components/RequestActions.tsx';
 import { RequestList } from '../components/RequestList.tsx';
 import { SessionUnavailable } from '../components/SessionUnavailable.tsx';
 import { Toast, type ToastIcon, type ToastMessage } from '../components/Toast.tsx';
-import { DESKTOP_QUERY, useDesktopLayout } from '../hooks/useDesktopLayout.ts';
+import { useComparison, useEscapeLeavesPicking } from '../hooks/useComparison.ts';
+import { useDesktopLayout } from '../hooks/useDesktopLayout.ts';
 import { usePushFlowHistory } from '../hooks/usePushFlowHistory.ts';
 import { useReadState } from '../hooks/useReadState.ts';
 import { useRequestFilter } from '../hooks/useRequestFilter.ts';
+import { staleLink, useRequestSelection } from '../hooks/useRequestSelection.ts';
 import { useMessages } from '../i18n/LanguageProvider.tsx';
 import type { Phrase } from '../i18n/en.ts';
 import { cn } from '../lib/cn.ts';
@@ -49,8 +41,6 @@ import {
   applyResponseRecorded,
   createListLoads,
   deletionClosesDetails,
-  detailToShow,
-  loadRefreshedDetails,
   mergeRequests,
   reloadClosesDetails,
   replaceWithReloaded,
@@ -58,15 +48,9 @@ import {
   shouldRefreshDetailsOnReady,
 } from '../lib/requests.ts';
 import { resolveRequestLinkUnlessMove, takeKeyUnlessMove } from '../lib/move-link.ts';
-import {
-  afterLinkedOpening,
-  removesFragment,
-  takeKeyFromAddress,
-  type AddressBar,
-  type OpeningOutcome,
-} from '../lib/request-link.ts';
+import { removesFragment, takeKeyFromAddress, type AddressBar } from '../lib/request-link.ts';
 import { accessKeyFor, heldOnlyInThisTab, settleOpenedKey } from '../lib/access-keys.ts';
-import { addReadIds, browserStorage, pruneReadState, recordRead } from '../lib/read-state.ts';
+import { browserStorage, pruneReadState } from '../lib/read-state.ts';
 import {
   classifySessionError,
   keepsNoAddress,
@@ -97,14 +81,6 @@ import { EMPTY_SIGNATURE_MEMORY, type SignatureMemory } from '../lib/signature.t
 type Status = SessionPageStatus;
 
 /**
- * `Compare with…` for the open request (#75, D186): picking another request
- * in the list, or comparing with the one chosen, as its row was when chosen.
- * It belongs to the open request, and anything that changes the selection
- * ends it. The transitions are `lib/compare-state.ts`'s.
- */
-type Comparison = ComparisonState<RequestListItem>;
-
-/**
  * Whether keyboard focus has nowhere visible to be: on the page body, or on an
  * element that is no longer shown - the list hidden under an open request, or
  * the Back bar that closing it removed.
@@ -122,9 +98,6 @@ interface SessionPageProps {
    */
   sessionId: string;
 }
-
-/** The toast a link to a request the session no longer holds shows (D182). */
-const staleLink: Phrase = (m) => m.staleLink;
 
 /** The tab's address bar, which a link's key is taken out of (D259). */
 const addressBar: AddressBar = {
@@ -194,15 +167,8 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
   }, []);
   const [session, setSession] = useState<SessionDetails | null>(null);
   const [requests, setRequests] = useState<RequestListItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [details, setDetails] = useState<RequestDetails | null>(null);
-  const [detailFailed, setDetailFailed] = useState(false);
   /** A failed deletion, said in the list in the language shown (D222). */
   const [actionError, setActionError] = useState<Phrase | null>(null);
-  const [comparison, setComparison] = useState<Comparison | null>(null);
-  const [chosenDetails, setChosenDetails] = useState<ChosenDetails>({ status: 'loading' });
-  /** Identifies the chosen request's load whose answer is still wanted. */
-  const latestChosenRequest = useRef(0);
   /**
    * This browser's `localStorage`, or `null` where it is unavailable - in which
    * case read state stays in this tab, as it did before #46 (D156).
@@ -258,8 +224,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     messages: m,
   });
 
-  /** Identifies the detail request whose answer is still wanted. */
-  const latestDetailRequest = useRef(0);
   /**
    * The list loads in flight: whether a deletion has discarded them since they
    * began (D136), and what `request.received` delivered meanwhile (#39).
@@ -274,14 +238,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
    * first, so it is always what the page shows.
    */
   const responseState = useRef<HeldResponseState>(NO_RESPONSE_STATE);
-  /**
-   * The selected request, readable from the socket callback below. That
-   * callback is installed once per connection, and its dependencies are the
-   * session and the reload - re-installing it on every selection would drop and
-   * re-open the WebSocket each time a row is clicked, which is a heavy way to
-   * learn one string.
-   */
-  const selectedIdRef = useRef<string | null>(null);
   /**
    * The ids the list held when the open request was opened. Whatever the list
    * holds beyond them arrived since, and the Back bar counts it (6C, D157).
@@ -319,32 +275,51 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
    * history entry that makes Back return to the list.
    */
   const layout = useDesktopLayout() ? 'split' : 'push';
+  /**
+   * `Compare with…` for the open request (D186): picking, or comparing with
+   * the chosen request, whose details it loads. Held before the selection,
+   * which ends it whenever the selection changes.
+   */
+  const {
+    comparison,
+    chosenDetails,
+    startPicking,
+    choose,
+    loadChosen,
+    showView,
+    cancelComparisonPicking,
+    endComparison,
+  } = useComparison({ sessionId, storage, setOpenedIds, setStatus, listScroll });
+  /**
+   * The open request and its details: opened by a click or a request link
+   * (D182), refreshed on a recorded response or a `ready` (D125), closed by
+   * Back, a deletion or a clear (D137).
+   */
+  const {
+    selectedId,
+    selectedIdRef,
+    details,
+    detailFailed,
+    discardPendingDetails,
+    refreshDetails,
+    select,
+    openLinked,
+  } = useRequestSelection({
+    sessionId,
+    storage,
+    setOpenedIds,
+    setRequests,
+    setStatus,
+    endComparison,
+    showToast,
+    listScroll,
+    lastOpened,
+    setKnownAtOpen,
+    listSection,
+  });
   const picking = comparison?.phase === 'picking' && selectedId !== null;
   // Below 1024 px picking is the list screen, over the open request (A4, D186).
   const view = picking ? 'list' : pushView(selectedId);
-
-  useEffect(() => {
-    selectedIdRef.current = selectedId;
-  }, [selectedId]);
-
-  /**
-   * Drops any detail answer still in flight, so it cannot repopulate the panel,
-   * and returns the panel to its empty state.
-   *
-   * A stable callback rather than a plain function because the socket handlers
-   * below call it too, for a deletion made by another viewer (D137), and so
-   * does the reload that finds the open request missed a deletion. It touches
-   * only a ref and state setters, so it has nothing to depend on.
-   */
-  const discardPendingDetails = useCallback((): void => {
-    latestDetailRequest.current += 1;
-    latestChosenRequest.current += 1;
-    selectedIdRef.current = null;
-    setSelectedId(null);
-    setDetails(null);
-    setDetailFailed(false);
-    setComparison(null);
-  }, []);
 
   /**
    * Loads the list and puts it on screen in place of what was there.
@@ -407,41 +382,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     // their headers and bodies hold is asked again (D191).
     rawSearch.listReloaded();
   }, [sessionId, storage, listLoads, discardPendingDetails, rawSearch, setStatus]);
-
-  /**
-   * Reloads the open panel's request after its response was recorded, or on a
-   * `ready` while it is open (D125, #204).
-   *
-   * The decisions live in `loadRefreshedDetails`, which answers with the detail
-   * to show or with `null`, and `detailToShow`, which keeps the panel from
-   * going back to an earlier reading of its response; this is the caller that
-   * owns the state. Unlike `select()`, it **never clears `details` and never sets the
-   * failure state**: the panel is already holding valid data, and replacing a
-   * good panel with a loading or an error state because a refresh did not come
-   * back would be worse than leaving the response it was opened with on screen.
-   *
-   * Setting `details` re-renders the panel without remounting it: the component
-   * is keyed by the selection, which has not changed, so the tabs the viewer
-   * chose stay where they are (D107).
-   */
-  const refreshDetails = useCallback(
-    async (id: string): Promise<void> => {
-      const loaded = await loadRefreshedDetails({
-        id,
-        token: latestDetailRequest.current,
-        load: (requestId) => api.getRequestDetails(sessionId, requestId),
-        currentState: () => ({
-          selectedId: selectedIdRef.current,
-          token: latestDetailRequest.current,
-        }),
-      });
-
-      if (loaded !== null) {
-        setDetails((current) => detailToShow(current, loaded));
-      }
-    },
-    [sessionId],
-  );
 
   /**
    * A session read begun, on mount or on a `ready` (D133): from now on the
@@ -559,97 +499,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     [],
   );
 
-  /**
-   * Selecting quickly can outrun the network: answers may arrive in a different
-   * order than the clicks. Only the answer to the most recent selection is
-   * applied, so the panel always describes the highlighted row.
-   */
-  const select = useCallback(
-    async (id: string): Promise<OpeningOutcome> => {
-      const token = (latestDetailRequest.current += 1);
-
-      // Opening is what makes a request read (D014), in every tab of this
-      // browser showing the session (D156).
-      setOpenedIds((current) => addReadIds(current, [id]));
-      recordRead(storage, sessionId, id, Date.now());
-      // Written ahead of the effect that mirrors it, so a deletion event landing
-      // before this render commits still sees the row as the open one (D137).
-      selectedIdRef.current = id;
-      setSelectedId(id);
-      setDetails(null);
-      setDetailFailed(false);
-      // Another request opened normally ends a comparison (D186).
-      latestChosenRequest.current += 1;
-      setComparison(null);
-
-      try {
-        const loaded = await api.getRequestDetails(sessionId, id);
-
-        if (latestDetailRequest.current !== token) {
-          return 'superseded';
-        }
-
-        // A refresh sharing this token may have answered first with the
-        // recorded response; an answer still reading pending, or unknown for
-        // an overdue record, does not undo it (#204).
-        setDetails((current) => detailToShow(current, loaded));
-
-        return 'shown';
-      } catch (error) {
-        if (latestDetailRequest.current !== token) {
-          return 'superseded';
-        }
-
-        if (error instanceof ApiError && error.errorCode === ErrorCode.REQUEST_NOT_FOUND) {
-          setRequests((current) => current.filter((item) => item.id !== id));
-          setSelectedId(null);
-          setDetailFailed(false);
-
-          return 'not-found';
-        }
-
-        setStatus(classifySessionFailure(error, () => setDetailFailed(true)));
-
-        return 'failed';
-      }
-    },
-    [sessionId, storage, setStatus],
-  );
-
-  /**
-   * Opens the request a link names, once the first list load has put the
-   * session on screen (D182): exactly as a click on its row does - noted for
-   * the push flow, selected, marked read (D014, D156) - with the list the load
-   * returned as what the list held at the opening. Below 1024 px that is the
-   * push flow's opening, with its history entry; on the desktop there is none.
-   *
-   * What follows is `afterLinkedOpening`: a request the server no longer has
-   * closes again, as any selection of one does, and the toast says it is gone;
-   * one whose details are on screen has its row scrolled into the list's view
-   * on the desktop. The layout is read when the details arrive, not when the
-   * link was read, and a request the viewer left before then moves nothing.
-   */
-  const openLinked = useCallback(
-    async (id: string, listed: readonly RequestListItem[]): Promise<void> => {
-      listScroll.current = window.scrollY;
-      lastOpened.current = id;
-      setKnownAtOpen(new Set(listed.map((item) => item.id)));
-
-      const outcome = await select(id);
-      const layoutNow = window.matchMedia(DESKTOP_QUERY).matches ? 'split' : 'push';
-      const next = afterLinkedOpening(outcome, layoutNow);
-
-      if (next === 'stale-toast') {
-        showToast(staleLink, 'info');
-      } else if (next === 'reveal-row') {
-        listSection.current
-          ?.querySelector<HTMLElement>(`[data-request-id="${CSS.escape(id)}"]`)
-          ?.scrollIntoView({ block: 'nearest' });
-      }
-    },
-    [select, showToast],
-  );
-
   /*
    * Back from an open request returns to the list (D157). Closing it - by Back,
    * by `‹ Requests`, or on its own - is the same state change as a deletion of
@@ -661,7 +510,7 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     openId: status === 'ready' ? selectedId : null,
     // Back while picking returns to the open request, as `Cancel` does
     // (D186); the request's entry is pushed again for the Back after it.
-    onBack: picking ? () => setComparison(cancelPicking) : discardPendingDetails,
+    onBack: picking ? cancelComparisonPicking : discardPendingDetails,
     showingRequests: status === 'ready',
   });
 
@@ -983,109 +832,9 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     return readSessionPeriodically(reloadSession);
   }, [status, reloadSession]);
 
-  /**
-   * Session-level failures during an action take over the page; anything else
-   * is reported in place, leaving the captured requests on screen.
-   */
-  function classifySessionFailure(error: unknown, report: () => void): Status {
-    const classified = classifySessionError(error);
-
-    if (classified === 'error') {
-      report();
-
-      return 'ready';
-    }
-
-    return classified;
-  }
-
-  /**
-   * Loads the request chosen to compare with (D186), with the existing detail
-   * call and nothing else. Only the answer to the latest choice is applied. A
-   * request the server no longer has is gone (D4); a closed session takes the
-   * page over, as any other session-scoped call does.
-   */
-  async function loadChosen(id: string): Promise<void> {
-    const token = (latestChosenRequest.current += 1);
-
-    setChosenDetails({ status: 'loading' });
-
-    try {
-      const loaded = await api.getRequestDetails(sessionId, id);
-
-      if (latestChosenRequest.current === token) {
-        setChosenDetails({ status: 'loaded', details: loaded });
-      }
-    } catch (error) {
-      if (latestChosenRequest.current !== token) {
-        return;
-      }
-
-      if (error instanceof ApiError && error.errorCode === ErrorCode.REQUEST_NOT_FOUND) {
-        setChosenDetails({ status: 'gone' });
-
-        return;
-      }
-
-      setStatus(classifySessionFailure(error, () => setChosenDetails({ status: 'failed' })));
-    }
-  }
-
-  /**
-   * A row chosen while picking: the comparison is shown, and below 1024 px it
-   * is the detail screen again. Its content is read, so the row is too
-   * (D014, D156).
-   */
-  function choose(item: RequestListItem): void {
-    listScroll.current = window.scrollY;
-    setOpenedIds((current) => addReadIds(current, [item.id]));
-    recordRead(storage, sessionId, item.id, Date.now());
-    setComparison(chooseRequest(item));
-    void loadChosen(item.id);
-  }
-
-  /**
-   * `Compare with…`, `Change` and `Choose another`: picking for the open
-   * request. A comparison it starts from is kept, its chosen request's details
-   * and any load of them included, so that leaving picking can put it back.
-   * Below 1024 px picking is the list screen, put back where it was left
-   * (`listScroll`, noted when the request or the last choice was made).
-   */
-  function startPicking(): void {
-    setComparison(pickingFrom);
-  }
-
-  /**
-   * `Cancel`, Escape and Back while picking: nothing changed - the comparison
-   * `Change` started from, on its view, or the open request (D186).
-   */
-  const cancelComparisonPicking = useCallback((): void => {
-    setComparison(cancelPicking);
-  }, []);
-
-  /** `Close ×`: the open request as it was. */
-  const endComparison = useCallback((): void => {
-    latestChosenRequest.current += 1;
-    setComparison(null);
-  }, []);
-
   // Escape anywhere leaves picking with nothing changed, unless something on
   // the page - a dialog, the filter field - has used it already.
-  useEffect(() => {
-    if (!picking) {
-      return;
-    }
-
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
-        cancelComparisonPicking();
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown);
-
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [picking, cancelComparisonPicking]);
+  useEscapeLeavesPicking(picking, cancelComparisonPicking);
 
   /**
    * A row was tapped or clicked: the list's scroll and the requests it holds
@@ -1356,7 +1105,7 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
                     chosenItem: comparing.chosen,
                     chosen: chosenShown,
                     view: comparing.view,
-                    onViewChange: (next) => setComparison((current) => withView(current, next)),
+                    onViewChange: showView,
                     onChange: startPicking,
                     onClose: endComparison,
                     onRetry: () => void loadChosen(comparing.chosen.id),

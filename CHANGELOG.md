@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.24
+
+2026-11-06
+
+**Nothing changes on this site; the session page's code keeps the request
+you open and the comparison with another in parts of their own.** Opening a
+request, its details, a link to a request and `Compare with…` work exactly as
+before. (#421)
+
 ## 1.19.23
 
 2026-11-06
