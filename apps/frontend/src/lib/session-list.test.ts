@@ -248,7 +248,7 @@ function key(n: number): string {
 }
 
 /**
- * Criterion 9 of #228 (D259, amending D199): a full list pushes out its
+ * Issue #228 (D259, amending D199): a full list pushes out its
  * least recently opened public session first, and a private one only when
  * every listed session is private, its key with it.
  */
@@ -346,7 +346,7 @@ describe('a full list with private sessions', () => {
 });
 
 /**
- * Criterion 8 of #228: a session's key leaves with its entry, however it
+ * Issue #228: a session's key leaves with its entry, however it
  * leaves - removed by hand, deleted, or reported gone by the status read.
  */
 describe('a private session leaving the list', () => {
@@ -397,8 +397,8 @@ describe('a private session leaving the list', () => {
 });
 
 /**
- * Finding 3 of the outside review of !252: a status read's `not_found` is a
- * verdict on the key it was sent with - a private session read with no key or
+ * A status read's `not_found` is a verdict on the key it was sent with
+ * (!252) - a private session read with no key or
  * a wrong one answers `not_found` too (D245 point 6). An answer that arrives
  * after another tab stored the session's right key says nothing of it, and
  * takes neither the entry nor that key off.

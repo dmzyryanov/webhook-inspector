@@ -33,7 +33,7 @@ const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
 /**
  * The footer every page carries (issue #88, D177), with `About` before
  * `Contact:` since issue #131 (D211) and `Terms` and `Privacy` after it since
- * issue #112 (D217). The wording is the owner's, approved in Figma, so it is
+ * issue #112 (D217). The wording was approved in Figma, so it is
  * pinned byte for byte, no-break spaces and dashes included; its two numbers
  * are held to the rules that make them true; and both footers - the
  * application's component and the static pages' HTML - are read to show that
@@ -47,7 +47,7 @@ const NBSP = '\u00a0';
 
 describe('the privacy footer', () => {
   it('says what the owner approved, byte for byte', () => {
-    // The line itself, D177's, its words amended by the owner on 2026-10-25
+    // The line itself, D177's, its words amended on 2026-10-25
     // (Decision 1, variant B; issue #274, D265).
     assert.equal(
       PRIVACY_FOOTER.line,

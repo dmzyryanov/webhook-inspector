@@ -4,7 +4,7 @@ import { holdAccessKey, releaseAllAccessKeys } from '../lib/access-keys.ts';
 import * as api from './client.ts';
 
 /**
- * Criterion 2 of #228 (D245 point 5, D259): every call the page makes for a
+ * Issue #228 (D245 point 5, D259): every call the page makes for a
  * private session carries its key as `Authorization: Bearer`, the status read
  * as `accessKeys` beside the ids it applies to, and no request URL holds the
  * key; a public session's calls go out exactly as before. `fetch` is stubbed

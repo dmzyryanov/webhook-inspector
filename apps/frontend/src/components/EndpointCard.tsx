@@ -212,7 +212,7 @@ export function EndpointCard({
           onQueueRestarted={(next, startedAt) => {
             // Worded from the answer, or from what the page shows once it
             // holds the restart's own event: a capture may already have taken
-            // a step of the queue started again (correction rounds 5 and 6).
+            // a step of the queue started again, which the answer does not show.
             const described = onStateChange(next, startedAt);
 
             setSwitchOpen(false);
@@ -263,7 +263,7 @@ export function EndpointCard({
         onSaved={(next, startedAt) => {
           // Worded from the answer, or from what the page shows once it holds
           // the save's own event: a capture may already have taken a step of
-          // the queue saved (correction rounds 5 and 6).
+          // the queue saved, which the answer does not show.
           const described = onStateChange(next, startedAt);
 
           setQueueOpen(false);

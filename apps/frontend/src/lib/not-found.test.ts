@@ -411,8 +411,8 @@ describe('sessionNotFoundView', () => {
 
   /**
    * Since #216 a session's window is chosen when it is created, so the
-   * sentence names the window chosen, beside deletion on purpose (D198), in
-   * the owner's words (Decision 6 of 2026-10-18, D249; the number dropped by
+   * sentence names the window chosen, beside deletion on purpose (D198), as
+   * worded by Decision 6 of 2026-10-18 (D249; the number dropped by
    * Decision 2 of 2026-10-25, D265): the page cannot know the window of a
    * session the API answers `404`.
    */

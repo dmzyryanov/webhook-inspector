@@ -37,7 +37,7 @@ interface CompareViewProps {
   /** The chosen request's row as it was chosen: always `+`. */
   chosenItem: RequestListItem;
   chosen: ChosenDetails;
-  /** The view the tester picked, or `null` for the comparison's opening view. */
+  /** The view the user picked, or `null` for the comparison's opening view. */
   view: CompareViewName | null;
   onViewChange: (view: CompareViewName) => void;
   /** `Change` and `Choose another`: picking again for the same open request. */

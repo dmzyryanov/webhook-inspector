@@ -4,8 +4,8 @@ import { OPERATOR, type Operator } from './operator.ts';
 
 /**
  * The text of `/ru/about` (issue #170, D255): the Russian twin of `/about`
- * (`about-copy.ts`, D211), in the owner's words, approved word for word as
- * variant A on 2026-10-20 — calm and close to the English, the service's
+ * (`about-copy.ts`, D211), approved word for word as variant A on
+ * 2026-10-20 — calm and close to the English, the service's
  * owner in plain words rather than any legal term. `about-copy-ru.test.ts`
  * pins every text byte for byte, and `about-pair.test.ts` holds it in step
  * with the English: the same parts in the same places, and the English it
@@ -106,8 +106,8 @@ export const ABOUT_RU: AboutCopy = aboutRussian();
  * The SHA-256 of the English text the Russian was approved against on
  * 2026-10-20 (`aboutCopyText(ABOUT_EN)`, hex). `about-pair.test.ts` takes the
  * hash of today's English and fails when it differs: an English rewording
- * changes this page in the same merge request, approved by the owner, and
- * this value with it (D255).
+ * changes this page in the same merge request, its Russian approved again,
+ * and this value with it (D255).
  */
 export const ABOUT_RU_APPROVED_AGAINST =
   'b9b41eac5c0296a4906a9d2ce6691d2395b03e61b88addcd94ab3abda4b6f41c';

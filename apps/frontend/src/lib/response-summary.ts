@@ -151,7 +151,7 @@ export type ListStatusTone = 'answered' | 'failure' | 'neutral';
  * status alone (D207).
  *
  * The pill says "the session answered this, and this is what it answered", and
- * only a completed write can say that. A status is what the tester configured,
+ * only a completed write can say that. A status is what the user configured,
  * so no class of it is an alarm or a reassurance: a `500` set on purpose to
  * check a retry is drawn in its class's tint rather than in red, and a `200`
  * is no longer green text. Deriving the look from the status alone would draw

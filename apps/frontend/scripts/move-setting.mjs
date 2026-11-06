@@ -17,7 +17,7 @@ import { SITE_ORIGINS } from './site-origin.mjs';
  * Day X is read from `CHANGELOG.md`, from the sentence of the move's
  * Deprecated paragraph that names it (`From <day> they stop answering`,
  * D275 item 2), which with D275 itself is the one place that names it: when
- * the Coordinator corrects that date, the banner follows with the next build.
+ * that date is corrected there, the banner follows with the next build.
  * A build with a move whose changelog names no such day fails, rather than
  * drawing a banner without its date. A build with no second origin needs no
  * day, and does not read the changelog for one (issue #346); its changelog

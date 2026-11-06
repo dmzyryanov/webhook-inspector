@@ -88,7 +88,7 @@ describe('createSessionInit', () => {
     }
   });
 
-  /** #228's criterion 1: `"private": true` beside #216's other chosen keys. */
+  /** #228: `"private": true` beside #216's other chosen keys. */
   it('sends "private": true for a private session, beside the other chosen keys', () => {
     const cases: [NewSessionOptions, string][] = [
       [options(WEEK, true, true), '{"private":true}'],

@@ -7,7 +7,7 @@
  * beside that sentence opens the full editor. So a custom change sent from here
  * carries the kept headers and body unchanged - a template stays one (D251) -
  * and the one rule that ties the status to the body is checked against them:
- * 204, 205 and 304 are refused while a body is set (owner's rule 2, D101).
+ * 204, 205 and 304 are refused while a body is set (D101).
  *
  * Everything the popover shows is decided here, as data, so the rules are
  * unit-tested without a DOM (D070).

@@ -55,7 +55,7 @@ describe('statusClass', () => {
 });
 
 describe('statusPillClassName', () => {
-  /** Acceptance criterion 1 of issue #138: 200, 301, 404 and 503. */
+  /** Issue #138: 200, 301, 404 and 503. */
   it('tints the pill by class, in the tokens of that class alone', () => {
     const cases: Array<[number, string]> = [
       [200, 'bg-status-2xx text-status-2xx-ink'],

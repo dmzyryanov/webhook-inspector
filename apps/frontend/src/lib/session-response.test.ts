@@ -314,10 +314,9 @@ function taking(held: HeldResponseState, ...events: ResponseEvent[]): HeldRespon
  * D205). The page reads its session on mount and on every `ready`, and the
  * read may have been taken by the server before or after any event that
  * arrives meanwhile; it is applied with those events on top, in the order
- * they arrived. Correction round 5, the Tester's findings A and B: the round
- * before set the read aside whenever a capture or a clear moved the page's
- * queue meanwhile, and kept state another client had replaced while the
- * socket was down.
+ * they arrived. It is not set aside because a capture or a clear moved the
+ * page's queue meanwhile: that would keep state another client had replaced
+ * while the socket was down.
  */
 describe('a session read and the events taken while it was in flight', () => {
   const OLD = steps(503, 503, 503);
@@ -440,7 +439,7 @@ describe('a session read and the events taken while it was in flight', () => {
     }
   });
 
-  /** Outside finding 2 and the Tester's finding B: the page holds no queue; another client saves one. */
+  /** The page holds no queue; another client saves one. */
   it('takes a queue the page did not hold with the step a capture took during the read, one step queue included', () => {
     const page = showing(PAGE);
     const begun = beginSessionRead(page);
@@ -576,9 +575,8 @@ describe('a session read and the events taken while it was in flight', () => {
 
 /**
  * The answer to this viewer's own call against what the socket brought while
- * it was in flight (correction round 4, the outside review's finding). The
- * change's `session.updated` is published before its answer is written, on
- * another connection, and a capture can follow it.
+ * it was in flight. The change's `session.updated` is published before its
+ * answer is written, on another connection, and a capture can follow it.
  */
 describe('recordOwnAnswer', () => {
   const page: SessionDetails = {
@@ -710,12 +708,11 @@ describe('recordOwnAnswer', () => {
 
 /**
  * The state the toast about the viewer's own save or `Run again` is worded
- * from (U6, U9). Correction round 5, the Reviewer's finding: a capture can
- * take step 1 after the change's event and before its answer, which is then
- * set aside, and the toast promised both steps beside `Step 2 of 2`.
- * Correction round 6, the Tester's finding: an answer set aside for an event
- * from before the change, whose own event then arrives after it, had the
- * toast describe the state before the change - G9, G10.
+ * from (U6, U9). A capture can take step 1 after the change's event and
+ * before its answer, which is then set aside, and a toast worded from the
+ * answer would promise both steps beside `Step 2 of 2`. An answer set aside
+ * for an event from before the change, whose own event then arrives after
+ * it, must not have the toast describe the state before the change - G9, G10.
  */
 describe('ownChangeState', () => {
   const OLD = steps(500, 501, 502);
@@ -877,8 +874,7 @@ describe('ownChangeState', () => {
 
 /**
  * Whether the queue was started from step 1 since a call started (D205): what
- * a failed `Run again` asks before it says so (correction round 7, the
- * Tester's note N1 on correction round 6).
+ * a failed `Run again` asks before it says so.
  */
 describe('queueStartedSince', () => {
   const usedUp = { ...PAGE, queue: queueOf(steps(503), null) };
@@ -1038,11 +1034,10 @@ describe('sameResponseState', () => {
 });
 
 /**
- * A read's log at growing sizes (correction round 6, the Tester's finding):
- * every event taken while a read is in flight was appended to a copy of the
- * whole log, so a burst of 16,000 took about 90 ms where 1,000 took 1. Now
- * each event shares the log before it: none is copied, at any size, and a
- * `session.updated` still starts the log afresh.
+ * A read's log at growing sizes: every event taken while a read is in flight
+ * was appended to a copy of the whole log, so a burst of 16,000 took about
+ * 90 ms where 1,000 took 1. Now each event shares the log before it: none is
+ * copied, at any size, and a `session.updated` still starts the log afresh.
  */
 describe('a read’s log at growing sizes', () => {
   const QUEUE = queueOf(steps(503, 429, 418), 1);
@@ -1087,7 +1082,7 @@ describe('a read’s log at growing sizes', () => {
  * the previous image during a rolling update or after a rollback - carry no
  * `rules` (D221, D246). Each is taken here as the page takes it, so the
  * rules shown stay as they are, and one that carries `rules: []` clears them
- * (issue #226 and #134's outside review: `responseStateOf` read an absent
+ * (issue #226, after #134: `responseStateOf` read an absent
  * `rules` as `[]`, and `applyResponseEvent` cleared the rules the page held
  * though they stayed saved; the test of #134 called `applyResponseState`
  * alone and missed it).
@@ -1165,11 +1160,10 @@ describe('a state without rules, through every path the page takes it by (D246)'
   });
 
   /**
-   * The outside review's finding 1 on f6df31f (correction round 2): a
-   * `session.updated` started a read's log afresh, so one without `rules`
-   * dropped the rules an earlier event in the read's window had said, and the
-   * stale read's own rules came back from under it - rules just saved shown
-   * as none, rules just removed shown again.
+   * A `session.updated` starts a read's log afresh, so one without `rules`
+   * must not drop the rules an earlier event in the read's window had said:
+   * the stale read's own rules would come back from under it - rules just
+   * saved shown as none, rules just removed shown again.
    */
   it('does not let a stale read undo rules saved during it, though a later event says none', () => {
     const shown = showing(PAGE);

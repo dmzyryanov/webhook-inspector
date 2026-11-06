@@ -8,7 +8,7 @@
  * the very function it checks a creation with.
  *
  * Picking Default hides the custom fields and keeps what they hold, so
- * switching back shows them again (owner's rule 1). Saving the default sends
+ * switching back shows them again. Saving the default sends
  * the mode alone: the custom response the session keeps is left exactly as it
  * was saved (D151).
  */
@@ -110,7 +110,7 @@ export function formatHeaderCounter(form: ResponseForm): string {
 
 /**
  * The body field's label. It names no format: any text is a body, sent as
- * typed (D179), and the tester says what it is with a `Content-Type` header
+ * typed (D179), and the user says what it is with a `Content-Type` header
  * row. The hint `Returned exactly as entered` that stood under it is gone:
  * the unticked `Fill in placeholders from the request` says it now, on that
  * line (issue #236, D251).

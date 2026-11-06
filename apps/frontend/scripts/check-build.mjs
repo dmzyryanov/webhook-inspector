@@ -819,7 +819,7 @@ export function changelogLinksIn(text) {
 
 /**
  * The files of a build without the operator's texts that still link one of
- * the changelog's addresses (issue #396, criterion 4), each with the links:
+ * the changelog's addresses (issue #396), each with the links:
  * that build serves none of them, so each would lead to `Page not found`.
  */
 export function changelogLinkProblems(dist) {
@@ -886,7 +886,7 @@ export function productionNamesLeft(text, origins = SITE_ORIGINS) {
 
 /**
  * The text files of a build for another origin that still name production,
- * outside the names kept and the configured hosts (issue #320, criterion 2):
+ * outside the names kept and the configured hosts (issue #320):
  * each would send a reader of the copy to qa-tools.ru.
  */
 export function productionNameProblems(dist, origins = SITE_ORIGINS) {
@@ -1006,7 +1006,7 @@ export function operatorNamesLeft(text, operator = OPERATOR) {
 
 /**
  * The files of a build for `operator` that still name one of production's
- * operator details its settings do not name (issue #369, criterion 2), each
+ * operator details its settings do not name (issue #369), each
  * with the names: every file of the build, read as UTF-8, whose ASCII names
  * survive any other bytes around them, images and fonts included, but the
  * changelog's history. A build with production's settings has nothing to

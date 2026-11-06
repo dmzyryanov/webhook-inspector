@@ -29,7 +29,7 @@
    * switch's typed status and delay while they hold a valid value (issue #61,
    * D158). Where `--color-line` all but vanished and the button read smaller
    * than Copy beside it, this gives it a boundary. At 2.57:1 on white it is
-   * below WCAG 1.4.11's 3:1 by the owner's choice: the controls stay known by
+   * below WCAG 1.4.11's 3:1 on purpose: the controls stay known by
    * their label, caret and place. Containers - cards, panels, chips - keep
    * `--color-line`, which this must stay darker than.
    */
@@ -39,7 +39,7 @@
    * `Webhook Inspector · Collapsible response queue (#142) — approved`, crop
    * `719:140`, D206): it sets the queue apart from the session response as a
    * feature of its own. Lighter than `--color-line-strong` and darker than
-   * `--color-line`, the owner's choice of 2026-10-07; a line between two parts
+   * `--color-line`, as chosen on 2026-10-07; a line between two parts
    * of a popover, not a control's boundary or a text tier.
    */
   --color-line-section: #b8bfcc;

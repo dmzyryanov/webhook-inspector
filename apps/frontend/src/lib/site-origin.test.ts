@@ -1141,7 +1141,7 @@ describe('the changelog of a build with no second origin (#343)', () => {
 
 /**
  * The build check's refusal of a build for another address that still names
- * production (issue #320, criterion 2), on trees written here: the configured
+ * production (issue #320), on trees written here: the configured
  * hosts are names the build may carry, even where they end in production's,
  * as day X's do (#324), and every other `qa-tools.ru` is reported.
  */

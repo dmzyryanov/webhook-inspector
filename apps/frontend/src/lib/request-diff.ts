@@ -2,7 +2,7 @@
  * What `Compare with…` shows (issue #75, D186): the line model of each request
  * view for two captured requests, the open one first.
  *
- * **What is compared is what the views display**, so what the tester reads is
+ * **What is compared is what the views display**, so what the user reads is
  * what is compared, and nothing stored changes (D007):
  *
  * - `Raw`: the stored text as the `Raw` view draws it (`textOnScreen`);
@@ -13,7 +13,7 @@
  *   (D045).
  *
  * **The open request is always `−` and the chosen one `+`**, whatever their
- * times (owner, 2026-09-30): `compareRequests(open, chosen)`.
+ * times (decided on 2026-09-30): `compareRequests(open, chosen)`.
  *
  * The line diff is jsdiff's (`diffArrays`), never a hand-written one, run with
  * an edit limit (`MAX_EDIT_LENGTH`): two unrelated bodies give up quickly

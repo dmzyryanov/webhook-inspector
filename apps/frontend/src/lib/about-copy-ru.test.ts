@@ -7,8 +7,8 @@ import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
 
 /**
- * The text of `/ru/about` (issue #170, D255), exactly as the owner approved it
- * on 2026-10-20, variant A: every text of the issue's `Russian text,
+ * The text of `/ru/about` (issue #170, D255), exactly as approved on
+ * 2026-10-20, variant A: every text of the issue's `Russian text,
  * approved`, byte for byte, with the no-break spaces that set where its lines
  * may end (issue #258): after every one-letter word, before every em dash,
  * inside `QA Tools`, and among the last words of some lines (D211's rule),
@@ -69,7 +69,7 @@ describe('the Russian about page text (variant A, 2026-10-20)', () => {
   it('has the eyebrow and the heading the owner approved', () => {
     assert.equal(ABOUT_RU.eyebrow, approved('О NBSP QA NBSP TOOLS'));
     assert.equal(ABOUT_RU.heading, approved('От тестировщика NBSP — тестировщикам'));
-    // The owner's option B (issue #258): the dash ends the first line on a phone.
+    // Option B of issue #258: the dash ends the first line on a phone.
     assert.equal(ABOUT_RU.heading, `От тестировщика${NBSP}${EM_DASH} тестировщикам`);
   });
 

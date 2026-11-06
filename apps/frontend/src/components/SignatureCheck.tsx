@@ -59,7 +59,7 @@ interface SignatureCheckFormProps {
 /**
  * The check itself (Figma `Webhook Inspector · Check signature`, direction B):
  * the signature header, the secret with its warning, the algorithm, and the
- * result, computed as the tester types. The same form is the desktop's and
+ * result, computed as the user types. The same form is the desktop's and
  * tablet's popover and the phone's sheet.
  *
  * On mount it takes focus: the secret field while it is empty, else the

@@ -209,7 +209,7 @@ export function LandingPage() {
   /**
    * `Remove from list`: at once for a public session; for a private one, whose
    * key leaves with the entry, after R3's warning, which offers its link with
-   * access first (the owner's decision 1 of #228).
+   * access first (#228's Decision 1).
    */
   function askToRemove(id: string): void {
     const key = privateIds.has(id) ? accessKeyFor(id, storage) : null;

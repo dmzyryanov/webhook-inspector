@@ -6,29 +6,29 @@ import { mailtoOf, OPERATOR_TEXTS, type OperatorWithTexts } from './operator.ts'
  * (issue #112, D217): what QA Tools is and is not, what may not be done with
  * it, what it stores, for how long, who can see it, where it is, which law
  * governs the terms, how a change is announced and whom to write to. The
- * wording is the owner's, approved with the frames of the Figma page `Webhook
+ * wording is the operator's, approved with the frames of the Figma page `Webhook
  * Inspector · Terms and Privacy (#112)` on 2026-10-09, with the Privacy
- * Policy's `In your browser` (#108) and `Logs` (#155) lines amended by the
- * owner on 2026-10-10 and, for the governing law, the 14 days' notice of a
+ * Policy's `In your browser` (#108) and `Logs` (#155) lines amended
+ * on 2026-10-10 and, for the governing law, the 14 days' notice of a
  * change and the data processing agreement, on 2026-10-11 (issue #163, D224),
  * the `Logs` line on limits, which the connection limits keep true, on
  * 2026-10-11 as a correction rather than an announced change (issue #145,
- * D227), and the `Logs` line on the proxy's error log, added by the owner's
- * decision of 2026-10-12 as a correction too (issue #185, D231), and the
- * first dated announcement in `Changes to this policy`, the owner's words of
+ * D227), and the `Logs` line on the proxy's error log, added on
+ * 2026-10-12 as a correction too (issue #185, D231), and the
+ * first dated announcement in `Changes to this policy`, worded on
  * 2026-10-18 with the day the change applies (issue #214, D224), and the
- * response rules among what a session keeps, by the owner's decision 7 of
+ * response rules among what a session keeps, by Decision 7 of
  * issue #134 of 2026-10-19, published at once: session configuration, not
  * data about people (D246, amending D224), and who can see a private session
- * and the fingerprint of its key it keeps, the owner's words of 2026-10-20,
+ * and the fingerprint of its key it keeps, worded on 2026-10-20,
  * published at once with no notice: fewer people can see a session, and the
  * fingerprint says nothing about a person (issue #227, D253), and the 90 days
- * a day's sender networks are kept, option (b) of the owner's word of
+ * a day's sender networks are kept, option (b) of
  * 2026-10-20, published at once: it keeps less (issue #165, D254), and the
- * access keys of private sessions in `In your browser`, the owner's decision 4
+ * access keys of private sessions in `In your browser`, by Decision 4
  * of issue #228 of 2026-10-19, published at once: what only the browser keeps
  * applies when published (D224, D259), and the second dated announcement in
- * `Changes to this policy`, the owner's words of 2026-10-24 with the day the
+ * `Changes to this policy`, worded on 2026-10-24 with the day the
  * contact address's mail moves to Yandex 360, a new provider (issue #275,
  * D224); each page
  * is one constant, and `legal-copy.test.ts` pins both byte for byte;

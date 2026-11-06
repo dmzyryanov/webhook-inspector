@@ -382,7 +382,8 @@ function QuickSwitchPanel({
 
   // A failed restart's message goes once the section no longer shows a
   // used-up queue, whichever came first: a restart whose answer was lost
-  // usually has its own event arrive before the failure (correction round 6).
+  // usually has its own event arrive before the failure, so the message
+  // would otherwise stay beside a queue that started again.
   if (restartFailed && !offersRunAgain(state)) {
     setRestartFailed(false);
   }
@@ -499,7 +500,7 @@ function QuickSwitchPanel({
    * taken a `session.updated` starting the queue from step 1 since the call
    * started: its own, whose answer was then lost, or another viewer's. A
    * capture may since have used up a one-step queue again, and the section
-   * offers `Run again` once more (correction round 7, the Tester's note N1).
+   * offers `Run again` once more, so saying the restart failed would be untrue.
    */
   async function runAgain(): Promise<void> {
     if (busy) {
@@ -679,7 +680,8 @@ function QuickSwitchPanel({
                   </Chip>
                 ) : (
                   // Unavailable rather than disabled, so that it still takes
-                  // hover and focus and can say why (C6, owner's rule 2).
+                  // hover and focus and can say why (C6: 204, 205 and 304
+                  // are refused while a body is set).
                   <Chip
                     key={status}
                     selected={false}

@@ -151,9 +151,10 @@ describe('the ink classes the components use', () => {
  * The border of a white secondary control on white (issues #51 and #61, D158).
  * With `--color-line` the endpoint card's response button all but lost its
  * outline beside the filled Copy and read smaller than it; `--color-line-strong`
- * is the value the owner chose to give it a boundary. Since #61 it is `#9aa2b1`,
- * 2.57:1 on white: below the 3:1 WCAG 1.4.11 asks of a control's boundary, by
- * the owner's choice, so this test no longer holds it to 3:1. What it holds
+ * is the value chosen to give it a boundary. Since #61 it is `#9aa2b1`,
+ * 2.57:1 on white: below the 3:1 WCAG 1.4.11 asks of a control's boundary, on
+ * purpose, since the controls stay known by their label, caret and place, so
+ * this test no longer holds it to 3:1. What it holds
  * instead is the value itself, and that a control's line stays darker than a
  * container's.
  */
@@ -197,7 +198,7 @@ describe('the control boundary in index.css', () => {
 
 /**
  * The line above the quick switch's Response queue section (issue #142,
- * D206): the owner's #b8bfcc, a little lighter than the darker line first
+ * D206): #b8bfcc, chosen a little lighter than the darker line first
  * drawn, `--color-line-strong`, and darker than the container line, so the
  * section reads as a feature of its own rather than one more part of the
  * session response, as the soft line it had in 0.46.0 made it read.
@@ -263,7 +264,8 @@ describe('the search notice in index.css', () => {
 });
 
 /**
- * The move banner (issue #321, D276; Figma direction C1): 13 px text in the
+ * The move banner (issue #321, D276; Figma `Webhook Inspector · Move banner
+ * (#321)`, C1): 13 px text in the
  * brand colour and its 13 px action in the link colour on the light-blue
  * bar, `--color-row-selected`, with a 1 px line of its own below it.
  */

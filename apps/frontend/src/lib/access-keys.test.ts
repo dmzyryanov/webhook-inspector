@@ -222,7 +222,7 @@ describe('storage that cannot be used', () => {
     }
   });
 
-  /** Criterion 11: a link with access still opens its session in that tab. */
+  /** A link with access still opens its session in that tab (#228). */
   it('still holds a kept key in this tab, which every call then presents', () => {
     keepAccessKey(blocked, id(1), key(1));
 
@@ -352,8 +352,8 @@ describe('settleOpenedKey: the key of a session that has loaded', () => {
 });
 
 /**
- * Finding 2 of the outside review of !252: a key removed in one tab of this
- * browser is removed in every tab. Two tabs share storage and nothing else;
+ * A key removed in one tab of this browser is removed in every tab (!252).
+ * Two tabs share storage and nothing else;
  * here the module is tab A - its held keys, the storage it reads - and tab B
  * is a write to that same storage, as `Remove from list` there makes it, with
  * the `storage` event the browser fires in tab A for it.
@@ -519,7 +519,7 @@ describe('a key removed in another tab', () => {
 });
 
 /**
- * Criterion 11 and D245 point 5: the status read's `accessKeys` names only
+ * D245 point 5: the status read's `accessKeys` names only
  * ids it asks about, and only values of a key's shape, so one bad stored key
  * never fails the read of the rest of the list (`400` / `1014`).
  */

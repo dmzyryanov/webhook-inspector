@@ -54,7 +54,7 @@ export function keptCustomResponse(state: {
  * (D107, D150) - and the steps of the response queue still to answer,
  * `Custom · 200 · 6 queued`, dropped once none is left (D205, U6, U7) - and
  * the response rules the session holds after it, `Custom · 200 · 6 queued ·
- * 3 rules` (D246, issue #226, criterion 5). A custom session answering `200`
+ * 3 rules` (D246, issue #226). A custom session answering `200`
  * is never presented as a default one.
  *
  * The status is the number alone. A reason phrase would push the button wide
@@ -132,7 +132,7 @@ export function describeKeptResponse(custom: ResponseConfig, m: Messages = en): 
 
 /**
  * The quick switch's line under the default when a custom response is kept
- * (C4). Owner's rule 1: picking the default keeps it (D151).
+ * (C4): picking the default keeps the custom response (D151).
  */
 export function formatKeptNote(custom: ResponseConfig, m: Messages = en): string {
   return m.response.keptNote(describeKeptResponse(custom, m));
@@ -201,7 +201,7 @@ function saidRules(state: SessionResponseState | null): ResponseRule[] | undefin
  * (D246), so the state answered has no `rules` either rather than `[]`:
  * spread over the state the page holds (`applyResponseEvent`), it leaves the
  * rules shown as they are, where `[]` cleared them although they stayed
- * saved (#134's outside review, fixed with #226). Every reader of the rules
+ * saved (#134, fixed with #226). Every reader of the rules
  * reads an absent list as none (`heldRules`).
  */
 export function responseStateOf(session: SessionResponseState): SessionResponseState {
@@ -269,9 +269,8 @@ export function applyResponseEvent<T extends SessionResponseState>(
 /**
  * The events a read in flight has taken, newest first: each event taken
  * points at the log before it, which it shares rather than copies, so taking
- * one costs the same however many came before (correction round 6, the
- * Tester's finding: a copy of the whole log on every event made a long burst
- * quadratic). `null` is a log of none.
+ * one costs the same however many came before (a copy of the whole log on
+ * every event would make a long burst quadratic). `null` is a log of none.
  */
 export interface EventLog {
   event: ResponseEvent;
@@ -297,8 +296,7 @@ export function eventsOf(log: EventLog | null): ResponseEvent[] {
  * The rules are kept apart from the log because a `session.updated` starts
  * the log afresh (`withEvent`), and one from a backend before 1.3.0 says no
  * rules: it would drop the rules an event before it said, and the read's own
- * rules - older than them - would be shown in their place (correction round
- * 2, the outside review's finding 1 on f6df31f).
+ * rules - older than them - would be shown in their place.
  */
 export interface SessionReadInFlight {
   order: number;
@@ -503,8 +501,8 @@ export function settleSessionRead<T extends SessionResponseState>(
  * written, on another connection, and a capture that takes a step of the
  * queue can follow it: an answer arriving after them would put the queue back
  * a step, `Done` back to `1 queued`, and nothing after it would set that
- * right, since later requests carry no step (correction round 4, the outside
- * review's finding). The state shown never needs an answer set aside: its own
+ * right, since later requests carry no step. The state shown never needs an
+ * answer set aside: its own
  * event, published before the answer, reaches a page whose socket is
  * connected - usually before the answer, at times after it - and a read the
  * page took meanwhile was started on a `ready`, so either after that
@@ -595,15 +593,14 @@ export function sameResponseState(
 /**
  * The response state a toast about this viewer's own change describes (U6,
  * U9), from the page as it was when the answer to a call started at
- * `startedAt` arrived, and that answer's `state` (D205; correction round 6,
- * the Tester's finding).
+ * `startedAt` arrived, and that answer's `state` (D205).
  *
  * - The answer taken: the answer, which is then what the page shows.
  * - Set aside, and the last `session.updated` the page took, taken since the
  *   call started, says what the answer says - the change's own event: what
  *   the page shows, which holds the change and whatever a capture or a clear
  *   did after it. A capture may already have taken step 1 of the queue saved
- *   or started again (correction round 5, the Reviewer's finding).
+ *   or started again.
  * - Set aside for anything else: the answer. The page then shows the state
  *   from before the change - a capture of the queue being replaced or
  *   another viewer's change arrived during the call, and the change's own
@@ -646,8 +643,8 @@ export function ownChangeState(
  * offered on a used-up queue only, and a restart whose answer was lost
  * usually has its own event arrive first: with a queue of one step, a capture
  * can then take that step and show `Done` again before the failure is known,
- * and `Could not start the queue again. Try again.` beside it was untrue
- * (correction round 7, the Tester's note N1 on correction round 6). A read
+ * and `Could not start the queue again. Try again.` beside it would be
+ * untrue. A read
  * applied during the call that already holds the restart, with no event, is
  * not told apart, as `ownChangeState` does not tell it apart.
  */

@@ -25,8 +25,8 @@ interface RemovePrivateSessionDialogProps {
 }
 
 /**
- * The warning `Remove from list` gives for a private session (R3, the owner's
- * decisions 1 and 9 of #228, D259): only this browser holds its key, so once
+ * The warning `Remove from list` gives for a private session (R3, #228's
+ * Decisions 1 and 9, D259): only this browser holds its key, so once
  * the entry leaves the list, with its key, the session opens only with its
  * link with access. `Copy link with access` copies that link and keeps the
  * dialog open, saying `Copied` while the copy holds, or the browser's

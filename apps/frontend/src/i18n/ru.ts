@@ -1,8 +1,8 @@
 /**
  * The interface's words in Russian (issue #108, D222), in the shape of `en.ts`:
  * typed against it, so a key missing here, or one English lacks, fails the
- * typecheck. The wording follows the glossary the owner approved with the
- * frames on 2026-10-10 (Figma `792:57`): `сессия`, `запрос`, `адрес для
+ * typecheck. The wording follows the glossary approved with the frames on
+ * 2026-10-10 (Figma `792:57`): `сессия`, `запрос`, `адрес для
  * приёма`, `Создать адрес`, `очередь ответов`, `По умолчанию` / `Свой` and the
  * rest.
  *
@@ -133,7 +133,7 @@ export const ru: Messages = {
   title: {
     base: 'Webhook Inspector — проверка вебхуков',
     unread: (unread) => `(${unread}) Webhook Inspector — проверка вебхуков`,
-    // The Russian home page's: the `<title>` of `ru/index.html`, the owner's
+    // The Russian home page's: the `<title>` of `ru/index.html`, the approved
     // words for the search result and the link preview, the same as the
     // tab's (D226, amended by D277).
     home: 'Webhook Inspector — проверка вебхуков',

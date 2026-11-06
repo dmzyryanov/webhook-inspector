@@ -92,8 +92,7 @@ interface ResponseRulesDialogProps {
  * (D152). While a save or a removal is in flight nothing closes it, so a
  * failure is shown with every rule still in place, and nothing in it can be
  * edited - no field, no rule added, duplicated, removed or moved - so what it
- * shows is what was sent, which a saved list closes it on (correction round
- * 2, the outside review's finding 2 on f6df31f).
+ * shows is what was sent, which a saved list closes it on.
  *
  * On a tablet it keeps its two columns at 704 px, the list 236 px (RT2). On a
  * phone it is a full-screen sheet: the list, whose rows open a rule as a
@@ -593,7 +592,7 @@ interface RuleListProps {
 }
 
 /**
- * The rules in order, without borders (the owner, 2026-10-19): `⋮⋮`, the
+ * The rules in order, without borders (decided on 2026-10-19): `⋮⋮`, the
  * number, the method and the path, and under them `→` the status, its name
  * and the delay; on a phone one line ending in `›`, the answer on a second
  * only where the first is too short for it whole. A row's `⋮⋮` drags it to

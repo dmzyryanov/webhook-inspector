@@ -130,7 +130,7 @@ function useRequestActions({
         label: m.actions.copyLink,
         icon: Link,
         // In a private session the label stays and the link carries the key
-        // (the owner's decision 8 of #228).
+        // (#228's Decision 8).
         run: () =>
           accessKey === null
             ? copyWithToast(

@@ -641,7 +641,7 @@ describe('the dialog: the checks, as the API makes them (D246 point 4)', () => {
     assert.equal(ruleMethodValue({ method: 'other', otherMethod: '\tget\r\n' }), 'GET');
   });
 
-  // Correction round 2: the letters are raised a run at a time, not one by
+  // The letters are raised a run at a time, not one by
   // one, which a megabyte of them under a loaded machine took past the bound
   // above. Whatever the shape, the method is the one raising each ASCII letter
   // alone gives, and nothing else is touched.

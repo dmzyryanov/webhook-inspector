@@ -77,7 +77,7 @@ export interface ComparisonPicking {
   choose: (item: RequestListItem) => void;
   /** Loads the chosen request's details again: the comparison's `Retry`. */
   loadChosen: (id: string) => Promise<void>;
-  /** The tester picked a view of the comparison on screen. */
+  /** The user picked a view of the comparison on screen. */
   showView: (view: CompareViewName) => void;
   /** `Cancel`, Escape and Back while picking: nothing changed. */
   cancelComparisonPicking: () => void;

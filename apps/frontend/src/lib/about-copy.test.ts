@@ -16,7 +16,7 @@ import { LEGAL_PAGES } from './legal-copy.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
 
 /**
- * The text of `/about` (issue #131, D211), exactly as the owner approved it on
+ * The text of `/about` (issue #131, D211), exactly as approved on
  * 2026-10-08: every text of the issue's Scope 2, byte for byte, its no-break
  * spaces and its no-break hyphen included, and the `Security reviews` line as
  * approved for the legal pages' `Contact` on 2026-10-11 (issue #163, D224).
