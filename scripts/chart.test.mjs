@@ -60,11 +60,14 @@
 // And README.md's install commands (#395), read as text: every chart value
 // its fenced shell blocks and its prose set with a `--set…` flag is a key of
 // values.yaml - but what a helm command of another chart, cert-manager's, is
-// given, whichever helm subcommand installs it (#417); and every command of
-// its Install section but the variables it sets stands in "Installing on k3s
-// with the chart" as the same command, read for its continuation lines and
-// indentation alone. A key path the prose quotes alone is not read, a file
-// name looking the same (#402). No README command is copied here, and the
+// given, whichever helm subcommand installs it (#417); and so is every key
+// path its prose quotes alone in an inline code span under a top-level key of
+// values.yaml, but a file's name: a path ending in an extension or a name of
+// a fixed list, in which no key path of values.yaml ends (#416, where #402
+// read none, a file name looking the same). Every command of its Install
+// section but the variables it sets stands in "Installing on k3s with the
+// chart" as the same command, read for its continuation lines and
+// indentation alone. No README command is copied here, and the
 // command the test adds is none a README would run (#417): each check is
 // shown to fail on a copy of the README or of the values mutated from what is
 // read out of them, and to hold on a copy whose two releases are edited
@@ -2966,14 +2969,213 @@ function setAssignments(command) {
 const PROSE_SET = /(?<![\w-])--set(?:-string|-file|-json|-literal)?(?:\s+|=)([^\s`'"=,]+)=/g;
 
 /**
- * The keys of the chart's values README.md sets: the `--set…` assignments
- * of its fenced shell blocks to this chart, and those of its prose; and,
- * apart, the assignments to another chart, each with that chart's command.
- * A key path the prose quotes alone is not read: there `backup.hostPath`
- * and a file name such as `backup.sh` look the same (#402).
+ * What a line of prose starts with that is no paragraph's text: its
+ * indentation, and the markers of the block quotes it is in.
  */
-function readmeKeys(readme) {
-  const keys = { commands: [], prose: [], otherCharts: [] };
+const LINE_PREFIX = /^(?:[ \t]*>)*[ \t]*/;
+/** A line of prose, its prefix removed, that is a block alone: a heading, a table's row or a thematic break. */
+const ONE_LINE_BLOCK = /^(?:#{1,6}(?:[ \t]|$)|\||([-*_])[ \t]*(?:\1[ \t]*){2,}$)/;
+/** A line of prose, its prefix removed, that makes the paragraph before it a setext heading. */
+const UNDERLINE = /^(?:=+|-+)[ \t]*$/;
+/** A list item's marker at the start of a line of prose, its prefix removed: a bullet, or a number of its own. */
+const LIST_ITEM = /^(?:[-*+]|(\d{1,9})[.)])(?:[ \t]|$)/;
+
+/**
+ * The code spans of a paragraph, its lines each `{ line, prefix, text }`,
+ * read as CommonMark reads them: a run of backticks opens a span that the
+ * next run of as many closes, and is text where none does; a backslash
+ * before it, itself not escaped, makes its first backtick text. In a span
+ * a backslash is itself. A span's content has its line breaks as spaces
+ * and, where it begins and ends with a space and is not all spaces, one
+ * space off each end. Each comes with the index of the line and the column
+ * its content starts at.
+ */
+function paragraphSpans(paragraph) {
+  const text = paragraph.map((each) => each.text).join('\n');
+  const runs = [...text.matchAll(/`+/g)].map((match) => [match.index, match[0].length]);
+  // For each length, the starts of the runs of that length, and the first
+  // of them not yet passed: a span's closing run is looked for after its
+  // opening run alone, so that each run is passed once.
+  const closers = new Map();
+  const found = [];
+  let after = 0;
+
+  for (const [start, length] of runs) {
+    if (!closers.has(length)) closers.set(length, { starts: [], next: 0 });
+    closers.get(length).starts.push(start);
+  }
+  for (const [start, length] of runs) {
+    if (start < after) continue;
+
+    let slashes = 0;
+
+    while (text[start - slashes - 1] === '\\') slashes += 1;
+
+    const open = start + (slashes % 2);
+    const size = length - (slashes % 2);
+    const closing = closers.get(size);
+
+    if (!closing) continue;
+    while (closing.next < closing.starts.length && closing.starts[closing.next] <= start) {
+      closing.next += 1;
+    }
+    if (closing.next === closing.starts.length) continue;
+
+    const close = closing.starts[closing.next];
+    const content = text.slice(open + size, close).replaceAll('\n', ' ');
+    const strip = content.startsWith(' ') && content.endsWith(' ') && /[^ ]/.test(content);
+
+    found.push({
+      content: strip ? content.slice(1, -1) : content,
+      from: open + size + Number(strip),
+    });
+    after = close + size;
+  }
+
+  const spans = [];
+  let row = 0;
+  let rowStart = 0;
+
+  for (const { content, from } of found) {
+    while (row < paragraph.length - 1 && rowStart + paragraph[row].text.length < from) {
+      rowStart += paragraph[row].text.length + 1;
+      row += 1;
+    }
+    spans.push({
+      content,
+      line: paragraph[row].line,
+      column: paragraph[row].prefix + from - rowStart,
+    });
+  }
+
+  return spans;
+}
+
+/**
+ * The inline code spans of `markdown`'s prose, in order, each with its
+ * content and the index of the line and the column that content starts at.
+ *
+ * A span runs over the line breaks of a paragraph, each line's indentation
+ * and block quote markers removed, but not over a blank line, nor into a
+ * heading, a table's row, a thematic break, a list item or a block quote,
+ * nor out of the first three. A list item ends a paragraph in a list - one
+ * beginning a list item, or indented as far as the content of one before
+ * it - or in a block quote the item is not in, and one outside lists where
+ * it holds something and, numbered, is numbered 1; an empty one beginning
+ * a paragraph is all of it. Any other line goes on a block quote's
+ * paragraph. A setext heading's underline ends a paragraph and begins none.
+ * A line starting with `|` is a table's row, in a table or not; an
+ * indented code block, HTML and an autolink are read as a paragraph.
+ *
+ * Unlike CommonMark, which keeps in a span a line's indentation past its
+ * list item's, every line's is removed: a span beginning or ending at a
+ * line break, then indented, is read as a path CommonMark shows with spaces
+ * around it.
+ */
+function codeSpans(markdown) {
+  const lines = readMarkdown(markdown).prose.split('\n');
+  const spans = [];
+  let paragraph = [];
+  let quoted = false;
+  // The indentation of the content of each list item the paragraph is in,
+  // the outermost first: a paragraph begins in an item when indented as
+  // far as its content; a list item begins one inside those it is in.
+  const items = [];
+  const end = () => {
+    for (const span of paragraphSpans(paragraph)) spans.push(span);
+    paragraph = [];
+    quoted = false;
+  };
+
+  lines.forEach((line, at) => {
+    const prefix = LINE_PREFIX.exec(line)[0];
+    const text = line.slice(prefix.length);
+    const quote = prefix.includes('>');
+    const alone = ONE_LINE_BLOCK.test(text) || (paragraph.length > 0 && UNDERLINE.test(text));
+    const item = LIST_ITEM.exec(text);
+    const empty = item !== null && text.slice(item[0].length).trim() === '';
+    const opens =
+      item !== null &&
+      (items.length > 0 ||
+        (quoted && !quote) ||
+        (!empty && (item[1] === undefined || Number(item[1]) === 1)));
+
+    if (text === '' || alone || opens || (quote && !quoted)) end();
+    if (text === '') return;
+    if (paragraph.length === 0 && !quote) {
+      while (items.length > 0 && items.at(-1) > prefix.length) items.pop();
+      if (item !== null) {
+        const marker = item[0].trimEnd().length;
+        const spaces = /^[ \t]*/.exec(text.slice(marker))[0].length;
+
+        items.push(prefix.length + marker + (empty || spaces > 4 ? 1 : spaces));
+      }
+    }
+    paragraph.push({ line: at, prefix: prefix.length, text });
+    quoted ||= quote;
+    // An empty list item that opens a block holds no paragraph to go on.
+    if (alone || (empty && paragraph.length === 1)) end();
+  });
+  end();
+
+  return spans;
+}
+
+/**
+ * The last keys of a dotted path in prose that make it a file's name, not a
+ * key path of the values: `backup.sh`, `frontend.Dockerfile`,
+ * `ingress.tls.crt`. A file name ending otherwise is read as a key and fails,
+ * naming it, until its extension or name is added here; no key path of
+ * values.yaml ends in one (#416).
+ */
+const FILE_NAMES = new Set([
+  'sh',
+  'log',
+  'tsx',
+  'ts',
+  'mjs',
+  'js',
+  'gz',
+  'crt',
+  'key',
+  'pem',
+  'yaml',
+  'yml',
+  'json',
+  'md',
+  'txt',
+  'asc',
+  'Dockerfile',
+]);
+/** A dotted path: two or more keys of letters, digits, `_` and `-`, joined by dots. */
+const DOTTED_PATH = /^[\w-]+(?:\.[\w-]+)+$/;
+
+let chartTopKeysRead = null;
+/** The top-level keys of values.yaml, read once. */
+const chartTopKeys = () => (chartTopKeysRead ??= new Set(Object.keys(chartValues())));
+
+/**
+ * Whether the content of a code span is a key path of the values, as the
+ * prose quotes one alone: a dotted path whose first key is one of
+ * `topKeys`, and whose last is no file's name of FILE_NAMES (#416).
+ */
+function isQuotedKey(content, topKeys) {
+  if (!DOTTED_PATH.test(content)) return false;
+
+  const keys = content.split('.');
+
+  return topKeys.has(keys[0]) && !FILE_NAMES.has(keys.at(-1));
+}
+
+/**
+ * The keys of the chart's values README.md names: the `--set…` assignments
+ * of its fenced shell blocks to this chart, those of its prose, and the key
+ * paths its prose quotes alone, under one of `topKeys`, values.yaml's top-level
+ * keys (#416); and, apart, the assignments to another chart, each with that
+ * chart's command.
+ */
+function readmeKeys(readme, topKeys = chartTopKeys()) {
+  const keys = { commands: [], prose: [], quoted: [], otherCharts: [] };
 
   for (const command of shellBlockCommands(readme)) {
     for (const { key, chart } of setAssignments(command)) {
@@ -2982,6 +3184,9 @@ function readmeKeys(readme) {
     }
   }
   for (const [, key] of readMarkdown(readme).prose.matchAll(PROSE_SET)) keys.prose.push(key);
+  for (const { content } of codeSpans(readme)) {
+    if (isQuotedKey(content, topKeys)) keys.quoted.push(content);
+  }
 
   return keys;
 }
@@ -3004,11 +3209,45 @@ function hasKey(values, path) {
   return true;
 }
 
-/** The keys README.md sets for this chart that are not keys of `values`, each once, in the README's order. */
+/**
+ * The keys README.md names for this chart that are not keys of `values`,
+ * each once: those its fenced commands set, then those its prose sets, then
+ * those its prose quotes alone, each in the README's order.
+ */
 function missingKeys(readme, values) {
-  const { commands, prose } = readmeKeys(readme);
+  const { commands, prose, quoted } = readmeKeys(readme);
 
-  return [...new Set([...commands, ...prose])].filter((key) => !hasKey(values, key));
+  return [...new Set([...commands, ...prose, ...quoted])].filter((key) => !hasKey(values, key));
+}
+
+/**
+ * The key paths of `values` whose last key is a file's name of FILE_NAMES,
+ * which the prose could not quote alone to be read (#416): each key of a
+ * map, at any depth, a list not stepped into, in order.
+ */
+function keysTakenForFiles(values) {
+  const found = [];
+  // Walked depth first without recursion, each key with the key holding it.
+  const stack = [{ key: null, value: values, parent: null }];
+
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    const { value } = entry;
+
+    if (entry.parent !== null && FILE_NAMES.has(entry.key)) {
+      const path = [];
+
+      for (let at = entry; at.parent !== null; at = at.parent) path.push(at.key);
+      found.push(path.reverse().join('.'));
+    }
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
+
+    const children = Object.keys(value).map((key) => ({ key, value: value[key], parent: entry }));
+
+    for (let at = children.length - 1; at >= 0; at -= 1) stack.push(children[at]);
+  }
+
+  return found;
 }
 
 /** A command that only sets a shell variable: `NAME=` and a word, a quoted string or a `$( )` holding no parenthesis. */
@@ -3087,6 +3326,28 @@ function atEnd(edit) {
 const copiesOf = (markdown, command, heading = null) =>
   shellBlockCopies(markdown, heading).filter((each) => each.command === command);
 
+/**
+ * `markdown` with the content of the code span `span`, as `codeSpans` reads
+ * it and on one line, giving way to `content`.
+ */
+function inSpan(markdown, span, content) {
+  return withLines(markdown, [{ start: span.line, end: span.line }], ([line]) => {
+    const end = span.column + span.content.length;
+
+    assert.equal(line.slice(span.column, end), span.content, `the span at ${span.line}`);
+
+    return [line.slice(0, span.column) + content + line.slice(end)];
+  });
+}
+
+/** The chart values README.md names in prose alone, each quoted alone, given by no `--set…` (#416). */
+const QUOTED_ONLY_KEYS = [
+  'backup.hostPath',
+  'backend.trustedProxyCidrs',
+  'backup.offsite.existingSecret',
+  'alerts.existingSecret',
+];
+
 /** The key README.md gives to another chart, cert-manager's. */
 const OTHER_CHART_KEY = 'crds.enabled';
 
@@ -3124,6 +3385,11 @@ function assertKeysHeld(text) {
   for (const key of ['backend.tcpRmem', 'images.pullSecret', 'alerts.heartbeatUrl']) {
     assert.ok(keys.prose.includes(key), key);
   }
+  // And the ones the prose quotes alone: in prose alone, or set as well
+  // (#416).
+  for (const key of [...QUOTED_ONLY_KEYS, 'ingress.tls.issuer', 'images.pullSecret']) {
+    assert.ok(keys.quoted.includes(key), key);
+  }
   // cert-manager's value, in both of its copies, goes to another chart, not
   // to this one; which helm subcommand installs that chart is not looked at
   // (#417).
@@ -3136,13 +3402,14 @@ function assertKeysHeld(text) {
 /**
  * The check of the keys fails, naming the key, on copies of `text` and of
  * the values mutated from what is read out of them: each key a fenced
- * command sets, renamed in one copy of that command; each key read, taken
- * out of the values; another chart's key given to this one.
+ * command sets, renamed in one copy of that command; each key quoted alone,
+ * renamed where it is quoted; each key read, taken out of the values;
+ * another chart's key given to this one.
  */
 function assertKeysNamed(text) {
   const values = chartValues();
   const keys = readmeKeys(text);
-  const read = [...new Set([...keys.commands, ...keys.prose])];
+  const read = [...new Set([...keys.commands, ...keys.prose, ...keys.quoted])];
   const without = (path) => {
     const copy = chartValues();
     const steps = path.split('.');
@@ -3173,6 +3440,17 @@ function assertKeysNamed(text) {
 
       assert.deepEqual(missingKeys(renamed, values), [`${key}_renamed`], `${key} at ${copy.start}`);
     }
+  }
+
+  const quoted = codeSpans(text).filter(({ content }) => isQuotedKey(content, chartTopKeys()));
+
+  assert.ok(quoted.length > 0, 'no key is quoted alone');
+  for (const span of quoted) {
+    assert.deepEqual(
+      missingKeys(inSpan(text, span, `${span.content}_renamed`), values),
+      [`${span.content}_renamed`],
+      `${span.content} at ${span.line}`,
+    );
   }
   for (const key of read) {
     assert.deepEqual(
@@ -3291,11 +3569,11 @@ function assertInstallNamed(text) {
   );
 }
 
-test("README.md's install commands set only keys values.yaml has: every --set… of its shell blocks and of its prose (#395, criterion 1; #402)", () => {
+test("README.md's install commands set only keys values.yaml has: every --set… of its shell blocks and of its prose, and every key path its prose quotes alone (#395, criterion 1; #402; #416)", () => {
   assertKeysHeld(readme());
 });
 
-test('the check of the keys fails, naming the key, on a copy of README.md or of the values mutated from what is read out of them, and on made-up input (#395, criterion 3; #402)', () => {
+test('the check of the keys fails, naming the key, on a copy of README.md or of the values mutated from what is read out of them, and on made-up input (#395, criterion 3; #402; #416)', () => {
   const values = chartValues();
 
   assertKeysNamed(readme());
@@ -3345,15 +3623,138 @@ test('the check of the keys fails, naming the key, on a copy of README.md or of 
     ),
     ['d.e'],
   );
-  // In prose, a flag with its key; a path quoted alone, a key's or a file's,
-  // is not read.
+  // In prose, a flag with its key; and a path quoted alone under a
+  // top-level key, but a file's name (#416, where #402 read none).
   assert.deepEqual(
     missingKeys(
       'Add `--set-string images.nope=` or\n`--set\nalerts.nope=x`; `backend.nope`, `net.ipv4.tcp_rmem`, `llms.txt`, `backup.sh`, `frontend.tsx`, `backend.log`, `--set-string`.\n',
       values,
     ),
-    ['images.nope', 'alerts.nope'],
+    ['images.nope', 'alerts.nope', 'backend.nope'],
   );
+});
+
+test('the chart values README.md names in prose alone are read: each renamed in a copy of the values, or misspelt in a copy of README.md, fails the check, naming it (#416, criterion 1)', () => {
+  const text = readme();
+  const values = chartValues();
+  const keys = readmeKeys(text);
+  const spans = codeSpans(text);
+  /** A copy of the values with the last key of `path` renamed, its value kept. */
+  const renamed = (path) => {
+    const copy = chartValues();
+    const steps = path.split('.');
+    const map = steps.slice(0, -1).reduce((node, key) => node[key], copy);
+
+    map[`${steps.at(-1)}Renamed`] = map[steps.at(-1)];
+    delete map[steps.at(-1)];
+
+    return copy;
+  };
+  /** `path` with the last two letters of its last key the other way round. */
+  const misspelt = (path) => path.replace(/(\w)(\w)$/, '$2$1');
+
+  for (const key of QUOTED_ONLY_KEYS) {
+    // Quoted alone, and set by no --set…: what names it is the prose.
+    assert.ok(keys.quoted.includes(key), key);
+    assert.ok(!keys.commands.includes(key) && !keys.prose.includes(key), key);
+
+    const copy = renamed(key);
+
+    assert.ok(!hasKey(copy, key) && hasKey(copy, `${key}Renamed`), key);
+    assert.deepEqual(missingKeys(text, copy), [key], key);
+
+    const places = spans.filter(({ content }) => content === key);
+    const wrong = misspelt(key);
+
+    assert.ok(places.length > 0, key);
+    assert.ok(wrong !== key && !hasKey(values, wrong) && isQuotedKey(wrong, chartTopKeys()), wrong);
+    for (const place of places) {
+      const copy = inSpan(text, place, wrong);
+
+      assert.deepEqual(missingKeys(copy, values), [wrong], `${key} at ${place.line}`);
+      assert.throws(() => assertKeysHeld(copy), { actual: [wrong], expected: [] });
+    }
+  }
+});
+
+test('a dotted code span whose first key is no top-level key of the values is not read, in README.md or in made-up prose (#416, criterion 3)', () => {
+  const text = readme();
+  const values = chartValues();
+  const spans = codeSpans(text).map(({ content }) => content);
+  const others = ['net.ipv4.tcp_rmem', 'llms.txt', 'info.contact'];
+
+  // README.md quotes each, as a dotted path, and it is not read.
+  for (const other of others) {
+    assert.ok(spans.includes(other), other);
+    assert.ok(DOTTED_PATH.test(other) && !chartTopKeys().has(other.split('.')[0]), other);
+    assert.ok(!readmeKeys(text).quoted.includes(other), other);
+  }
+
+  // Made-up prose whose first key is a name of Object's, a top-level key in
+  // another case, or a name of the list; and a top-level key alone.
+  const prose = [
+    ...others,
+    '__proto__.polluted',
+    'constructor.name',
+    'hasOwnProperty.call',
+    'Backup.hostPath',
+    'BACKEND.port',
+    'backup',
+    'sh.backup',
+    'Dockerfile.backend',
+  ]
+    .map((each) => `\`${each}\``)
+    .join(' and ');
+
+  assert.equal(codeSpans(prose).length, others.length + 8);
+  assert.deepEqual(readmeKeys(prose).quoted, []);
+  assert.deepEqual(missingKeys(prose, values), []);
+  // The same paths under top-level keys are read, and named.
+  assert.deepEqual(missingKeys('`backend.ipv4.tcp_rmem`, `backup.contact`', values), [
+    'backend.ipv4.tcp_rmem',
+    'backup.contact',
+  ]);
+});
+
+/** No key path of `values` ends in a file's name the README's reader takes a quoted path for (#416). */
+function assertNoKeyTakenForFile(values) {
+  assert.deepEqual(keysTakenForFiles(values), []);
+}
+
+test("no key path of values.yaml ends in a file's name the README's reader takes a quoted path for, and the check fails, naming the key, on a copy of the values given one (#416, criterion 4)", () => {
+  const values = chartValues();
+
+  assertNoKeyTakenForFile(values);
+
+  // A key of each name of the list added at the top, in a map and deeper,
+  // holding a value or a map.
+  for (const name of FILE_NAMES) {
+    for (const [path, value] of [
+      [[name], 'x'],
+      [['backend', name], { port: 1 }],
+      [['ingress', 'tls', name], ''],
+    ]) {
+      const copy = chartValues();
+
+      path.slice(0, -1).reduce((node, key) => node[key], copy)[path.at(-1)] = value;
+      assert.throws(() => assertNoKeyTakenForFile(copy), {
+        actual: [path.join('.')],
+        expected: [],
+      });
+    }
+  }
+
+  // A copy of values.yaml's text with keys added at its end: each path
+  // ending in a name of the list is named, in order, and no other.
+  const yaml = `${readFileSync(VALUES, 'utf8')}\nDockerfile:\n  sh: x\n  json:\n    port: 1\n  shell: y\n`;
+
+  assert.throws(() => assertNoKeyTakenForFile(parseYaml(yaml)), {
+    actual: ['Dockerfile', 'Dockerfile.sh', 'Dockerfile.json'],
+    expected: [],
+  });
+  // A name of the list inside a list is no key path; a key holding null is one.
+  assert.deepEqual(keysTakenForFiles({ a: [{ sh: 1 }], b: { md: null } }), ['b.md']);
+  assert.deepEqual(keysTakenForFiles(null), []);
 });
 
 test('every command of README.md\'s Install section, but the variables it sets, is given as it stands in "Installing on k3s with the chart" (#395, criterion 2)', () => {
@@ -3375,7 +3776,7 @@ test('the check of the Install section fails, naming the command, on a copy of R
   assert.deepEqual(installCommandsMissing(sections(loop, loop.replaceAll('\n', '\n      '))), []);
 });
 
-test('the same edit to both copies of the release passes both checks, which still fail as they did; a file name in prose fails neither, while a key values.yaml lacks still fails (#402, criteria 2 and 3)', () => {
+test('the same edit to both copies of the release passes both checks, which still fail as they did; a file name in prose fails neither, while a key values.yaml lacks still fails (#402, criteria 2 and 3; #416, criterion 2)', () => {
   const text = readme();
   const values = chartValues();
   const leaves = (node, path) =>
@@ -3412,15 +3813,28 @@ test('the same edit to both copies of the release passes both checks, which stil
     assertInstallNamed(copy);
   }
 
-  // A file name under each top-level key of the values, in prose.
-  const names = Object.keys(values).flatMap((top) =>
-    ['sh', 'log', 'tsx', 'tar.gz', 'test.mjs'].map((extension) => `${top}.${extension}`),
-  );
+  // A file name under each top-level key of the values, in prose: #402's,
+  // one ending in each file's name the reader knows, and those #416 names.
+  const names = [
+    ...Object.keys(values).flatMap((top) =>
+      ['sh', 'log', 'tsx', 'tar.gz', 'test.mjs', ...FILE_NAMES].map((name) => `${top}.${name}`),
+    ),
+    'backup.sh',
+    'frontend.tsx',
+    'backend.log',
+    'frontend.Dockerfile',
+    'ingress.tls.crt',
+  ];
   const prose = `${text}\nIt keeps ${names.map((name) => `\`${name}\``).join(', ')}.\n`;
+  const spans = new Set(codeSpans(prose).map(({ content }) => content));
 
   assert.ok(names.includes('backup.sh'));
+  // Each is read as a code span, and taken for a file's name.
+  for (const name of names) assert.ok(spans.has(name), name);
+  assert.deepEqual(readmeKeys(prose).quoted, readmeKeys(text).quoted);
   assert.deepEqual(missingKeys(prose, values), []);
   assertKeysHeld(prose);
+  assertKeysNamed(prose);
   // A key values.yaml lacks, set alike in both copies of the release.
   const lacking = inBoth(prose, (head) => `${head} --set-string backup.missing=x`);
 
@@ -3508,7 +3922,7 @@ test("this file holds no copy of a command of README.md's Install section, nor o
   }
 });
 
-test("the README's readers on made-up input built to break them, at growing sizes: fences, sections, shell commands, assignments and prose (#395)", () => {
+test("the README's readers on made-up input built to break them, at growing sizes: fences, sections, shell commands, assignments, prose and code spans (#395; #416)", () => {
   // Fences: a longer fence closes only with as long a one, of its own
   // character; an open fence runs to the end; a backtick in a backtick
   // fence's info string makes no fence; the fence's indentation is removed.
@@ -3625,6 +4039,118 @@ test("the README's readers on made-up input built to break them, at growing size
   );
   assert.deepEqual(setAssignments('--set-string a=b'), [{ key: 'a', chart: null }]);
 
+  // Code spans (#416): runs of backticks of one length, escapes, the space
+  // stripped, line breaks, and the blocks a span does not cross.
+  for (const [markdown, contents] of [
+    ['`a.b` `c` ``d`` ```e```', ['a.b', 'c', 'd', 'e']],
+    ['``a`b``', ['a`b']],
+    ['``a` `b.c``', ['a` `b.c']],
+    ['`a``b` ``c', ['a``b']],
+    ['` a.b `', ['a.b']],
+    ['`  a.b  `', [' a.b ']],
+    ['` a.b`', [' a.b']],
+    ['`   `', ['   ']],
+    ['` `', [' ']],
+    ['`a\nb`', ['a b']],
+    ['`a.b \nc`', ['a.b  c']],
+    ['\\`a.b`', []],
+    ['\\\\`a.b`', ['a.b']],
+    ['\\\\\\`a.b`', []],
+    ['\\``a.b`', ['a.b']],
+    ['`a\\`b`', ['a\\']],
+    ['`', []],
+    ['``', []],
+    ['`a``', []],
+    ['`a\n\n`b.c`', ['b.c']],
+    ['`a\n \t \n`b.c`', ['b.c']],
+    ['`a\n## `b.c`', ['b.c']],
+    ['## `a\n`b.c`', ['b.c']],
+    ['`a\n- `b.c`', ['b.c']],
+    ['- `a\n- `b.c`', ['b.c']],
+    ['1. `a\n2) `b.c`', ['b.c']],
+    ['> `a\n> `b.c`', ['a ']],
+    ['> > `a\n> b`', ['a b']],
+    ['> `a\nb`', ['a b']],
+    ['`a\n> `b.c`', ['b.c']],
+    ['> `a\n>\n> `b.c`', ['b.c']],
+    ['> `a\n\n> `b.c`', ['b.c']],
+    ['| `a | b |\n| - | - |\n| `c.d` | e |', ['c.d']],
+    ['   | `a | b |\n   | - | - |\n   | `c.d` | e |', ['c.d']],
+    ['`a\n---\n`b.c`', ['b.c']],
+    ['`a\n--\n`b.c`', ['b.c']],
+    ['`a\n* * *\n`b.c`', ['b.c']],
+    ['`a\n___\n`b.c`', ['b.c']],
+    ['`a\n===\n`b.c`', ['b.c']],
+    ['=\n`a\n2. b`', ['a 2. b']],
+    ['--\n`a\n2. b`', ['a 2. b']],
+    ['> `a\n2. b`', []],
+    ['> `a\n*\nb`', []],
+    ['`a\n*\nb`', ['a * b']],
+    ['`a\n_\nb`', ['a _ b']],
+    ['`a\n**\nb`', ['a ** b']],
+    ['`a\n2. b`', ['a 2. b']],
+    ['`a\n1.\nb`', ['a 1. b']],
+    ['* \nb`\n2. c`', [' 2. c']],
+    ['- x\n*\nb`\n2. c`', [' 2. c']],
+    ['- x\n\n  `a\n2. `b.c`', ['b.c']],
+    ['1. x\n2. `a\n3. `b.c`', ['b.c']],
+    ['- x\n\n`a\n2. b`', ['a 2. b']],
+    ['- x\n\n `a\n2. b`', ['a 2. b']],
+    ['- x\n  - y\n\n  `a\n2. `b.c`', ['b.c']],
+    ['- `a\n  b` `c.d`', ['a b', 'c.d']],
+    ['-- `a\n-- b`', ['a -- b']],
+    ['```bash\n`a.b`\n```\n`c.d`', ['c.d']],
+    ['`a\n```\nb\n```\nc`', []],
+  ]) {
+    assert.deepEqual(
+      codeSpans(markdown).map(({ content }) => content),
+      contents,
+      JSON.stringify(markdown),
+    );
+  }
+  // Unlike CommonMark, every line's indentation is removed from a span.
+  assert.deepEqual(
+    ['`a\n   b`', 'x `\n  a.b\n  ` y'].map((markdown) =>
+      codeSpans(markdown).map(({ content }) => content),
+    ),
+    [['a b'], ['a.b']],
+  );
+  // Where each content starts: its line, and its column there, indentation
+  // and markers kept.
+  assert.deepEqual(codeSpans('x\n  - y `a.b` and\n  `\n  c.d\n  `\n\n\t``e``'), [
+    { content: 'a.b', line: 1, column: 7 },
+    { content: 'c.d', line: 3, column: 2 },
+    { content: 'e', line: 6, column: 3 },
+  ]);
+  assert.deepEqual(codeSpans('a\r\n`b.c`\r\n'), [{ content: 'b.c', line: 1, column: 1 }]);
+  // The edit of a span: its content alone, on its line.
+  assert.equal(inSpan('a\n x `b.c` y', codeSpans('a\n x `b.c` y')[0], 'd'), 'a\n x `d` y');
+  // A span quoted alone and read, the space stripped or between double
+  // backticks; not when escaped, spaced, broken over lines or of another
+  // character than a key holds.
+  assert.deepEqual(
+    readmeKeys(
+      [
+        '` backup.nope `',
+        '``alerts.nope``',
+        '\\`backend.nope`',
+        '`backup.sh `',
+        '`backup. nope`',
+        '`backup.\nnope`',
+        '`backup.no/pe`',
+        '`backup.no:pe`',
+        '`backup.*`',
+        '`backup.<name>`',
+        '`backup.nope=x`',
+        '`backup..nope`',
+        '`backup.`',
+        '`.backup`',
+      ].join('\n\n'),
+    ).quoted,
+    ['backup.nope', 'alerts.nope'],
+  );
+  assert.equal(isQuotedKey('backup.a-b_C.9', chartTopKeys()), true);
+
   const values = chartValues();
 
   for (const size of [10, 1000, 100_000]) {
@@ -3685,13 +4211,65 @@ test("the README's readers on made-up input built to break them, at growing size
     );
 
     // Prose: a flag followed by a long word with no `=`, a long run of
-    // spaces, a long quoted path, many file names, many backticks.
+    // spaces, a long quoted path - read since #416 - many file names, many
+    // backticks.
     assert.deepEqual(missingKeys(`--set ${many('a')} b`, values), [], `prose ${size}`);
     assert.deepEqual(missingKeys(`--set${many(' ')}images.nope=x`, values), ['images.nope']);
-    assert.deepEqual(missingKeys(`\`images${many('.a')}\``, values), [], `quoted ${size}`);
+    assert.deepEqual(missingKeys(`\`images${many('.a')}\``, values), [`images${many('.a')}`]);
     assert.deepEqual(missingKeys(many('`backup.sh` '), values), [], `file names ${size}`);
     assert.deepEqual(missingKeys(`\`images${many('.a')}`, values), [], `open span ${size}`);
     assert.deepEqual(missingKeys(many('`'), values), [], `backticks ${size}`);
+
+    // Code spans (#416): many, quoted keys among them; long runs of
+    // backticks, of backslashes before one, of spaces in a span; runs of
+    // two lengths, each closing only its own; a span over many lines; many
+    // paragraphs and blocks each holding an opening run alone; long lines
+    // a block's pattern almost matches.
+    assert.deepEqual(missingKeys(many('`backup.nope` '), values), ['backup.nope'], `spans ${size}`);
+    assert.equal(readmeKeys(many('`backup.hostPath`\n')).quoted.length, size, `keys ${size}`);
+    assert.deepEqual(codeSpans(`${'`'.repeat(size)}a.b${'`'.repeat(size)}`), [
+      { content: 'a.b', line: 0, column: size },
+    ]);
+    assert.deepEqual(codeSpans(`${'`'.repeat(size)}a.b${'`'.repeat(size - 1)}`), []);
+    assert.equal(codeSpans(many('\\`')).length, 0, `escaped ${size}`);
+    assert.equal(codeSpans(many('\\\\`')).length, Math.floor(size / 2), `unescaped ${size}`);
+    assert.deepEqual(codeSpans(`${'\\'.repeat(size)}\`a.b\``), [
+      { content: 'a.b', line: 0, column: size + 1 },
+    ]);
+    assert.deepEqual(codeSpans(`${'\\'.repeat(size + 1)}\`a.b\``), []);
+    assert.deepEqual(readmeKeys(`\`${many(' ')}backup.nope${many(' ')}\``).quoted, []);
+    assert.equal(codeSpans(`\` ${many(' ')}\``)[0].content.length, size + 1, `all spaces ${size}`);
+    assert.equal(
+      codeSpans(many('``a`b`` ')).filter(({ content }) => content === 'a`b').length,
+      size,
+      `two lengths ${size}`,
+    );
+    assert.equal(codeSpans(`\`${many('a\n')}\``)[0].content, many('a', ' ') + ' ');
+    assert.equal(codeSpans(many('`a\n\n')).length, 0, `paragraphs ${size}`);
+    assert.equal(codeSpans(many('`a\n- ')).length, 0, `list items ${size}`);
+    assert.equal(codeSpans(`\`a\n${many('2. x\n*\n')}\``).length, 1, `no list ${size}`);
+    assert.equal(codeSpans(`| a |\n| - |\n${many('| `a |\n')}`).length, 0, `table rows ${size}`);
+    assert.equal(codeSpans(many('`a\n```\nb\n```\n')).length, 0, `fenced blocks ${size}`);
+    assert.deepEqual(
+      codeSpans(`${many('- ')}x \`a.b\`\n${many('>')}\`c.d\`\n${many(' ')}\`e.f\``).map(
+        ({ content }) => content,
+      ),
+      ['a.b', 'c.d', 'e.f'],
+      `prefixes ${size}`,
+    );
+    assert.equal(isQuotedKey(`backup${many('.a')}`, chartTopKeys()), true, `path ${size}`);
+    assert.equal(isQuotedKey(`backup${many('.a')}.`, chartTopKeys()), false, `path ${size}`);
+    assert.equal(isQuotedKey(`backup${many('.a')}.sh`, chartTopKeys()), false, `path ${size}`);
+
+    // The values' key paths taken for files: many keys, a deep map.
+    const wide = Object.fromEntries(
+      Array.from({ length: size }, (_, at) => [`k${at}`, { sh: at }]),
+    );
+    let deep = { json: 1 };
+
+    for (let at = 0; at < size; at += 1) deep = { a: deep };
+    assert.equal(keysTakenForFiles(wide).length, size, `wide ${size}`);
+    assert.deepEqual(keysTakenForFiles(deep), [`${many('a', '.')}.json`], `deep ${size}`);
 
     // The edit at a command's end: many comments after it, many `#` in
     // quotes before its end.
