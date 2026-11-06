@@ -1461,15 +1461,16 @@ function listIds(answer) {
 }
 
 /**
- * A session page as the frontend keeps one (`apps/frontend/src/pages/
- * SessionPage.tsx`, `api/realtime.ts`): when it loads, the session and its
- * list read together and its realtime connection opened at once; both read
- * again on every `ready` (D077, D133); a connection the server ends or
- * refuses opened again after `nextRetryDelay` (D079), never one refused for
- * its session (D076). A reload is a page that leaves and a new one that
- * loads: the old connection closed as a browser closes a page's connections
- * when it leaves it, its close not waited for unless `reloadAwaitsClose`, and
- * nothing it still carries read; the new page starts its delays afresh.
+ * A session page as the frontend keeps one (`apps/frontend/src/hooks/
+ * useSessionData.ts` and `useSessionSocket.ts`, `api/realtime.ts`): when it
+ * loads, the session and its list read together and its realtime connection
+ * opened at once; both read again on every `ready` (D077, D133); a
+ * connection the server ends or refuses opened again after `nextRetryDelay`
+ * (D079), never one refused for its session (D076). A reload is a page that
+ * leaves and a new one that loads: the old connection closed as a browser
+ * closes a page's connections when it leaves it, its close not waited for
+ * unless `reloadAwaitsClose`, and nothing it still carries read; the new page
+ * starts its delays afresh.
  *
  * What the page was doing at a moment is its `state()`: `ready` (its
  * connection told it `ready`), `connecting` (a connection not ready yet),
