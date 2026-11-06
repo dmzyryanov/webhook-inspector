@@ -39,6 +39,34 @@ const KEY = 'Qx7Zv9Kp2Wj4Ym8Hb3Nf6Rt1Lc5Dg0Uw8Ej2Sa7Io4P';
 const OTHER = 'Zz7Zv9Kp2Wj4Ym8Hb3Nf6Rt1Lc5Dg0Uw8Ej2Sa7Io4P';
 const OLDER_SHAPE = 'Au6JqVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2m_-MKss';
 
+/**
+ * Milliseconds the fastest of up to five runs (`withinBound`, D203) of one
+ * check of `protocolKey` may take on a made-up header of 1 MiB: 350. Until
+ * #419 it was 100, as at the smaller sizes still, and loaded runs of the
+ * backend suite took a check over it now and then with nothing wrong
+ * (F-32): the header of 1,048,576 commas, whose 1,048,577 empty names take
+ * 29 to 50 ms at best of five alone and up to 174 ms beside the full backend
+ * suite and eight busy loops. 350 is about twice that. A `protocolKey`
+ * quadratic in the names offered took 903 ms and more alone on the 104,858
+ * names of `many`, 2.6 times the bound and more - the cheapest form measured
+ * takes each name off the front of the list `split` made, with `shift()`:
+ * over the bound on every run.
+ */
+const PROTOCOL_KEY_MIB_BOUND_MS = 350;
+
+/**
+ * Milliseconds the fastest of up to five runs of one check of
+ * `chooseProtocol` may take on a made-up handshake of 1 MiB, its 32,768 names
+ * offered under the service's prefix: 45, the set each check is given built
+ * before its runs. Until #419 it was 100, the set of the second built in its
+ * runs. They take 3 to 7 ms at best of five alone and up to 25 ms loaded as
+ * above: 45 is 1.8 times that. The cheapest quadratic form measured takes
+ * each name off the front of a list of them, with `shift()` again, and took
+ * 82 ms and more alone, 1.8 times the bound: over it on every run, where
+ * neither 100 nor `PROTOCOL_KEY_MIB_BOUND_MS` tells it apart.
+ */
+const CHOOSE_PROTOCOL_MIB_BOUND_MS = 45;
+
 describe('fingerprintOf', () => {
   it('is the SHA-256 digest of the key, 32 bytes, and not the key', () => {
     const fingerprint = fingerprintOf(KEY);
@@ -264,25 +292,26 @@ describe('protocolKey: the subprotocol the socket presents the key in', () => {
     it(`answers made-up headers of ${size} characters at once`, () => {
       const many = Array.from({ length: size / 10 }, (_, n) => `p${n}`).join(', ');
       const keys = Array.from({ length: size / 64 }, () => carrying(KEY)).join(',');
+      const bound = size === 1024 * 1024 ? PROTOCOL_KEY_MIB_BOUND_MS : 100;
 
       assert.equal(
-        withinBound(100, () => protocolKey(`${many}, ${carrying(KEY)}`)),
+        withinBound(bound, () => protocolKey(`${many}, ${carrying(KEY)}`)),
         KEY,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(keys)),
+        withinBound(bound, () => protocolKey(keys)),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(','.repeat(size))),
+        withinBound(bound, () => protocolKey(','.repeat(size))),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(carrying('a'.repeat(size)))),
+        withinBound(bound, () => protocolKey(carrying('a'.repeat(size)))),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(' '.repeat(size))),
+        withinBound(bound, () => protocolKey(' '.repeat(size))),
         null,
       );
     });
@@ -477,33 +506,36 @@ describe('protocolKey and chooseProtocol under both names (D279)', () => {
         n % 2 === 0 ? `${NEW}${KEY}` : `${OLD}${KEY}`,
       ).join(',');
       const offered = new Set(Array.from({ length: size / 32 }, (_, n) => `${NEW}${n}`));
+      const withProtocol = new Set([...offered, REALTIME_PROTOCOL]);
+      const keyBound = size === 1024 * 1024 ? PROTOCOL_KEY_MIB_BOUND_MS : 100;
+      const choiceBound = size === 1024 * 1024 ? CHOOSE_PROTOCOL_MIB_BOUND_MS : 100;
 
       assert.equal(
-        withinBound(100, () => protocolKey(`${many}, ${both}`)),
+        withinBound(keyBound, () => protocolKey(`${many}, ${both}`)),
         KEY,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(keys)),
+        withinBound(keyBound, () => protocolKey(keys)),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(`${NEW}${'a'.repeat(size)}, ${OLD}${KEY}`)),
+        withinBound(keyBound, () => protocolKey(`${NEW}${'a'.repeat(size)}, ${OLD}${KEY}`)),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(`${NEW.repeat(size / NEW.length)}${KEY}`)),
+        withinBound(keyBound, () => protocolKey(`${NEW.repeat(size / NEW.length)}${KEY}`)),
         null,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(`${','.repeat(size)}${NEW}${KEY}`)),
+        withinBound(keyBound, () => protocolKey(`${','.repeat(size)}${NEW}${KEY}`)),
         KEY,
       );
       assert.equal(
-        withinBound(100, () => chooseProtocol(offered)),
+        withinBound(choiceBound, () => chooseProtocol(offered)),
         false,
       );
       assert.equal(
-        withinBound(100, () => chooseProtocol(new Set([...offered, REALTIME_PROTOCOL]))),
+        withinBound(choiceBound, () => chooseProtocol(withProtocol)),
         REALTIME_PROTOCOL,
       );
     });
@@ -514,17 +546,24 @@ describe('protocolKey and chooseProtocol under both names (D279)', () => {
       const turned = new Set(
         Array.from({ length: size / 32 }, (_, n) => `${n % 2 === 0 ? NEW : OLD}${n}`.toUpperCase()),
       );
+      // Each input built before its runs, so that a run times the check alone
+      // and not the set or the header it is given (#419, F-32).
+      const withLong = new Set([...offered, long]);
+      const longFirst = new Set([long, ...offered]);
+      const withMistyped = new Set([...offered, 'Qa-Tools.Access-Key.x']);
+      const twoLong = new Set([`${OLD}${'A'.repeat(size)}`, long]);
+      const header = `${long}, ${[...turned].join(', ')}`;
 
       assert.equal(
-        withinBound(100, () => chooseProtocol(new Set([...offered, long]))),
+        withinBound(100, () => chooseProtocol(withLong)),
         long,
       );
       assert.equal(
-        withinBound(100, () => chooseProtocol(new Set([long, ...offered]))),
+        withinBound(100, () => chooseProtocol(longFirst)),
         long,
       );
       assert.equal(
-        withinBound(100, () => chooseProtocol(new Set([...offered, 'Qa-Tools.Access-Key.x']))),
+        withinBound(100, () => chooseProtocol(withMistyped)),
         'Qa-Tools.Access-Key.x',
       );
       assert.equal(
@@ -532,11 +571,11 @@ describe('protocolKey and chooseProtocol under both names (D279)', () => {
         `${NEW}0`.toUpperCase(),
       );
       assert.equal(
-        withinBound(100, () => chooseProtocol(new Set([`${OLD}${'A'.repeat(size)}`, long]))),
+        withinBound(100, () => chooseProtocol(twoLong)),
         long,
       );
       assert.equal(
-        withinBound(100, () => protocolKey(`${long}, ${[...turned].join(', ')}`)),
+        withinBound(100, () => protocolKey(header)),
         null,
       );
     });
