@@ -8,9 +8,10 @@
  * The decisions are the `lib` modules': `requests.ts` decides when a refresh
  * is applied and which reading of a response the panel keeps, `request-link.ts`
  * what follows a linked opening. This holds the selection's state for the
- * page and carries them out. Opening a request marks it read and ends the
- * open request's comparison (`useComparison`'s `endComparison`, D186), which
- * the page therefore holds before this.
+ * page and carries them out. Opening a request marks it read (D014, D156),
+ * and opening or closing one ends the open request's comparison, through
+ * `useComparison`'s `endComparison` (D186): the page calls that hook before
+ * this one.
  */
 import {
   useCallback,
