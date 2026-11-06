@@ -20,9 +20,13 @@
  * - `OPERATOR_TEXTS`: `true` shows the operator's texts, in both languages:
  *   the about pages' lines on who runs the service and who pays for it, the
  *   Terms of Use and the Privacy Policy with the footer's links to them, and
- *   the API description's sentences pointing at them. `false` or unset leaves
- *   them out, and `/terms` and `/privacy` answer the application's 404. The
- *   texts name the contact address and the status page, so `true` needs both.
+ *   the API description's sentences pointing at them; since issue #396 also
+ *   the changelog of this site's releases with every link to it
+ *   (`changelog-link.ts`) and the footer line's clause on how long backups
+ *   keep requests (`privacy-footer.ts`). `false` or unset leaves them out,
+ *   and `/terms`, `/privacy`, `/changelog`, `/changelog.md` and the two feeds
+ *   answer the application's 404. The texts name the contact address and the
+ *   status page, so `true` needs both.
  *
  * The module has no imports, so the browser bundle, the build's scripts and
  * the tests all load it. A Vite build hands the bundle the settings it read
@@ -37,7 +41,10 @@ export interface Operator {
   readonly statusPageUrl: string | null;
   /** The contact address, `contact@example.com`, or `null` for none. */
   readonly contactEmail: string | null;
-  /** Whether the operator's texts are shown: the about pages' lines, the Terms and the Privacy Policy. */
+  /**
+   * Whether the operator's texts are shown: the about pages' lines, the Terms
+   * and the Privacy Policy, the changelog and the footer's clause on backups.
+   */
   readonly texts: boolean;
 }
 

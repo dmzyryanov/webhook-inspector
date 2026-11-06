@@ -14,7 +14,8 @@
  * address; on `/about`, `/terms` and `/privacy` that page's link is the
  * current page. `Status ↗`, `Terms`, `Privacy` and the contact are the
  * operator's details, there when the build names them (issue #369,
- * `src/lib/operator.ts`), as in the application.
+ * `src/lib/operator.ts`), as in the application, and so are `Changelog` and
+ * the line's clause on the backups (issue #396).
  *
  * Both are drawn in a language, English unless a page asks for Russian
  * (issue #170, D255): `/ru/about` draws the words the application draws in
@@ -29,9 +30,9 @@ import { HOME_ADDRESSES } from '../src/i18n/index.ts';
 import { ru } from '../src/i18n/ru.ts';
 import { API_DOCS_LINK } from '../src/lib/api-docs-link.ts';
 import { BRAND_MARK } from '../src/lib/brand-mark.ts';
-import { CHANGELOG_LINK } from '../src/lib/changelog-link.ts';
+import { CHANGELOG_LINK, changelogShown } from '../src/lib/changelog-link.ts';
 import { mailtoOf, OPERATOR } from '../src/lib/operator.ts';
-import { FOOTER_SEPARATOR, footerLinks } from '../src/lib/privacy-footer.ts';
+import { FOOTER_SEPARATOR, footerLine, footerLinks } from '../src/lib/privacy-footer.ts';
 import { statusLink } from '../src/lib/status-link.ts';
 
 /** The languages a static page is drawn in (D255), each with its words. */
@@ -134,27 +135,31 @@ function current(link, page) {
  * From 375 to 767 px the wordmark stands on two lines, and below 375 px the
  * Q mark is drawn in its place, its words kept for assistive technology
  * (`site-chrome.css`, D277). `operator` is the build's (issue #369): with no
- * status page there is no `Status ↗` and no divider before it.
+ * status page there is no `Status ↗` and no divider after it, and without the
+ * operator's texts no `Changelog` and no divider after it (issue #396,
+ * `changelogShown`), so a copy with neither reads `API docs ↗` alone.
  */
 export function siteHeader(page, lang = 'en', operator = OPERATOR) {
   const m = messagesOf(lang);
-  const changelog = { ...CHANGELOG_LINK, label: m.header.changelog };
+  const changelog = changelogShown(operator)
+    ? { ...CHANGELOG_LINK, label: m.header.changelog }
+    : null;
   const link = statusLink(operator.statusPageUrl);
   const status = link && { ...link, label: m.header.status, newTabNote: m.header.newTab };
   const apiDocs = { ...API_DOCS_LINK, label: m.header.apiDocs, newTabNote: m.header.newTab };
+  const divider = '    <span class="header-divider" aria-hidden="true"></span>';
 
   return [
     '<header class="site-header">',
     `  <a class="brand" href="${HOME_ADDRESSES[lang]}"><span class="brand-name">Webhook Inspector</span><img class="brand-mark" src="${BRAND_MARK.src}" alt="" width="${BRAND_MARK.size}" height="${BRAND_MARK.size}" /></a>`,
     '  <div class="header-links">',
-    `    <a class="header-link" href="${changelog.href}"${current(changelog, page)}>${escapeText(changelog.label)}</a>`,
-    ...(status === null
+    ...(changelog === null
       ? []
       : [
-          '    <span class="header-divider" aria-hidden="true"></span>',
-          `    ${newTabLink(status)}`,
+          `    <a class="header-link" href="${changelog.href}"${current(changelog, page)}>${escapeText(changelog.label)}</a>`,
+          divider,
         ]),
-    '    <span class="header-divider" aria-hidden="true"></span>',
+    ...(status === null ? [] : [`    ${newTabLink(status)}`, divider]),
     `    ${newTabLink(apiDocs)}`,
     '  </div>',
     '</header>',
@@ -175,9 +180,10 @@ export function siteHeader(page, lang = 'en', operator = OPERATOR) {
  * `lang` its language (D255): in Russian the line, the links and `Почта:` are
  * the application's Russian band's, `О сервисе` leading to `/ru/about`
  * (`footerLinks` in `privacy-footer.ts`). `operator` is the build's (issue
- * #369): without the operator's texts the links are `About` alone, and with
- * no contact address there is no `Contact:`, the last link then with no dot
- * after it.
+ * #369): without the operator's texts the links are `About` alone and the
+ * line ends after the session's 7 days, with no clause on the backups (issue
+ * #396, `footerLine`), and with no contact address there is no `Contact:`,
+ * the last link then with no dot after it.
  */
 export function siteFooter(page, lang = 'en', operator = OPERATOR) {
   const m = messagesOf(lang);
@@ -200,7 +206,7 @@ export function siteFooter(page, lang = 'en', operator = OPERATOR) {
 
   return [
     '<footer class="site-footer">',
-    `  <p><span>${escapeText(m.footer.line)}</span> <span class="footer-end">${links}${address}</span></p>`,
+    `  <p><span>${escapeText(footerLine(m, operator))}</span> <span class="footer-end">${links}${address}</span></p>`,
     '</footer>',
   ].join('\n');
 }

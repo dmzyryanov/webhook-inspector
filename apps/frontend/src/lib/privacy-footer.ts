@@ -37,9 +37,14 @@ import { OPERATOR, type Operator } from './operator.ts';
  * The address is the build's `CONTACT_EMAIL` (issue #369, `contact.ts`). A
  * build that names none has no `Contact:` at all: `address` and `href` are
  * `null`, and the band ends with its last link, with no dot after it.
+ *
+ * The line's last clause, on the backups, is the operator's (issue #396):
+ * the 3 days are this site's, its chart's `backup.keep`, and a copy run with
+ * `npm run dev` has no backup at all, so a build without the operator's
+ * texts ends the line after the session's 7 days (`footerLine`).
  */
 export const PRIVACY_FOOTER = {
-  line: en.footer.line,
+  line: footerLine(),
   contactLabel: en.footer.contact,
   address: CONTACT_ADDRESS,
   href: CONTACT_MAILTO,
@@ -61,6 +66,17 @@ export const PRIVACY_FOOTER = {
 export const FOOTER_LINKS: readonly FooterLink[] = OPERATOR.texts
   ? [ABOUT_LINK, TERMS_LINK, PRIVACY_LINK]
   : [ABOUT_LINK];
+
+/**
+ * The footer's line in a language, `m` its words, for `operator`'s build
+ * (issue #396): D265's, its clause on the backups included, with the
+ * operator's texts; without them the same words ending after the session's
+ * 7 days, `footer.lineWithoutBackups`, which the application's band, the
+ * static pages and `/ru/about` all draw.
+ */
+export function footerLine(m: Messages = en, operator: Operator = OPERATOR): string {
+  return operator.texts ? m.footer.line : m.footer.lineWithoutBackups;
+}
 
 /** A footer link as drawn: where it leads and its words. */
 export interface FooterLink {
@@ -98,9 +114,9 @@ export const FOOTER_SEPARATOR = ' \u00b7 ';
 
 /**
  * The whole footer as one paragraph, the way it reads below 1024 px, in a
- * language, `m` its words: the line, then `About · Terms · Privacy · Contact:
- * contact@qa-tools.ru`, the parts `operator`'s build has, a dot between each
- * two (issue #369). Its `textContent` is this from every width from 768 px,
+ * language, `m` its words: the line `operator`'s build draws (`footerLine`),
+ * then `About · Terms · Privacy · Contact: contact@qa-tools.ru`, the parts
+ * that build has, a dot between each two (issue #369). Its `textContent` is this from every width from 768 px,
  * since the separator is only hidden from 1024 px, and on every static page;
  * below 768 px the application's band carries `EN | RU` before the contact as
  * well (D222).
@@ -109,7 +125,7 @@ export function footerText(m: Messages = en, operator: Operator = OPERATOR): str
   const contact =
     operator.contactEmail === null ? [] : [`${m.footer.contact}\u00a0${operator.contactEmail}`];
 
-  return `${m.footer.line} ${[...footerLinks(m, operator).map((link) => link.label), ...contact].join(FOOTER_SEPARATOR)}`;
+  return `${footerLine(m, operator)} ${[...footerLinks(m, operator).map((link) => link.label), ...contact].join(FOOTER_SEPARATOR)}`;
 }
 
 /** The English footer of this build as one paragraph (`footerText`). */

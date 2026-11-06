@@ -4,8 +4,13 @@
  * `/status` and `/status/` locations, each a 301 to the build's status page,
  * `STATUS_PAGE_URL` (`src/lib/operator.ts`). A build that names no status page
  * keeps the line, a comment, and `/status` is then the application's 404, as
- * every other unknown address is. The image carries no configuration at run
- * time (D274), so what nginx answers is decided here, when the image is built.
+ * every other unknown address is. A build without the operator's texts
+ * (issue #396) also has none of the exact locations of the changelog's
+ * files, `/changelog.md` and the two feeds, which it does not write, so each
+ * is that 404 too; `/changelog` and `/changelog/` are already, through the
+ * error page of `/changelog/index.html`, as `/terms` is. The image carries
+ * no configuration at run time (D274), so what nginx answers is decided here,
+ * when the image is built.
  *
  * The address reaches nginx as it is, so beside the checks `operator.ts`
  * makes when it reads the setting, this refuses anything but the characters
@@ -23,6 +28,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
+import { changelogShown } from '../src/lib/changelog-link.ts';
 import { OPERATOR } from '../src/lib/operator.ts';
 
 /** The configuration as the repository writes it, for a build with no status page. */
@@ -52,15 +58,82 @@ export function statusLocations(url) {
   ].join('\n');
 }
 
+/**
+ * The changelog's files nginx serves from exact locations of their own: its
+ * text (D184) and its two Atom feeds (D212), each a missing file's plain 404
+ * in a build that has them. A build without the operator's texts writes none
+ * (issue #396), and its configuration leaves these locations out.
+ */
+export const CHANGELOG_FILE_LOCATIONS = Object.freeze([
+  '/changelog.md',
+  '/changelog.xml',
+  '/changelog-breaking.xml',
+]);
+
+/** The line that opens the exact location of `path`, as `nginx.conf` indents it. */
+function locationLine(path) {
+  return `    location = ${path} {`;
+}
+
+/** The index of the one line of `lines` that opens the exact location of `path`. */
+function locationIndex(lines, path) {
+  const found = lines.flatMap((line, index) => (line === locationLine(path) ? [index] : []));
+
+  if (found.length !== 1) {
+    throw new Error(`nginx.conf must hold the line "${locationLine(path).trim()}" once`);
+  }
+
+  return found[0];
+}
+
+/**
+ * `source` without the exact location of `path`: its comment, the lines of
+ * `#` right above it, its lines to the `}` that closes it, and the blank line
+ * after it, so the locations around it stay one blank line apart. Read line
+ * by line, in time linear in the source's length. Refused: a source that
+ * does not hold the location once, or never closes it.
+ */
+export function withoutLocation(source, path) {
+  const lines = source.split('\n');
+  const at = locationIndex(lines, path);
+  let start = at;
+  let end = at + 1;
+
+  while (start > 0 && lines[start - 1].startsWith('    #')) {
+    start -= 1;
+  }
+
+  while (end < lines.length && lines[end] !== '    }') {
+    end += 1;
+  }
+
+  if (end === lines.length) {
+    throw new Error(`nginx.conf never closes the location "${locationLine(path).trim()}"`);
+  }
+
+  end += lines[end + 1] === '' ? 2 : 1;
+
+  return [...lines.slice(0, start), ...lines.slice(end)].join('\n');
+}
+
 /** The configuration for `operator`'s build, from `source`, the repository's unless given. */
 export function nginxConf(source = readFileSync(NGINX_CONF_SOURCE, 'utf8'), operator = OPERATOR) {
   if (source.split(STATUS_MARKER).length !== 2) {
     throw new Error(`nginx.conf must hold the line "${STATUS_MARKER.trim()}" once`);
   }
 
-  const url = operator.statusPageUrl;
+  const lines = source.split('\n');
 
-  return url === null ? source : source.replace(STATUS_MARKER, () => statusLocations(url));
+  for (const path of CHANGELOG_FILE_LOCATIONS) {
+    locationIndex(lines, path);
+  }
+
+  const url = operator.statusPageUrl;
+  const status = url === null ? source : source.replace(STATUS_MARKER, () => statusLocations(url));
+
+  return changelogShown(operator)
+    ? status
+    : CHANGELOG_FILE_LOCATIONS.reduce(withoutLocation, status);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -72,7 +145,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else {
     writeFileSync(resolve(output), nginxConf());
     console.log(
-      `nginx configuration: wrote ${output}, /status ${OPERATOR.statusPageUrl === null ? 'the application 404' : 'redirecting to the status page'}`,
+      `nginx configuration: wrote ${output}, /status ${OPERATOR.statusPageUrl === null ? 'the application 404' : 'redirecting to the status page'}, the changelog's files ${changelogShown() ? 'served' : 'the application 404'}`,
     );
   }
 }

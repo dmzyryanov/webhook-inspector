@@ -17,6 +17,8 @@ import { legalPagesPlugin } from './scripts/legal.mjs';
 import { moveSetting } from './scripts/move-setting.mjs';
 import { OLD_RELAY_SCRIPT_NAME } from './scripts/relay-script.mjs';
 import { isProduction, SITE_ORIGINS, siteOriginPlugin } from './scripts/site-origin.mjs';
+import { docsPagePlugin } from './scripts/site-operator.mjs';
+import { changelogShown } from './src/lib/changelog-link.ts';
 import { OPERATOR } from './src/lib/operator.ts';
 
 /*
@@ -66,7 +68,9 @@ const port = Number(process.env.WEBHOOK_INSPECTOR_FRONTEND_PORT ?? 5173);
  *   `Cache-Control: no-cache` (D184), generated on each request by
  *   `scripts/changelog.mjs`, the module the build writes them with;
  *   `/changelog.xml` and `/changelog-breaking.xml` its two Atom feeds as
- *   `application/atom+xml; charset=utf-8`, the same way (D212).
+ *   `application/atom+xml; charset=utf-8`, the same way (D212), when the
+ *   build shows the operator's texts (issue #396); otherwise all five are
+ *   left to the application, which answers `Page not found`.
  * - `/about` and `/about/` answer the about page, `about/index.html`, whose
  *   body `aboutPagePlugin()` writes from `src/lib/about-copy.ts`, with
  *   `Cache-Control: no-cache` (D211), as the build writes it; `/ru/about`
@@ -108,7 +112,7 @@ function apiReferencePages(): Plugin {
           return;
         }
 
-        if (path === '/changelog' || path === '/changelog/') {
+        if (changelogShown() && (path === '/changelog' || path === '/changelog/')) {
           req.url = '/changelog/index.html';
           res.setHeader('Cache-Control', 'no-cache');
           next();
@@ -150,7 +154,7 @@ function apiReferencePages(): Plugin {
           return;
         }
 
-        if (path === '/changelog.md') {
+        if (changelogShown() && path === '/changelog.md') {
           const body = changelogMarkdown(readChangelog());
 
           res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
@@ -159,7 +163,7 @@ function apiReferencePages(): Plugin {
           return;
         }
 
-        if (path === FEED_PATH || path === BREAKING_FEED_PATH) {
+        if (changelogShown() && (path === FEED_PATH || path === BREAKING_FEED_PATH)) {
           const body = changelogFeed(readChangelog(), path === FEED_PATH ? 'all' : 'breaking');
 
           res.setHeader('Content-Type', 'application/atom+xml; charset=utf-8');
@@ -217,6 +221,7 @@ export default defineConfig({
     changelogPagePlugin(),
     aboutPagePlugin(),
     legalPagesPlugin(),
+    docsPagePlugin(),
     siteOriginPlugin(),
   ],
   // The move of the inspector's pages to the site's second origin (D276): the

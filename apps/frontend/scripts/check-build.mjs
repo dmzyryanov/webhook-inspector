@@ -41,7 +41,11 @@
  *   Deprecated or Notice paragraph — newest first, each with its version's id, a
  *   title naming its version, an RFC 3339 `updated`, a link to its line on
  *   /changelog and content; and no text in either names what the page may
- *   not.
+ *   not. The changelog is among the operator's texts (issue #396): a build
+ *   that does not show them has none of its four files — the page, the text
+ *   and the two feeds — and no file of it but a script links `/changelog`,
+ *   `/changelog.md` or a feed, relative or on any origin; the sitemap lists
+ *   no `/changelog`.
  * - The about page (D211): `dist/about/index.html`, the page at /about, loads
  *   only content-hashed files and no Scalar, has the title `About QA Tools`,
  *   has had its body written, and asks no search engine to leave it out; and
@@ -93,6 +97,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
 import { legalPages } from '../src/lib/legal-copy.ts';
+import { CHANGELOG_LINK, changelogShown } from '../src/lib/changelog-link.ts';
 import { PRIVACY_LINK, TERMS_LINK } from '../src/lib/legal-links.ts';
 import { mailtoOf, OPERATOR, operatorWithTexts } from '../src/lib/operator.ts';
 import { isWellFormedXml } from '../src/lib/xml-format.ts';
@@ -248,6 +253,17 @@ export function homePageProblems(file, html) {
 export const CHANGELOG_PAGE = 'changelog/index.html';
 export const CHANGELOG_TEXT = 'changelog.md';
 
+/**
+ * Every file the changelog writes into the build: the page, its text and its
+ * two Atom feeds (D184, D212), none of which a build without the operator's
+ * texts has (issue #396).
+ */
+export const CHANGELOG_FILES = [
+  CHANGELOG_PAGE,
+  CHANGELOG_TEXT,
+  ...Object.values(FEEDS).map((feed) => feed.path.slice(1)),
+];
+
 /** The addresses of the Terms of Use and the Privacy Policy (D217), the operator's texts (#369). */
 export const LEGAL_PATHS = [TERMS_LINK.href, PRIVACY_LINK.href];
 
@@ -268,17 +284,17 @@ export const LEGAL_PAGE_FILES = legalPageFiles();
 
 /**
  * Every page a build for `operator` writes — the application, the Russian
- * home page, the API reference, the changelog, the about page and its
- * Russian twin, and the Terms of Use and the Privacy Policy when it shows
- * them — whose comments, served in their source, are held to the
- * changelog's rules.
+ * home page, the API reference, the about page and its Russian twin, and the
+ * changelog, the Terms of Use and the Privacy Policy when it shows the
+ * operator's texts (issues #369, #396) — whose comments, served in their
+ * source, are held to the changelog's rules.
  */
 export function commentedPages(operator = OPERATOR) {
   return [
     'index.html',
     RUSSIAN_HOME_PAGE,
     'docs/index.html',
-    CHANGELOG_PAGE,
+    ...(changelogShown(operator) ? [CHANGELOG_PAGE] : []),
     ABOUT_PAGE,
     RUSSIAN_ABOUT_PAGE,
     ...Object.values(legalPageFiles(operator)),
@@ -297,7 +313,7 @@ export function builtPages(operator = OPERATOR) {
     application: 'index.html',
     'Russian home': RUSSIAN_HOME_PAGE,
     'API reference': 'docs/index.html',
-    changelog: CHANGELOG_PAGE,
+    ...(changelogShown(operator) ? { changelog: CHANGELOG_PAGE } : {}),
     about: ABOUT_PAGE,
     'Russian about': RUSSIAN_ABOUT_PAGE,
     ...legalPageFiles(operator),
@@ -316,7 +332,7 @@ export function scalarFreePages(operator = OPERATOR) {
   return {
     application: 'the application',
     'Russian home': 'the Russian home page',
-    changelog: 'the changelog',
+    ...(changelogShown(operator) ? { changelog: 'the changelog' } : {}),
     about: 'the about page',
     'Russian about': 'the Russian about page',
     ...(operator.texts ? { terms: 'the terms page', privacy: 'the privacy page' } : {}),
@@ -549,15 +565,15 @@ export const FAVICON_SIZES = [16, 32, 48];
  * Every address a build for `operator` offers search engines (D183, D184,
  * D211, D217, D226, D255), in the sitemap's order: a build whose sitemap
  * lacks one is refused, so a page cannot drop out of search unnoticed.
- * `/terms` and `/privacy` are among them only when the build shows the
- * operator's texts (issue #369).
+ * `/changelog`, `/terms` and `/privacy` are among them only when the build
+ * shows the operator's texts (issues #369, #396).
  */
 export function sitemapAddresses(operator = OPERATOR) {
   return [
     '/',
     '/ru/',
     '/docs',
-    '/changelog',
+    ...(changelogShown(operator) ? [CHANGELOG_LINK.href] : []),
     '/about',
     '/ru/about',
     ...(operator.texts ? LEGAL_PATHS : []),
@@ -566,6 +582,18 @@ export function sitemapAddresses(operator = OPERATOR) {
 
 /** This build's (`sitemapAddresses`). */
 export const SITEMAP_ADDRESSES = sitemapAddresses();
+
+/**
+ * The addresses of the sitemap's source that a build for `operator` does not
+ * serve, which its sitemap must not list: without the operator's texts,
+ * `/terms` and `/privacy` (issue #369) and `/changelog` (issue #396).
+ */
+export function unservedAddresses(operator = OPERATOR) {
+  return [
+    ...(operatorWithTexts(operator) === null ? LEGAL_PATHS : []),
+    ...(changelogShown(operator) ? [] : [CHANGELOG_LINK.href]),
+  ].map((path) => `${APP_ORIGIN}${path}`);
+}
 
 /**
  * Paths no sitemap address may lie under: session pages (`/v/`, whose id is
@@ -762,6 +790,51 @@ export const KEPT_PRODUCTION_NAMES = /(?:contact@|status\.|tag:)qa-tools\.ru/gi;
 
 /** The files a build may name an address in: every text file, by its extension. */
 const TEXT_FILE = /\.(?:html|txt|xml|md|json|mjs|js|css|svg|webmanifest)$/;
+
+/**
+ * A link to one of the changelog's addresses (issue #396): `/changelog`, a
+ * path under it, `/changelog.md`, `/changelog.xml` or
+ * `/changelog-breaking.xml`, written relative or after an http or https
+ * origin, as a page's `href`, a sitemap's `<loc>`, a Markdown link or the
+ * API description's prose writes one. A path that only ends in
+ * `/changelog`, such as `apps/frontend/changelog/`, is no address of the
+ * site's, nor are `/changelogs` and `/changelog.mdx`. Each part is a run of
+ * one class or fixed text, so a scan is linear in the text's length.
+ */
+export const CHANGELOG_LINK_PATTERN =
+  /(?:https?:\/\/[A-Za-z0-9.-]+(?::\d+)?|(?<![\w.~%/-]))\/changelog(?:-breaking\.xml|\.md|\.xml)?(?![\w-]|\.\w)/g;
+
+/**
+ * The files whose links the changelog check reads: every text file but a
+ * script. A script's text is its bundler's, and what the application draws
+ * from it is held where React draws it (`src/lib/operator.test.ts`): its
+ * header keeps the address as a constant whether or not it draws the link.
+ */
+const LINKED_FILE = /\.(?:html|txt|xml|md|json|css|svg|webmanifest)$/;
+
+/** Every link to a changelog address `text` holds, each once, in the order found. */
+export function changelogLinksIn(text) {
+  return [...new Set(text.match(CHANGELOG_LINK_PATTERN) ?? [])];
+}
+
+/**
+ * The files of a build without the operator's texts that still link one of
+ * the changelog's addresses (issue #396, criterion 4), each with the links:
+ * that build serves none of them, so each would lead to `Page not found`.
+ */
+export function changelogLinkProblems(dist) {
+  return filesUnder(dist)
+    .filter((path) => LINKED_FILE.test(path))
+    .flatMap((path) => {
+      const links = changelogLinksIn(readFileSync(join(dist, path), 'utf8'));
+
+      return links.length === 0
+        ? []
+        : [
+            `${path} links ${links.join(', ')}, though OPERATOR_TEXTS does not show the operator's texts and the build has no changelog`,
+          ];
+    });
+}
 
 /** Every file under `directory`, by its path relative to it. */
 function filesUnder(directory, prefix = '') {
@@ -994,6 +1067,59 @@ function addEach(problems, found) {
 }
 
 /**
+ * What is wrong with the changelog of a build that publishes it (D184, D212):
+ * its text or a feed missing or empty, a feed that does not carry `entries`'
+ * versions as it should, a page that lists no version, and a text that
+ * publishes what the changelog may not.
+ */
+function changelogProblems(dist, entries) {
+  const problems = [];
+  const changelogText = join(dist, CHANGELOG_TEXT);
+
+  if (!existsSync(changelogText) || statSync(changelogText).size === 0) {
+    problems.push(`the changelog text ${CHANGELOG_TEXT} was not built`);
+  } else {
+    for (const problem of publishedTextProblems(readFileSync(changelogText, 'utf8'))) {
+      problems.push(`${CHANGELOG_TEXT} publishes ${problem}`);
+    }
+  }
+
+  for (const feed of Object.values(FEEDS)) {
+    const file = feed.path.slice(1);
+    const path = join(dist, file);
+
+    if (!existsSync(path) || statSync(path).size === 0) {
+      problems.push(`the changelog feed ${file} was not built`);
+    } else {
+      addEach(
+        problems,
+        changelogFeedProblems(
+          file,
+          readFileSync(path, 'utf8'),
+          entries.filter(feed.includes).map((entry) => entry.version),
+        ),
+      );
+    }
+  }
+
+  const changelogPage = join(dist, CHANGELOG_PAGE);
+
+  if (existsSync(changelogPage)) {
+    const html = readFileSync(changelogPage, 'utf8');
+
+    if (!/<details class="version"/.test(html)) {
+      problems.push(`the changelog page ${CHANGELOG_PAGE} lists no version`);
+    }
+
+    for (const problem of publishedTextProblems(pageText(html))) {
+      problems.push(`${CHANGELOG_PAGE} publishes ${problem}`);
+    }
+  }
+
+  return problems;
+}
+
+/**
  * Everything wrong with the build in `dist`. `now` is the time `security.txt`
  * must not have expired at, and `entries` the changelog the feeds must carry,
  * `CHANGELOG.md`'s unless a test gives its own; `origins` and `operator` are
@@ -1042,46 +1168,20 @@ export function checkBuild(
     }
   }
 
-  const changelogText = join(dist, CHANGELOG_TEXT);
-
-  if (!existsSync(changelogText) || statSync(changelogText).size === 0) {
-    problems.push(`the changelog text ${CHANGELOG_TEXT} was not built`);
+  if (changelogShown(operator)) {
+    addEach(problems, changelogProblems(dist, entries));
   } else {
-    for (const problem of publishedTextProblems(readFileSync(changelogText, 'utf8'))) {
-      problems.push(`${CHANGELOG_TEXT} publishes ${problem}`);
-    }
-  }
-
-  for (const feed of Object.values(FEEDS)) {
-    const file = feed.path.slice(1);
-    const path = join(dist, file);
-
-    if (!existsSync(path) || statSync(path).size === 0) {
-      problems.push(`the changelog feed ${file} was not built`);
-    } else {
-      addEach(
-        problems,
-        changelogFeedProblems(
-          file,
-          readFileSync(path, 'utf8'),
-          entries.filter(feed.includes).map((entry) => entry.version),
-        ),
-      );
-    }
-  }
-
-  const changelogPage = join(dist, CHANGELOG_PAGE);
-
-  if (existsSync(changelogPage)) {
-    const html = readFileSync(changelogPage, 'utf8');
-
-    if (!/<details class="version"/.test(html)) {
-      problems.push(`the changelog page ${CHANGELOG_PAGE} lists no version`);
+    // The operator's texts (#396): a build that does not show them has no
+    // changelog, and nothing in it links one.
+    for (const file of CHANGELOG_FILES) {
+      if (existsSync(join(dist, file))) {
+        problems.push(
+          `${file} is in the build, though OPERATOR_TEXTS does not show the operator's texts`,
+        );
+      }
     }
 
-    for (const problem of publishedTextProblems(pageText(html))) {
-      problems.push(`${CHANGELOG_PAGE} publishes ${problem}`);
-    }
+    addEach(problems, changelogLinkProblems(dist));
   }
 
   for (const file of commentedPages(operator)) {
@@ -1165,7 +1265,7 @@ export function checkBuild(
       sitemapProblems(
         readFileSync(sitemap, 'utf8'),
         sitemapAddresses(operator),
-        texts === null ? LEGAL_PATHS.map((path) => `${APP_ORIGIN}${path}`) : [],
+        unservedAddresses(operator),
       ),
     );
   }
@@ -1262,8 +1362,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     // list off.
     process.exitCode = 1;
   } else {
+    const changelog = changelogShown();
+
     console.log(
-      `frontend build: the application and its Russian home page, the API reference, the changelog, the about page and its Russian twin${OPERATOR.texts ? ' and the terms and privacy pages' : ''} are separate; the changelog text and its two Atom feeds, the agent documentation, ${OPERATOR.contactEmail === null ? '' : 'security.txt, '}the files for search engines and the relay script with its documented SHA-256 are there; ${OPERATOR.texts ? "the operator's texts are shown" : "the operator's texts are left out"}, ${OPERATOR.statusPageUrl === null ? 'no status page' : 'a status page'} and ${OPERATOR.contactEmail === null ? 'no contact address' : 'a contact address'} are named`,
+      `frontend build: the application and its Russian home page, the API reference, ${changelog ? 'the changelog, ' : ''}the about page and its Russian twin${OPERATOR.texts ? ' and the terms and privacy pages' : ''} are separate; ${changelog ? 'the changelog text and its two Atom feeds, ' : ''}the agent documentation, ${OPERATOR.contactEmail === null ? '' : 'security.txt, '}the files for search engines and the relay script with its documented SHA-256 are there; ${OPERATOR.texts ? "the operator's texts are shown" : "the operator's texts are left out, the changelog among them, and nothing links it"}, ${OPERATOR.statusPageUrl === null ? 'no status page' : 'a status page'} and ${OPERATOR.contactEmail === null ? 'no contact address' : 'a contact address'} are named`,
     );
   }
 }

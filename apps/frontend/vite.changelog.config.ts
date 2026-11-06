@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { changelogPagePlugin } from './scripts/changelog.mjs';
 import { siteOriginPlugin } from './scripts/site-origin.mjs';
+import { changelogShown } from './src/lib/changelog-link.ts';
 
 /*
  * The changelog at /changelog (issue #97, D184), built after the application
@@ -16,6 +17,13 @@ import { siteOriginPlugin } from './scripts/site-origin.mjs';
  * `changelog/index.html` is the page nginx serves at /changelog with
  * `Cache-Control: no-cache`. The dev server serves the page from the source
  * tree through the same plugin (`vite.config.ts`).
+ *
+ * The changelog's entries are the operator's texts (issue #396): a build that
+ * does not show them (`OPERATOR_TEXTS`, `src/lib/operator.ts`) writes
+ * nothing here, neither the page nor its script and stylesheet, as
+ * `vite.legal.config.ts` writes no legal page, so `/changelog` answers the
+ * application's 404 (`nginx.conf`). It still runs, on the same inputs, so
+ * that the build's steps are the same either way.
  */
 export default defineConfig({
   // The page names this build's origins (D274).
@@ -25,6 +33,7 @@ export default defineConfig({
   build: {
     // The application's build ran first and owns dist/.
     emptyOutDir: false,
+    write: changelogShown(),
     rolldownOptions: {
       input: { changelog: fileURLToPath(new URL('changelog/index.html', import.meta.url)) },
     },
