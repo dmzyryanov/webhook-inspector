@@ -66,13 +66,20 @@ command that runs it again; where the log kept no message, the check made.
 
 Three tests, each in both suites `a connection that pipelines, PROXY
 protocol off (D229)` and `… PROXY protocol v2 (D229)`, each failing at its
-20 s wait (F-14, F-21, F-28):
+20 s wait (F-14, F-21):
 
 - `has at most 32 requests read and unanswered, and gets all 300 of its GETs answered in order`:
   `timed out waiting until all 300 are answered`.
-- `holds at most the bound for a client that reads none of its answers, and delivers them all once it reads`:
-  `timed out waiting until all 200 are delivered`, the number the case's
-  own, set by the machine's socket buffers (224 on another machine).
+- `holds at most the bound for a client that reads none of its answers, and delivers them all once it reads`
+  (also F-28): `timed out waiting until all <n> are delivered`, `<n>` being
+  the answers the case pipelines: 200 at least, and 224 with Linux's default
+  socket buffers. Two of its failures are watched and not yet seen: where
+  `/proc/sys/net/ipv4` cannot be read, as on macOS, it pipelines 200, and a
+  kernel that takes them all fails it with
+  `timed out waiting until the kernel takes no more of its answers`; and
+  socket buffers whose largest `tcp_wmem` and `tcp_rmem` together pass
+  58.5 MiB fail it before it starts, with
+  `<n> answers to outgrow the kernel's buffers (…): more than a session keeps`.
 - `bounds a burst that comes after the connection has been used`:
   `timed out waiting until the burst is answered`.
 
@@ -167,9 +174,8 @@ in `apps/backend/src/modules/limits/rate-limit.test.ts` (F-07); the one-run
 bounds of 1 s of `apps/backend/src/modules/limits/calls-in-flight-routes.test.ts`,
 F-10's count loop among them (F-10, F-21);
 `refuses 100,000 answers of one full address quickly, …` in
-`apps/backend/src/modules/limits/answer-budget.test.ts`, whose message,
-`refusing the flood took too long`, is that of `capture-budget.test.ts`
-too (F-27); `planRawSearch: hostile queries` in
+`apps/backend/src/modules/limits/answer-budget.test.ts`, its message
+`refusing the flood took too long` (F-27); `planRawSearch: hostile queries` in
 `apps/frontend/src/lib/request-filter.test.ts` and
 `stands hostile bodies at growing sizes in one pass, its message a line` in
 `apps/frontend/src/lib/response-template.test.ts` (F-29);
