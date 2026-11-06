@@ -35,7 +35,7 @@ rules:
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
   # The nightly database backup's CronJob (D176). CronJobs only: the chart
   # never creates a Job itself; the CronJob controller creates the Jobs.
-  # Added to the live Role by the owner on 2026-09-28; this file records it.
+  # Added to the live Role by the operator on 2026-09-28; this file records it.
   - apiGroups: ['batch']
     resources: ['cronjobs']
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
@@ -43,8 +43,8 @@ rules:
   # the PROXY protocol header (D187, templates/receive.yaml). Applied to the
   # live Role with sudo on the server before the first deploy of 0.36.0.
   # And the API's edge rate limit, a Middleware (#205, D264,
-  # templates/ingress.yaml): added to this rule of the live Role by the owner
-  # before #205 was delivered; this file records it.
+  # templates/ingress.yaml): added to this rule of the live Role by the
+  # operator before #205 was delivered; this file records it.
   - apiGroups: ['traefik.io']
     resources: ['ingressroutetcps', 'tlsoptions', 'serverstransporttcps', 'middlewares']
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']

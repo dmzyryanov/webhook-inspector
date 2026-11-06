@@ -1,4 +1,4 @@
-# The header-only query measurement of issue #130 (D250, criterion 8),
+# The header-only query measurement of issue #130 (D250),
 # driven by `node scripts/measure-header-queries.mjs run`, which starts this
 # project afresh for each shape of stored headers - a new database volume,
 # migrated, a new backend - and removes everything it started.

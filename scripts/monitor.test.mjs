@@ -869,7 +869,7 @@ test('an error is described by its code or name, never by a message that could h
   );
 });
 
-// What the chart must say, as issue #68 and the owner decided it; since #367
+// What the chart must say, as issue #68 settled it; since #367
 // only with a heartbeat URL set, which no default is.
 test('the chart runs the monitor every 5 minutes from a CronJob, as uid 1000, and never creates a Job', () => {
   assert.match(

@@ -276,8 +276,8 @@ backup:
     existingSecret: ''
     # Each run reads the bucket's versioning and uploads nothing while it is
     # enabled, because a delete would then leave the old versions in place.
-    # false only for a key that is refused that read; the owner then checks the
-    # setting in the console instead (the runbook's section 7).
+    # false only for a key that is refused that read; the operator then checks
+    # the setting in the console instead (the runbook's section 7).
     checkVersioning: true
 
 # Alerts (D181; the alerts runbook is the operator's, kept outside this

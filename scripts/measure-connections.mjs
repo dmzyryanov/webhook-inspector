@@ -61,7 +61,7 @@
  *   with no answer read and the others, which `statuses` names
  *   (`oversizeSeries`).
  * - `burst-200`: the same with 200 webhooks; `burst-4`: D210's 500 from four
- *   addresses in turn, 125 each (#157, D228, criterion 5).
+ *   addresses in turn, 125 each (#157, D228).
  * - `ci`: #139's 50 CI-style waits, `scripts/measure-calls-in-flight.mjs`
  *   with `SERIES=ci`, on a backend whose receive listener takes no PROXY
  *   header, since that script sends its webhooks without one.
@@ -103,7 +103,7 @@
  *   a connection of its own. Its line carries `bars`: `/healthz` within 1 s
  *   throughout, every capture answered `200` within 5 s and stored, every
  *   viewer's call `200` (`createFloodSeries`).
- * - `edge-flood` (#205, D264, criteria 1 and 4): the same flood through
+ * - `edge-flood` (#205, D264): the same flood through
  *   Traefik, as production receives it, with the edge rate limit the chart
  *   sets on `/api/` and `/mcp` (`measure-connections.traefik.yml`): from the
  *   client's edge address over TLS, every `429` ignored, Traefik's own told
@@ -119,7 +119,7 @@
  *   `create-flood-probed`: the two floods with the probe inside the backend
  *   (`measure-backend-probe.mjs`), which counts the application listener's
  *   connections beside its requests.
- * - `edge-d201` (#205, criterion 2): D201's limits used whole at a window's
+ * - `edge-d201` (#205): D201's limits used whole at a window's
  *   edge through Traefik - the rest of one window's 60 creations and 1200
  *   reads `LEAD_S` (10) seconds before it ends and the next window's at once
  *   as it begins, `CONNECTIONS` (64) at once - every answer to be the
@@ -154,9 +154,10 @@
  *   `bar`, D229's: the backend running, no `error` line, `memory.peak` at or
  *   under 400 MiB and every small capture stored.
  * - `row-lock`, `row-lock-refused`, `row-lock-control` (#244, Scope 5, D244
- *   point 7): the row-lock variant of #243's finding 2, its repeatable shape
- *   and finding 2 itself as a control, made as series rather than the ad-hoc
- *   script a safety classifier stopped twice. `row-lock`: `CALL_ADDRESSES` (3)
+ *   point 7): the row-lock variant of #243's line stall - changes waiting in
+ *   a session's line behind its captures - its repeatable shape and that stall
+ *   itself as a control, made as series of this harness rather than an ad-hoc
+ *   script. `row-lock`: `CALL_ADDRESSES` (3)
  *   addresses within `RATE_PER_MIN` (1200) send, round robin, a session
  *   `GET`, a single-request `DELETE`, and every `SESSION_DELETE_EVERY`-th (30)
  *   a session `DELETE` of a throwaway session sent amid `THROWAWAY_CAPTURES`
@@ -665,7 +666,7 @@ function smallCapture(sessionId, source = SMALL_ADDRESS) {
  * answers written to `outFile`. A separate process so that the attack's own
  * event loop - thousands of TLS connections at once - cannot starve the
  * legitimate traffic the bar measures; what is then read is the backend's
- * latency, not the client's (#157 criterion 3).
+ * latency, not the client's (#157).
  */
 async function smallWorker(sessionId, perSecond, outFile, source = SMALL_ADDRESS) {
   const fired = [];
@@ -711,7 +712,7 @@ async function smallWorker(sessionId, perSecond, outFile, source = SMALL_ADDRESS
 /**
  * 10 small captures a second from the small-captures address to its own
  * session, in a child process, from now until `stop()`; every one must be
- * stored, the slowest within 5 s (#157 criterion 3). `stop()` answers their
+ * stored, the slowest within 5 s (#157). `stop()` answers their
  * statuses and timings.
  */
 function smallCaptures(sessionId, perSecond, source = SMALL_ADDRESS) {
@@ -736,7 +737,7 @@ function smallCaptures(sessionId, perSecond, source = SMALL_ADDRESS) {
   };
 }
 
-/** The hostile series of criterion 3, behind Traefik, spread over `ADDR_COUNT` addresses. */
+/** The hostile series of #157, behind Traefik, spread over `ADDR_COUNT` addresses. */
 async function hostileSeries(shape) {
   const addrCount = Number(process.env.ADDR_COUNT ?? 1);
   const addresses = ATTACK.slice(0, addrCount);
@@ -1207,10 +1208,10 @@ async function apiHostileSeries() {
 /* every `429` ignored, while another address captures webhooks and makes   */
 /* the calls a viewer makes, and `/healthz` is asked as the liveness probe  */
 /* asks it. The backend alone, called straight as S8 calls it, with no edge */
-/* limit in front (#205's is Traefik's). Bars (#189 criterion 3): `/healthz`*/
-/* answers within 1 s throughout, the backend never exits, every capture of */
-/* the other address is stored and answered within 5 s, none refused, and   */
-/* its calls are answered `200`.                                            */
+/* limit in front (#205's is Traefik's). Bars (#189): `/healthz` answers    */
+/* within 1 s throughout, the backend never exits, every capture of the     */
+/* other address is stored and answered within 5 s, none refused, and its   */
+/* calls are answered `200`.                                                */
 /* ------------------------------------------------------------------------ */
 
 /** The address the flood is counted under, by its `X-Forwarded-For`: the first attacking one, as S8's. */
@@ -1578,7 +1579,7 @@ async function createFloodSeries() {
 /* edge, and `/healthz` is asked straight, as the kubelet asks it. And D201 */
 /* at its edge: one address making its 60 creations and 1200 other calls at */
 /* the end of a window and again at the start of the next, through Traefik, */
-/* every answer the backend's, never Traefik's own `429` (criteria 1, 2).   */
+/* every answer the backend's, never Traefik's own `429`.                   */
 /* ------------------------------------------------------------------------ */
 
 /** The small captures' body through the edge, as `smallCapture`'s. */
@@ -1695,7 +1696,8 @@ function edgeViewerCalls(sessionId, everyMs) {
 
 /**
  * What the edge does with each path from the flooding address while its
- * bucket on `/api/` is empty (criterion 3 at run time): `COUNT_EACH` (5) calls
+ * bucket on `/api/` is empty, which checks at run time that the chart limits
+ * `/api/` and `/mcp` alone (#205): `COUNT_EACH` (5) calls
  * a path, 100 ms apart, through Traefik from the edge address. `/api/...`
  * should meet Traefik's own `429`; `/mcp` has a router and so a bucket of its
  * own, untouched by the flood; every other path - the frontend's `/` and bare
@@ -1733,7 +1735,7 @@ async function edgePathProbes() {
 }
 
 /**
- * The flood series of #205 (criteria 1 and 4): `RATE` (1,000) creations a
+ * The flood series of #205: `RATE` (1,000) creations a
  * second through Traefik from the edge address over `CONNECTIONS` (64)
  * connections for `FLOOD_S` (120) seconds - or in pulses, `PULSE_ON_S` on and
  * `PULSE_OFF_S` off - with `SMALL_PER_SECOND` (5) small captures a second
@@ -1874,7 +1876,7 @@ function d201Calls(creations, reads, sessionId) {
 }
 
 /**
- * Criterion 2 of #205: D201 at its edge, through Traefik. One address - the
+ * #205: D201 at its edge, through Traefik. One address - the
  * edge one - starts both of its windows with a creation and a read, and
  * `LEAD_S` (10) seconds before they end sends the rest of both limits, 59
  * creations and 1199 reads interleaved, `CONNECTIONS` (64) at once, as fast
@@ -2031,7 +2033,7 @@ function bigCapture(sessionId, pathBytes, bodyBytes) {
  * status for `mid`, nothing to see for `at-once` - the socket is gone before
  * the backend answers, which is the point. `sent` means the whole request was
  * handed to the client's kernel before the close; a write that failed is
- * counted by its error instead, never as `sent` (#141, reviewer 4).
+ * counted by its error instead, never as `sent` (#141).
  */
 function abandonList(forwardedFor, path, mode, { method = 'GET', payload } = {}) {
   const started = performance.now();
@@ -2101,7 +2103,7 @@ function abandonList(forwardedFor, path, mode, { method = 'GET', payload } = {})
  * taken is refused `429` / `1016`, and the client's close reaches them all.
  * The connection is destroyed only once the write has been handed to the
  * kernel whole, as `abandonList` does, so no request is cut off by the close
- * (#141, reviewer 3). Answers how many bytes came back before the close, or
+ * (#141). Answers how many bytes came back before the close, or
  * the write's or the socket's error.
  */
 function pipelinedLists(forwardedFor, path, count) {
@@ -2303,7 +2305,7 @@ async function abandonedListSeries(shape) {
   // connection closed, so a minute of it at `RATE_PER_MIN` would be either one
   // pipeline of 1,200, past the 128 calls an address may hold at once and so
   // a burst again, or lists each on a connection of its own, which is shape
-  // 1's minute (#141, reviewer 2).
+  // 1's minute (#141).
   if (shape === 'pipelined' && sustainS > 0) {
     throw new Error('abandon-pipelined has no sustained form; run it without SUSTAIN_S');
   }
@@ -2476,7 +2478,7 @@ async function abandonedListSeries(shape) {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Scope 5 (#244, D244 point 7): the row-lock variant of #243's finding 2.   */
+/* Scope 5 (#244, D244 point 7): the row-lock variant of #243's line stall. */
 /* ------------------------------------------------------------------------ */
 
 /** The address the target session's capture burst is counted under, never one of `ATTACK` or a reader's. */
@@ -2491,8 +2493,8 @@ const ROW_LOCK_THROWAWAY_ADDRESS = '198.51.100.91';
 /**
  * The 50th and 99th percentiles and the largest of `values` in milliseconds,
  * and how many there were: the bystanders' read timings of Scope 5, reported
- * as the owner's choice needs p50 / p99 / max (#244). Rounded to the
- * millisecond, 0 for none.
+ * as p50 / p99 / max, the figures the choice among #244's levers rests on.
+ * Rounded to the millisecond, 0 for none.
  */
 export function summarizePercentiles(values) {
   const sorted = [...values].filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
@@ -2505,7 +2507,7 @@ export function summarizePercentiles(values) {
 }
 
 /**
- * A set of answers reported for the owner's choice (#244): how many were
+ * A set of answers reported for the choice among #244's levers: how many were
  * answered a `2xx` (a read `200`, a `DELETE` `204`), how many refused `429`
  * (with the `errorCode`s seen) and how many were anything else - a `404` for a
  * request already gone, a reset or a timeout, status 0 - beside their p50 /
@@ -2582,8 +2584,8 @@ function burstReport(answers, stored) {
 }
 
 /**
- * A session `DELETE` that meets captures on the row it deletes (#244's
- * correction round 1): `count` captures to `sessionId` fired at once and not
+ * A session `DELETE` that meets captures on the row it deletes (#244):
+ * `count` captures to `sessionId` fired at once and not
  * awaited, and the `DELETE`, from `forwardedFor`, sent once the first of them
  * has answered, so that the rest are in the session's line or in their
  * transaction, one of them holding the row's `FOR UPDATE`, as the `DELETE`
@@ -2657,9 +2659,9 @@ export function throwawayReport(deletions, capturesEach) {
 }
 
 /**
- * Scope 5 of #244 (D244 point 7): the row-lock variant of #243's finding 2,
- * made as a series rather than the ad-hoc script a safety classifier stopped
- * twice. `CALL_ADDRESSES` (3) addresses within their rate (`RATE_PER_MIN`,
+ * Scope 5 of #244 (D244 point 7): the row-lock variant of #243's line stall,
+ * made as a series of this harness rather than an ad-hoc script.
+ * `CALL_ADDRESSES` (3) addresses within their rate (`RATE_PER_MIN`,
  * 1200) send, round robin, on a target session receiving a burst of
  * `CAPTURE_PER_SECOND` (100) captures for `LOAD_S` (30) seconds, a session
  * `GET` of the target, a `DELETE` of one of its requests, and every
@@ -2857,12 +2859,12 @@ async function rowLockSeries() {
 }
 
 /**
- * Scope 5's control (#244): #243's finding 2 itself - `CHANGES` (3) changes
+ * Scope 5's control (#244): #243's line stall itself - `CHANGES` (3) changes
  * (`PUT .../response`) kept in flight at once in one session's line behind its
- * captures, which before #243's correction round 1 held every one of the
- * gate's slots and stalled the API of every address (D244 point 4). On the
- * head and on main alike since that fix, a bystander reading a quiet session
- * stays fast, which is what this control shows: the fix holds. The target
+ * captures, which before #243's fix held every one of the gate's slots and
+ * stalled the API of every address (D244 point 4). On the head and on main
+ * alike since that fix, a bystander reading a quiet session stays fast, which
+ * is what this control shows: the fix holds. The target
  * takes the capture burst, one address keeps `CHANGES` `PUT .../response` in
  * flight for `LOAD_S` seconds - each waiting its turn in the target's line
  * behind the captures, holding no slot of the gate - and the quiet bystander
@@ -2875,12 +2877,12 @@ async function rowLockControlSeries() {
   const loadS = Number(process.env.LOAD_S ?? 30);
   const apiPerSecond = Number(process.env.API_PER_SECOND ?? 5);
   // One change from each worker at a time, replaced when it answers but no
-  // sooner than this - so the address keeps `changeCount` changes in flight,
-  // as finding 2 had three, without, when the line is not backed up and each
-  // change answers at once, firing thousands a second and meeting its own
+  // sooner than this - so the address keeps `changeCount` changes in flight, as
+  // #243's line stall had three, without, when the line is not backed up and
+  // each change answers at once, firing thousands a second and meeting its own
   // address's 1200-a-minute limit (D201). `changeCount` × 1000 / this stays
-  // under that; uncontended each change still waits its turn in the line
-  // behind the captures, which is the shape finding 2 is (D244 point 4).
+  // under that; uncontended each change still waits its turn in the line behind
+  // the captures, the shape of #243's line stall (D244 point 4).
   const changeIntervalMs = Number(process.env.CHANGE_INTERVAL_MS ?? 250);
 
   const target = await createSession();
@@ -2961,7 +2963,7 @@ async function rowLockControlSeries() {
 }
 
 /**
- * Scope 5's repeatable shape (#244's correction round 1): a session `DELETE`
+ * Scope 5's repeatable shape (#244): a session `DELETE`
  * refused once it holds the row. A private session's `DELETE` without its
  * key takes the row `FOR UPDATE` first and is refused next, the lock held,
  * as a session that does not exist (`404` / `1001`, D245): it deletes
@@ -4189,7 +4191,7 @@ const SENDERS = [
   '10.145.9.10',
 ];
 
-/** The four addresses of D210's burst from four addresses, 125 webhooks each (#157, criterion 5). */
+/** The four addresses of D210's burst from four addresses, 125 webhooks each (#157). */
 const BURST_FOUR_ADDRESSES = '203.0.113.7,203.0.113.8,203.0.113.9,203.0.113.10';
 
 export const SERIES = {
@@ -4201,7 +4203,7 @@ export const SERIES = {
   handshake: { client: 'stall', env: { SHAPE: 'handshake' } },
   'ws-16': { client: 'ws', env: { COUNT: '16' } },
   burst: { client: 'burst', env: {} },
-  // Criterion 5 of #157 (D228): 200 at once from one address, and D210's 500
+  // #157 (D228): 200 at once from one address, and D210's 500
   // from four addresses in turn.
   'burst-200': { client: 'burst', env: { COUNT: '200' } },
   'burst-4': { client: 'burst', env: { ADDRESSES: BURST_FOUR_ADDRESSES } },
@@ -4219,7 +4221,7 @@ export const SERIES = {
     backend: { MEASURE_RECEIVE_PROXY_PROTOCOL: 'off' },
   },
   // The hostile series of issue #157 (D228), behind Traefik. `--addresses N`
-  // spreads one over the first N attacking addresses (criterion 4); the
+  // spreads one over the first N attacking addresses; the
   // default is one. S1 and S7 are one-address regression checks; S8 is
   // measured for N too since #183.
   s1: { client: 'hostile:s1', env: {} },
@@ -4281,9 +4283,9 @@ export const SERIES = {
     bar: true,
     probe: true,
   },
-  // Scope 5 of #244 (D244 point 7): the row-lock variant of #243's finding 2,
+  // Scope 5 of #244 (D244 point 7): the row-lock variant of #243's line stall,
   // its repeatable shape, a private session's `DELETE` refused with the row
-  // held, and finding 2 itself as a control. `CALL_ADDRESSES` (3) spreads the
+  // held, and that stall itself as a control. `CALL_ADDRESSES` (3) spreads the
   // attacking calls over that many addresses; the probe inside the backend
   // reads each pool's longest connection hold, the capture pool's an upper
   // bound of a capture's hold of the session row, and `lockWaits` logs
@@ -5099,7 +5101,7 @@ async function runSeries(name) {
   // A reading that failed - a `docker exec` refused once the backend has
   // died, or timed out under the load - is counted, not thrown: an
   // unhandled rejection here ended the whole run before its line was
-  // printed or the project taken down (#157, the Tester's finding).
+  // printed or the project taken down (#157).
   const sampleFailures = [];
   const tryMemory = async () => {
     try {
@@ -5203,7 +5205,7 @@ async function runSeries(name) {
   }
 
   // Traefik's log over the series, at the level production runs, INFO
-  // (#205, criterion 4): a line for each call its edge rate limit refuses
+  // (#205): a line for each call its edge rate limit refuses
   // would be thousands here. Read, not thrown, when it fails.
   let traefikLog;
 
@@ -5281,7 +5283,7 @@ async function runSeries(name) {
   // an abandoned statement held the database. Each reading is a `docker
   // compose exec` of `psql` followed by a pause of `SAMPLE_MS`, so readings
   // come further apart than `SAMPLE_MS`: `meanIntervalMs` is their real mean
-  // spacing, the resolution of everything here (#141, reviewer 5). The last
+  // spacing, the resolution of everything here (#141). The last
   // list statement ended between `settleMs` and `settledByMs`, the next
   // reading, which saw none. `settleMs` is null when no reading saw one - a
   // statement shorter than the spacing can fall between two readings - and
@@ -5545,7 +5547,7 @@ async function orchestrate(argv) {
 }
 
 /**
- * What is left of the project once it is down (#231, criterion 1): its
+ * What is left of the project once it is down (#231): its
  * containers, by `docker compose ps -a`, and its networks, by Compose's
  * project label; both empty when everything the run started is removed. A
  * failure to read them is reported, not thrown.

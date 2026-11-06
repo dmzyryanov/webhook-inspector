@@ -94,7 +94,7 @@ test('Opening a request marks it read in the other tabs of the same browser only
     (window as unknown as { __notReloaded?: boolean }).__notReloaded = true;
   });
 
-  // Criterion 1: A opens `one`; B loses its shading and count with no reload,
+  // A opens `one`; B loses its shading and count with no reload,
   // and keeps its own selection and panel.
   await requestRow(tabA, one).click();
 
@@ -112,11 +112,11 @@ test('Opening a request marks it read in the other tabs of the same browser only
   await expectUnread(tabA, three, false);
   await expect(tabA).toHaveTitle(formatDocumentTitle(1));
 
-  // Criterion 3: a tab on another session is unaffected.
+  // A tab on another session is unaffected.
   await expectUnread(tabOther, otherId, true);
   await expect(tabOther).toHaveTitle(formatDocumentTitle(1));
 
-  // Criterion 5: another browser context shares nothing.
+  // Another browser context shares nothing.
   const separateContext = await browser.newContext({ baseURL, viewport });
 
   try {
@@ -133,7 +133,7 @@ test('Opening a request marks it read in the other tabs of the same browser only
     await separateContext.close();
   }
 
-  // Criterion 4: a reload, and a tab opened later, start from what was opened.
+  // A reload, and a tab opened later, start from what was opened.
   await tabB.reload();
 
   const tabLater = await context.newPage();

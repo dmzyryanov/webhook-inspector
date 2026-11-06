@@ -1,7 +1,7 @@
-// The handover of the backend and the frontend at a deployment (#132,
-// criterion 7; D221), read from the chart's templates as text: helm is not in
-// `delivery-checks`' image, and what is pinned is a handful of lines whose
-// exact values are the decision.
+// The handover of the backend and the frontend at a deployment (#132, D221),
+// read from the chart's templates as text: helm is not in `delivery-checks`'
+// image, and what is pinned is a handful of lines whose exact values are the
+// decision.
 //
 // Backend: one replica; `RollingUpdate` with `maxSurge: 1` and
 // `maxUnavailable: 0` since 0.54.1 (MR B of #132), so the new pod is ready
@@ -609,7 +609,7 @@ test('toYaml and parseHelmArguments: what the chart and the deploy job hand them
 });
 
 /* ------------------------------------------------------------------------ */
-/* Neutral defaults and the options (#367, criteria 1 and 2).               */
+/* Neutral defaults and the options (#367).                                 */
 /* ------------------------------------------------------------------------ */
 
 /** The values an installer with none of production's gives: the two hosts, and the images every install names (D022). */
@@ -849,7 +849,7 @@ test('the off-server copy renders with a bucket alone, and the monitor and the b
 });
 
 /* ------------------------------------------------------------------------ */
-/* The deploy job (#367, criteria 3 and 4; D274, D275, #340).               */
+/* The deploy job (#367; D274, D275, #340).                                 */
 /* ------------------------------------------------------------------------ */
 
 /** The top-level key `name` of a GitLab CI file, from its line to the next one's. */
@@ -1341,7 +1341,7 @@ test("the deploy job's check of the two origins passes production's and refuses 
     hosts: 'inspector.example hook.inspector.example',
   });
 
-  // Empty, either is missing, as unset (#367, criterion 4).
+  // Empty, either is missing, as unset (#367).
   assert.deepEqual(deployHosts('', 'https://hook.qa-tools.ru'), {
     status: 1,
     output: stopped(['DEPLOY_APP_ORIGIN']).output,

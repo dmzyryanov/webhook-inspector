@@ -291,7 +291,7 @@ test('Deleting in one viewer removes the row, closes the open panel and clears t
     await expect(observer.getByText('No request selected')).toHaveCount(0);
     await expect(observer.getByText('Loading request details…')).toHaveCount(0);
 
-    // Criteria 1 and 2: one deletion in the acting viewer.
+    // One deletion in the acting viewer.
     await deleteButton(acting, two).click();
 
     await expect(requestRow(acting, two)).toHaveCount(0);
@@ -305,11 +305,11 @@ test('Deleting in one viewer removes the row, closes the open panel and clears t
       await expect(page.getByText('2 / 1000 requests')).toBeVisible();
     }
 
-    // Criterion 4: the acting viewer received its own event too, and shows no
+    // The acting viewer received its own event too, and shows no
     // duplicate row and no error for it.
     await expect(acting.getByText('This request could not be deleted.')).toHaveCount(0);
 
-    // Criterion 3: Delete all in the acting viewer.
+    // Delete all in the acting viewer.
     await acting.getByRole('button', { name: 'Delete all' }).click();
 
     const dialog = acting.getByRole('dialog', { name: 'Delete all requests?' });

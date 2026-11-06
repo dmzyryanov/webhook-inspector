@@ -1846,7 +1846,7 @@ test('the script prints no trace and no environment', () => {
   );
 });
 
-// What the chart must say, as issue #67 and the owner decided it. The deploy
+// What the chart must say, as issue #67 settled it. The deploy
 // identity may manage CronJobs and not Jobs, so the chart never creates a Job
 // or a hook itself.
 test('the chart runs the script nightly from a CronJob, and never creates a Job', () => {

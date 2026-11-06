@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The production probe of issue #132 (criterion 8, D221): what a deployment
+ * The production probe of issue #132 (D221): what a deployment
  * does to the site, measured from outside the cluster for the whole of it.
  * Started before the deploy job and stopped once only the new pods run; run
  * from the operator's Mac, never from the VPS, which would reach the site
@@ -43,7 +43,7 @@
  * that capture's event by design, though an earlier connection may have had
  * it and its reload has it (D221 point 5); the frontend keeps one row per id.
  * One connection sent the same event twice would be an outbox read
- * delivering a row twice, which criterion 1's "each event once" rules out.
+ * delivering a row twice, which #132's "each event once" rules out.
  *
  * No session id is printed: it is the session's key (D153). The sessions are
  * deleted in a `finally`, whatever happened, a setup that failed half-way

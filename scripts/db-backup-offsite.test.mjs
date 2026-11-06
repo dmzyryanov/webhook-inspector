@@ -2718,7 +2718,7 @@ test('a listing beyond what a storage may answer is refused before it costs memo
     assert.ok(answer.message.length <= 600);
   });
 
-  // The tester's flood: twenty pages of 50,000 made-up copies each, a million
+  // A listing flood: twenty pages of 50,000 made-up copies each, a million
   // in all, about 4 MiB a page. The first page is refused; no other is asked for.
   await t.test('a million made-up copies in twenty pages', async (st) => {
     // Page n holds 50,000 names no other page has, and is made when asked for.
@@ -2781,7 +2781,7 @@ test('a versioning answer that is not exactly one whole document, or says its st
     'a status inside another element': `${open}<Wrap><Status>Enabled</Status></Wrap></VersioningConfiguration>`,
     'a longer root name': '<VersioningConfigurationResult></VersioningConfigurationResult>',
     'an unknown status': `${open}<Status>Paused</Status></VersioningConfiguration>`,
-    // The tester's two: an attribute whose quote is never closed, which made
+    // Two hostile answers: an attribute whose quote is never closed, which made
     // the root tag end at the `/>` inside its value; and a second document
     // after a first that says nothing.
     'an attribute whose quote is not closed': `<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/><Status>Enabled</Status></VersioningConfiguration>`,
@@ -2862,7 +2862,8 @@ test('a versioning answer that is not exactly one whole document, or says its st
     );
   }
 
-  // Through the uploader: the tester's two answers, each a whole HTTP body.
+  // Through the uploader: four of them, the two hostile answers above among
+  // them, each a whole HTTP body.
   for (const body of [
     refused['a status that is not closed'],
     refused['an empty status before a real one'],

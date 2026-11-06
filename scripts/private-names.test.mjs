@@ -131,7 +131,7 @@ const ALLOWED = Object.freeze([
   // The operator's own texts, kept as they are until #330 moves them out of
   // this repository to the platform, and #369's guard, which names what it
   // refuses in a build without the operator's settings: #330 removes this
-  // group together with them (#375, the owner's decision of 2026-11-04).
+  // group together with them (#375, decided on 2026-11-04).
   // The operator's Privacy Policy, shown only with OPERATOR_TEXTS (#369).
   { file: 'apps/frontend/src/lib/legal-copy.ts' },
   // Its test, which holds that text word for word.

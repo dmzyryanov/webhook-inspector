@@ -213,7 +213,7 @@ const fixture = (change) => {
   return spec;
 };
 
-// The changes the acceptance criteria name, each made alone on the fixture.
+// The changes #146 names, each made alone on the fixture.
 const SESSION = '/api/sessions/{sessionId}';
 const removeRequiredAnswerField = (spec) => {
   delete spec.components.schemas.CreatedSession.properties.expiresAt;
