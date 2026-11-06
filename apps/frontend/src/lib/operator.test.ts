@@ -27,11 +27,15 @@ import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
 import {
   DESCRIPTION_PARAGRAPHS,
   DOCS_FEED_COMMENT,
+  MOVE_BULLET,
+  NETWORK_HEADING,
+  NETWORK_POINTER,
   operatorDescription,
   operatorDocsPage,
   operatorLlmsIndex,
   operatorOpenApi,
   operatorSitemap,
+  WRITTEN_SERVER_ADDRESS,
 } from '../../scripts/site-operator.mjs';
 import {
   FakeElement,
@@ -141,9 +145,44 @@ const OTHER_ORIGINS = {
   alias: null,
 };
 
-/** The four names of production's operator the issue lists. */
+/**
+ * The names of production's operator a build without its settings carries
+ * nowhere: the four issue #369 lists, and the server's address, which the
+ * API description's Network section publishes (issue #386).
+ */
 const PRODUCTION_NAMES =
-  /status\.qa-tools\.ru|contact@qa-tools\.ru|firstvds|yandex\s+object\s+storage/i;
+  /status\.qa-tools\.ru|contact@qa-tools\.ru|firstvds|yandex\s+object\s+storage|80\.87\.198\.166/i;
+
+/**
+ * The paragraphs of the Network section of `description` (issue #386): its
+ * heading and every paragraph after it up to the next `#` or `##` heading.
+ */
+function networkParagraphs(description: string): string[] {
+  const paragraphs = description.split('\n\n');
+  const start = paragraphs.indexOf(NETWORK_HEADING);
+  const end = paragraphs.findIndex(
+    (paragraph, index) => index > start && /^#{1,2} /.test(paragraph),
+  );
+
+  assert.ok(start >= 0 && end > start, 'the description has a Network section');
+
+  return paragraphs.slice(start, end);
+}
+
+/**
+ * A made-up Network section, a heading after it and a paragraph ending in
+ * the sentence that points at it, which every description
+ * `operatorDescription` reads holds (issue #386); and what of them a build
+ * without the operator's texts keeps: the heading and the paragraph's first
+ * sentence.
+ */
+const NETWORK_PART = [
+  NETWORK_HEADING,
+  `${MOVE_BULLET}\`x.example\`.** It moves.`,
+  '## Stability',
+  `Addresses.${NETWORK_POINTER}`,
+].join('\n\n');
+const NETWORK_PART_LEFT = '## Stability\n\nAddresses.';
 
 /** What a page's markup reads as, its tags left out. */
 const text = (markup: string) => markup.replace(/<[^>]*>/g, '');
@@ -605,9 +644,12 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     for (const start of Object.values(DESCRIPTION_PARAGRAPHS)) {
       assert.ok(!description.info.description.includes(start), start);
     }
+    // The operator's four paragraphs, and the Network section whole (issue #386).
     assert.equal(
       description.info.description.split('\n\n').length,
-      source.info.description.split('\n\n').length - 4,
+      source.info.description.split('\n\n').length -
+        4 -
+        networkParagraphs(source.info.description).length,
     );
     assert.doesNotMatch(JSON.stringify(description), PRODUCTION_NAMES);
     assert.doesNotMatch(description.info.description, /\/terms|\/privacy|\/about\b|\/changelog/);
@@ -637,14 +679,6 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         'until the date its 1.16.0 entry gives, which says what happens to it then.',
       ],
       [
-        "until the date the changelog's 1.16.0 entry gives, https://qa-tools.ru/changelog, which says what changes then.",
-        "until the date the changelog's 1.16.0 entry gives, which says what changes then.",
-      ],
-      [
-        'and in an entry of the changelog, https://qa-tools.ru/changelog. The one exception',
-        'and in an entry of the changelog. The one exception',
-      ],
-      [
         'marked **Breaking** in its entry of the changelog, https://qa-tools.ru/changelog (as text for scripts: https://qa-tools.ru/changelog.md). Entries',
         'marked **Breaking** in its entry of the changelog. Entries',
       ],
@@ -652,12 +686,23 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       assert.ok(source.includes(written), written);
       assert.ok(described.includes(left), left);
     }
+    // The Network section's two links go with the section, which is the
+    // operator's too since issue #386.
+    for (const written of [
+      "until the date the changelog's 1.16.0 entry gives, https://qa-tools.ru/changelog, which says what changes then.",
+      'and in an entry of the changelog, https://qa-tools.ru/changelog. The one exception',
+    ]) {
+      assert.ok(networkParagraphs(source).join('\n\n').includes(written), written);
+      assert.ok(!described.includes(written.split(', https://')[0] as string), written);
+    }
     // Words that name the changelog without linking it stay (Decision 3).
     assert.equal(
       described.match(/until the date the changelog's 1\.19\.0 entry gives/g)?.length,
       source.match(/until the date the changelog's 1\.19\.0 entry gives/g)?.length,
     );
     // Every other paragraph is the source's.
+    const network = new Set(networkParagraphs(source));
+
     assert.deepEqual(
       described.split('\n\n').filter((paragraph) => !/changelog/i.test(paragraph)),
       operatorDescription(source, { ...OTHER_OPERATOR, texts: true })
@@ -666,7 +711,8 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
           (paragraph) =>
             !/changelog/i.test(paragraph) &&
             !paragraph.startsWith(DESCRIPTION_PARAGRAPHS.about) &&
-            !paragraph.startsWith(DESCRIPTION_PARAGRAPHS.legal),
+            !paragraph.startsWith(DESCRIPTION_PARAGRAPHS.legal) &&
+            !network.has(paragraph),
         ),
     );
     // With the texts, the links and the sentence are the source's.
@@ -682,6 +728,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         "QA Tools is a tester's personal project.",
         'By using the API or the MCP server, you agree to the Terms of Use.',
         'Subscribe with a feed reader: https://x.example/changelog.xml.',
+        NETWORK_PART,
         ...rest,
       ].join('\n\n');
 
@@ -696,8 +743,13 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         'Kept: https://a.example/changelogs and https://a.example/x/changelog.',
       ],
     ] as const) {
-      // The four paragraphs before it are the operator's, all left out here.
-      assert.equal(operatorDescription(paragraphs(written), NO_OPERATOR), left, written);
+      // The four paragraphs before it are the operator's, all left out here,
+      // and so is the Network section (issue #386).
+      assert.equal(
+        operatorDescription(paragraphs(written), NO_OPERATOR),
+        `${NETWORK_PART_LEFT}\n\n${left}`,
+        written,
+      );
       assert.ok(
         operatorDescription(paragraphs(written), PRODUCTION_OPERATOR).endsWith(`\n\n${written}`),
       );
@@ -731,6 +783,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       "QA Tools is a tester's personal project.",
       'By using the API or the MCP server, you agree to the Terms of Use.',
       'Subscribe with a feed reader.',
+      NETWORK_PART,
     ].join('\n\n');
     const samples = [
       ', https://',
@@ -751,7 +804,245 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       times.push(
         fastestRun(() => {
           // The one link, at the end, is left out; nothing else is a link.
-          assert.equal(operatorDescription(hostile, NO_OPERATOR), `${body}.`);
+          assert.equal(
+            operatorDescription(hostile, NO_OPERATOR),
+            `${NETWORK_PART_LEFT}\n\n${body}.`,
+          );
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time:
+    // linear with room for a busy runner, nowhere near a quadratic scan.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
+  });
+
+  it('leave the Network section out without the operator’s texts, with the sentence pointing at it, and only the move’s bullet with them and no second origin (issue #386)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const section = networkParagraphs(source);
+    const bullets = (text: string) =>
+      networkParagraphs(text)
+        .flatMap((paragraph) => paragraph.split('\n'))
+        .filter((line) => line.startsWith('- **'));
+    const move = bullets(source).find((line) => line.startsWith(MOVE_BULLET)) as string;
+
+    // What the source says, which the backend's tests pin to docs/API.md (D204).
+    assert.equal(section.length, 3);
+    assert.equal(bullets(source).length, 7);
+    assert.match(move, /^- \*\*Moving to `webhook\.qa-tools\.ru`\.\*\* Since 1\.16\.0 /);
+    assert.ok(section.join('\n\n').includes(`One address: \`${WRITTEN_SERVER_ADDRESS}\``));
+    assert.equal(source.split(NETWORK_POINTER).length, 2);
+
+    // Without the texts: no section, no sentence pointing at it, no address,
+    // with or without a second origin; the bullet that held the sentence
+    // ends where it did, and the next one follows it.
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY, OTHER_OPERATOR]) {
+      const described = operatorDescription(source, operator);
+
+      assert.equal(operatorDescription(source, operator, false), described);
+      for (const paragraph of section) {
+        assert.ok(!described.includes(paragraph), paragraph.slice(0, 40));
+      }
+      assert.doesNotMatch(described, /\bNetwork\b/);
+      assert.ok(!described.includes(WRITTEN_SERVER_ADDRESS));
+      assert.ok(!described.includes(NETWORK_POINTER.trim()));
+      assert.ok(described.includes('the mark was the notice.\n- `info.version`, shown at the top'));
+      assert.match(described, /\n\n## Security\n\n\*\*No accounts\.\*\*/);
+      assert.equal(described.split('\n\n## ').length, source.split('\n\n## ').length - 1);
+    }
+
+    // With the texts and no second origin: the section without the move's
+    // bullet, every other byte the source's; with a second origin, the
+    // source as it is.
+    const withoutMove = source.replace(`${move}\n`, '');
+
+    assert.equal(operatorDescription(source, PRODUCTION_OPERATOR, false), withoutMove);
+    assert.deepEqual(
+      bullets(withoutMove),
+      bullets(source).filter((line) => line !== move),
+    );
+    assert.equal(operatorDescription(source, PRODUCTION_OPERATOR, true), source);
+    assert.equal(operatorDescription(source, PRODUCTION_OPERATOR), source);
+    assert.equal(
+      operatorDescription(source, { ...OTHER_OPERATOR, texts: true }, false),
+      operatorDescription(source, { ...OTHER_OPERATOR, texts: true }).replace(`${move}\n`, ''),
+    );
+    // And so in the file: the bullet's JSON text is gone, nothing else.
+    assert.equal(
+      operatorOpenApi(openapi, PRODUCTION_OPERATOR, false),
+      openapi.replace(JSON.stringify(`${move}\n`).slice(1, -1), ''),
+    );
+    assert.equal(operatorOpenApi(openapi, PRODUCTION_OPERATOR, true), openapi);
+  });
+
+  it('leave the move’s bullet out with the lines that go on with it, and a section that ends the description whole (issue #386)', () => {
+    const head = [
+      'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
+      "QA Tools is a tester's personal project.",
+      'By using the API or the MCP server, you agree to the Terms of Use.',
+      'Subscribe with a feed reader.',
+    ].join('\n\n');
+    const of = (...rest: string[]) => [head, ...rest].join('\n\n');
+
+    for (const [network, left] of [
+      [`- a\n${MOVE_BULLET}x.** It\n  goes on\n  - and on\n- b`, '- a\n- b'],
+      [`- a\n${MOVE_BULLET}x.**\n  last`, '- a'],
+      [`${MOVE_BULLET}x.** Alone in its paragraph.`, null],
+    ] as const) {
+      const written = of(
+        'Before.',
+        NETWORK_HEADING,
+        'Intro:',
+        network,
+        '### Inside',
+        '## After',
+        `Text.${NETWORK_POINTER}`,
+      );
+
+      assert.equal(
+        operatorDescription(written, PRODUCTION_OPERATOR, false),
+        of(
+          'Before.',
+          NETWORK_HEADING,
+          'Intro:',
+          ...(left === null ? [] : [left]),
+          '### Inside',
+          '## After',
+          `Text.${NETWORK_POINTER}`,
+        ),
+        network,
+      );
+      assert.equal(operatorDescription(written, PRODUCTION_OPERATOR, true), written);
+      // Without the texts, a `###` heading is the section's own, and `##` ends it.
+      assert.equal(operatorDescription(written, NO_OPERATOR), 'Before.\n\n## After\n\nText.');
+    }
+
+    // A section that ends the description, or a `#` heading that ends it.
+    assert.equal(
+      operatorDescription(
+        of(`Text.${NETWORK_POINTER}`, NETWORK_HEADING, `${MOVE_BULLET}x.**`, '- **Last.**'),
+        NO_OPERATOR,
+      ),
+      'Text.',
+    );
+    assert.equal(
+      operatorDescription(
+        of(NETWORK_HEADING, `${MOVE_BULLET}x.**`, '# Top', `Text.${NETWORK_POINTER}`),
+        NO_OPERATOR,
+      ),
+      '# Top\n\nText.',
+    );
+    // Words that only look like the section's name stay.
+    assert.equal(
+      operatorDescription(
+        of(
+          NETWORK_HEADING,
+          `${MOVE_BULLET}x.**`,
+          '## After',
+          `Networks, xNetworkx and a network.${NETWORK_POINTER}`,
+        ),
+        NO_OPERATOR,
+      ),
+      '## After\n\nNetworks, xNetworkx and a network.',
+    );
+  });
+
+  it('refuse a description without the Network section, the sentence or the bullet, and one that names the address or the section elsewhere without the texts (issue #386)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+
+    for (const [broken, refusal] of [
+      [
+        source.replace('\n\n## Network\n\n', '\n\n## Network access\n\n'),
+        /0 paragraphs that are "## Network", not one/,
+      ],
+      [
+        source.replace('\n\n## Security\n\n', '\n\n## Network\n\n'),
+        /2 paragraphs that are "## Network", not one/,
+      ],
+      [
+        source.replace(NETWORK_POINTER, ' A change of address has a notice of its own.'),
+        /does not hold once the sentence/,
+      ],
+      [
+        source.replace('**No accounts.**', `**No accounts.**${NETWORK_POINTER}`),
+        /does not hold once the sentence/,
+      ],
+      [
+        source.replace(MOVE_BULLET, '- **Move to '),
+        /Network section has 0 bullets beginning "- \*\*Moving to ", not one/,
+      ],
+      [
+        source.replace(MOVE_BULLET, `${MOVE_BULLET}a.**\n${MOVE_BULLET}`),
+        /Network section has 2 bullets/,
+      ],
+      // The bullet outside the section is not the section's.
+      [
+        source
+          .replace(MOVE_BULLET, '- **Move to ')
+          .replace('- `info.version`', `${MOVE_BULLET}x.**\n- \`info.version\``),
+        /Network section has 0 bullets/,
+      ],
+    ] as const) {
+      assert.notEqual(broken, source);
+      for (const operator of [NO_OPERATOR, PRODUCTION_OPERATOR]) {
+        assert.throws(() => operatorDescription(broken, operator), refusal);
+        assert.throws(() => operatorDescription(broken, operator, false), refusal);
+      }
+    }
+
+    // The address or the section named outside it: refused without the
+    // texts, which would leave it in; the source's own with them.
+    for (const named of [
+      source.replace(
+        '**No accounts.**',
+        `**No accounts.** The server is ${WRITTEN_SERVER_ADDRESS}.`,
+      ),
+      source.replace('**No accounts.**', '**No accounts.** See Network above.'),
+      source.replace('the mark was the notice.', 'the mark was the notice (Network).'),
+    ]) {
+      assert.throws(
+        () => operatorDescription(named, NO_OPERATOR),
+        /names the server's address or its Network section outside it/,
+      );
+      assert.doesNotThrow(() => operatorDescription(named, PRODUCTION_OPERATOR, false));
+    }
+  });
+
+  it('read hostile Network sections at growing sizes in time linear in their length (issue #386)', () => {
+    const head = [
+      'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
+      "QA Tools is a tester's personal project.",
+      'By using the API or the MCP server, you agree to the Terms of Use.',
+      'Subscribe with a feed reader.',
+    ].join('\n\n');
+    const repeat = (sample: string, size: number) =>
+      sample.repeat(Math.ceil(size / 3 / sample.length));
+    const times: number[] = [];
+
+    for (const size of [10_000, 100_000, 400_000]) {
+      // Lines that begin like the bullet, or like a bullet, and are not.
+      const lines = repeat('- **Moving t\n- \n  \n#\n', size);
+      // Paragraphs inside the section that look like the headings that end it.
+      const inside = repeat('### Networ\n\n#\n\n#x\n\n', size);
+      // Words like the section's name, and an address one digit short.
+      const outside = repeat(' xNetworkx 80.87.198.16 Networks', size);
+      const bullets = `${lines}${MOVE_BULLET}x.** It moves.\n  on\n- kept`;
+      const hostile = [
+        head,
+        NETWORK_HEADING,
+        bullets,
+        `${inside}end`,
+        '## Stability',
+        `${outside}${NETWORK_POINTER}`,
+      ].join('\n\n');
+
+      times.push(
+        fastestRun(() => {
+          assert.equal(operatorDescription(hostile, NO_OPERATOR), `## Stability\n\n${outside}`);
+          assert.equal(
+            operatorDescription(hostile, PRODUCTION_OPERATOR, false),
+            hostile.replace(`${MOVE_BULLET}x.** It moves.\n  on\n`, ''),
+          );
         }),
       );
     }
@@ -877,6 +1168,12 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     assert.doesNotMatch(llmsFiles['llms.txt'], PRODUCTION_NAMES);
     assert.doesNotMatch(llmsFiles['llms-full.txt'], PRODUCTION_NAMES);
     assert.doesNotMatch(llmsFiles['llms-full.txt'], /\/terms|\/privacy/);
+    // No Network section, no sentence pointing at it, no server address (issue #386).
+    for (const text of [files['openapi.json'] as string, llmsFiles['llms-full.txt']]) {
+      assert.ok(!text.includes(NETWORK_HEADING));
+      assert.ok(!text.includes(NETWORK_POINTER.trim()));
+      assert.ok(!text.includes(WRITTEN_SERVER_ADDRESS));
+    }
     // No link to the changelog (issue #396), in any of them.
     for (const text of [
       files['sitemap.xml'] as string,
@@ -1184,8 +1481,17 @@ describe('the build check of production’s operator names (issue #369, criterio
   it('finds each name in any case, inside a longer word, split across lines and escaped', () => {
     assert.deepEqual(
       check.OPERATOR_NAMES.map((item) => item.name),
-      ['status.qa-tools.ru', 'contact@qa-tools.ru', 'FirstVDS', 'Yandex Object Storage'],
+      [
+        'status.qa-tools.ru',
+        'contact@qa-tools.ru',
+        'FirstVDS',
+        'Yandex Object Storage',
+        '80.87.198.166',
+      ],
     );
+    // The address the build check looks for is the one the description
+    // written for production publishes (issue #386).
+    assert.equal(check.OPERATOR_NAMES[4]?.name, WRITTEN_SERVER_ADDRESS);
 
     for (const [found, textOf] of [
       ['status.qa-tools.ru', 'see https://status.qa-tools.ru/ now'],
@@ -1212,6 +1518,16 @@ describe('the build check of production’s operator names (issue #369, criterio
       ['Yandex Object Storage', 'Yandex\\nObject\\u00a0Storage'],
       ['Yandex Object Storage', 'Yandex<br />Object<br>Storage'],
       ['Yandex Object Storage', 'xYandex Object Storagex'],
+      ['80.87.198.166', 'Allow outgoing connections to `80.87.198.166` on port 443'],
+      ['80.87.198.166', '180.87.198.1666'],
+      ['80.87.198.166', '80%2e87%2E198.166'],
+      ['80.87.198.166', '80&#46;87&#x2E;198&period;166'],
+      ['80.87.198.166', '80\\u002e87\\x2e198.166'],
+      ['80.87.198.166', '80.87.\n198.166'],
+      ['80.87.198.166', '80 . 87 .\t198 . 166'],
+      ['80.87.198.166', '80.87.198.<br />166'],
+      ['80.87.198.166', '80.87.198.\\n166'],
+      ['80.87.198.166', '80&nbsp;.87.198.166'],
     ]) {
       assert.deepEqual(left(textOf as string), [found], JSON.stringify(textOf));
     }
@@ -1221,10 +1537,15 @@ describe('the build check of production’s operator names (issue #369, criterio
       [],
     );
     assert.deepEqual(left('Yandex Object-Storage'), []);
+    assert.deepEqual(
+      left('80.87.198.165, 80.87.198, 8.87.198.166, 80,87,198,166, 80-87-198-166, 80.87.198.16'),
+      [],
+    );
   });
 
   it('reads what the build’s own settings name as theirs', () => {
-    const all = 'status.qa-tools.ru contact@qa-tools.ru FirstVDS Yandex Object Storage';
+    const all =
+      'status.qa-tools.ru contact@qa-tools.ru FirstVDS Yandex Object Storage 80.87.198.166';
 
     assert.deepEqual(left(all, PRODUCTION_OPERATOR), []);
     assert.deepEqual(left(all, OTHER_OPERATOR), [
@@ -1232,6 +1553,7 @@ describe('the build check of production’s operator names (issue #369, criterio
       'contact@qa-tools.ru',
       'FirstVDS',
       'Yandex Object Storage',
+      '80.87.198.166',
     ]);
     assert.deepEqual(left(all, { ...OTHER_OPERATOR, texts: true }), [
       'status.qa-tools.ru',
@@ -1252,6 +1574,7 @@ describe('the build check of production’s operator names (issue #369, criterio
       'index.html': '<p>clean</p>',
       'assets/main-AAAAAAAA.js': 'const a="contact@qa-tools.ru"',
       'about/index.html': '<p>Yandex\nObject Storage</p>',
+      'openapi.json': '{"description": "One address: `80\\u002e87\\u002e198\\u002e166`."}',
       'logo-512.png': Buffer.concat([
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff]),
         Buffer.from('FirstVDS'),
@@ -1262,11 +1585,12 @@ describe('the build check of production’s operator names (issue #369, criterio
         Buffer.from('status.qa-tools.ru'),
         Buffer.from([0xc3]),
       ]),
-      'changelog.md': 'QA Tools has a public status page, https://status.qa-tools.ru',
+      'changelog.md':
+        'QA Tools has a public status page, https://status.qa-tools.ru, on 80.87.198.166',
       'changelog.xml': '<feed>contact@qa-tools.ru</feed>',
       'changelog-breaking.xml': '<feed>Yandex Object Storage</feed>',
       'changelog/index.html':
-        '<header><a href="https://status.qa-tools.ru/">Status</a></header><main>contact@qa-tools.ru</main><footer></footer>',
+        '<header><a href="https://status.qa-tools.ru/">Status</a></header><main>contact@qa-tools.ru 80.87.198.166</main><footer></footer>',
     });
 
     try {
@@ -1276,6 +1600,7 @@ describe('the build check of production’s operator names (issue #369, criterio
         "changelog/index.html names status.qa-tools.ru, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
         "latin1.txt names status.qa-tools.ru, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
         "logo-512.png names FirstVDS, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
+        "openapi.json names 80.87.198.166, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
       ]);
       assert.deepEqual(check.operatorNameProblems(dist, PRODUCTION_OPERATOR), []);
       assert.deepEqual(check.CHANGELOG_HISTORY_FILES, [
@@ -1296,6 +1621,10 @@ describe('the build check of production’s operator names (issue #369, criterio
       'status&#x00000000',
       'contact%4',
       'Yandex<br <br <br ',
+      '80 . 87 . 198 . 16 ',
+      '80&#0000000',
+      '80.87\\u002',
+      '80.87.198.<br <br ',
     ];
     const times: number[] = [];
 
@@ -1304,11 +1633,13 @@ describe('the build check of production’s operator names (issue #369, criterio
         .map((sample) => sample.repeat(Math.ceil(size / samples.length / sample.length)))
         .join('');
       const split = `${textOf}Yandex\n${' '.repeat(size)}Object Storage`;
+      const address = `${textOf}80.87.198.\n${' '.repeat(size)}166`;
 
       times.push(
         fastestRun(() => {
           assert.deepEqual(left(textOf), []);
           assert.deepEqual(left(split), ['Yandex Object Storage']);
+          assert.deepEqual(left(address), ['80.87.198.166']);
         }),
       );
     }
@@ -1856,6 +2187,112 @@ describe('a build with example origins and no operator settings (issue #369, cri
       assert.equal(run.stderr.match(/^ {2}- /gm)?.length, 1, run.stderr);
     } finally {
       rmSync(copy, { recursive: true, force: true });
+    }
+  });
+
+  it('serves an API description with no Network section, no sentence pointing at it and the server’s address in no file (issue #386, criterion 1)', () => {
+    const source = (
+      JSON.parse(read('../../../../packages/shared/openapi.json')) as {
+        info: { description: string };
+      }
+    ).info.description;
+    const description = (JSON.parse(built('openapi.json')) as { info: { description: string } })
+      .info.description;
+
+    // /docs shows openapi.json as it is served; llms-full.txt carries it.
+    for (const [path, text] of [
+      ['openapi.json', description],
+      ['llms-full.txt', built('llms-full.txt')],
+    ] as const) {
+      assert.ok(!text.includes(NETWORK_HEADING), path);
+      assert.doesNotMatch(text, /\bNetwork\b/, path);
+      assert.ok(!text.includes(NETWORK_POINTER.trim()), path);
+      for (const paragraph of networkParagraphs(source)) {
+        assert.ok(!text.includes(paragraph), `${path}: ${paragraph.slice(0, 40)}`);
+      }
+      // The sections around it are there, the Errors section before Security.
+      assert.match(text, /\n\n## Errors\n\n[\s\S]*\n\n## Security\n\n\*\*No accounts\.\*\*/, path);
+      assert.ok(
+        text.includes('the mark was the notice.\n- `info.version`, shown at the top'),
+        path,
+      );
+    }
+
+    // In no file of the build, read as the build check reads it, the
+    // changelog's history among them, which this build does not have.
+    const files = filesOf(dist);
+
+    for (const path of files) {
+      assert.ok(!readFileSync(join(dist, path), 'utf8').includes(WRITTEN_SERVER_ADDRESS), path);
+    }
+    for (const path of check.CHANGELOG_HISTORY_FILES) {
+      assert.ok(!files.includes(path), path);
+    }
+    assert.deepEqual(
+      files.flatMap((path) =>
+        check.operatorNamesLeft(readFileSync(join(dist, path), 'utf8'), NO_OPERATOR),
+      ),
+      [],
+    );
+  });
+
+  it('fails the build check, naming the file, with the server’s address left in a file, split or escaped (issue #386, criterion 3)', () => {
+    const refusal = (file: string) =>
+      `${file} names 80.87.198.166, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name`;
+
+    for (const [file, write] of [
+      [
+        'llms-full.txt',
+        `${built('llms-full.txt')}\nAllow outgoing connections to \`80.87.198.166\` on port 443.\n`,
+      ],
+      ['llms.txt', `${built('llms.txt')}- One address: 80.87.198.\n  166\n`],
+      ['robots.txt', `${built('robots.txt')}# 80%2E87%2E198%2E166\n`],
+      [
+        'openapi.json',
+        built('openapi.json').replace(
+          '\\n\\n## Security\\n\\n',
+          '\\n\\nOne address: `80\\u002e87\\u002e198\\u002e166`.\\n\\n## Security\\n\\n',
+        ),
+      ],
+      [
+        'about/index.html',
+        built('about/index.html').replace('</main>', '<p>80&#46;87&#46;198&#46;166</p></main>'),
+      ],
+    ] as const) {
+      assert.notEqual(write, built(file), file);
+
+      const copy = mkdtempSync(join(tmpdir(), 'webhook-inspector-address-left-'));
+
+      try {
+        cpSync(dist, copy, { recursive: true });
+        writeFileSync(join(copy, file), write);
+
+        const run = spawnSync(process.execPath, ['scripts/check-build.mjs', copy], {
+          cwd: FRONTEND,
+          env: environment,
+          encoding: 'utf8',
+        });
+
+        assert.equal(run.status, 1, run.stdout);
+        assert.ok(run.stderr.split('\n').includes(`  - ${refusal(file)}`), run.stderr);
+        assert.equal(run.stderr.match(/^ {2}- /gm)?.length, 1, run.stderr);
+      } finally {
+        rmSync(copy, { recursive: true, force: true });
+      }
+    }
+
+    // The same file passes a build with the operator's texts, which names the
+    // address, as production's does.
+    const dist2 = treeOf({ 'llms-full.txt': 'One address: 80.87.198.166' });
+
+    try {
+      assert.deepEqual(check.operatorNameProblems(dist2, PRODUCTION_OPERATOR), []);
+      assert.deepEqual(check.operatorNameProblems(dist2, { ...OTHER_OPERATOR, texts: true }), []);
+      assert.deepEqual(check.operatorNameProblems(dist2, OTHER_OPERATOR), [
+        refusal('llms-full.txt'),
+      ]);
+    } finally {
+      rmSync(dist2, { recursive: true, force: true });
     }
   });
 });

@@ -110,19 +110,34 @@ The rules (issue #97, D184):
   `Notice`, and shows it under `Breaking only`; the breaking feed carries it. Like
   Breaking, it is never the headline: the build refuses an entry that opens
   with it.
-- **Addresses.** Write production's addresses: a build for another address
-  names its own in their place, and in `webhook.qa-tools.ru`'s its second
-  address, or its own where it has none (D274, D275). A build with no second address
-  leaves out every Breaking, Deprecated or Notice paragraph that names
-  `webhook.qa-tools.ru`, which would announce a move from its address to the
-  same one, as 1.16.0's notice of the move did; such a paragraph is
-  production's alone (#343).
+- **Addresses.** Write production's addresses. A build for another address
+  names its own addresses in their place: its second address in place of
+  `webhook.qa-tools.ru`, or its own address where it has none (D274, D275). A
+  build with no second address also leaves out the move's notices, every
+  Breaking, Deprecated or Notice paragraph that names `webhook.qa-tools.ru`,
+  which there would announce a move from its address to the same one, as
+  1.16.0's notice of the move did; such a paragraph is production's alone
+  (#343, reworded by #386).
 - **Markup.** Paragraphs separated by blank lines, `code` in backticks and
   `**bold**`; nothing else is interpreted, and the page escapes the rest, so
   `<session-id>` shows as written. The build fails when an entry has no date
   or does not open with a bold headline, and a frontend test fails when the
   published text names an issue, a decision, a repository path or an
   infrastructure object.
+
+## 1.19.21
+
+2026-11-06
+
+**Nothing changes on this site; a copy of the inspector built from its source
+no longer gives this site's server address in its API reference.** A copy
+built without this site's texts leaves out the API reference's Network
+section, which tells a network on an allow-list this site's address, port and
+notice of a new address, and the sentence of the stability policy that points
+at it; a copy built with them and with no second address leaves out the
+section's announcement of the move, which there would name the copy's one
+address on both sides. This site's `/docs`, `/openapi.json` and
+`llms-full.txt` are exactly as before. (#386)
 
 ## 1.19.20
 

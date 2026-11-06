@@ -78,7 +78,13 @@ and `/status`, `/terms` and `/privacy` are `Page not found`. Since 1.19.20
 tells this site's releases, and the [footer](#footer)'s clause on backups,
 which states this site's backup period: such a copy has no `Changelog` in
 the header and no changelog at its four addresses, and its footer line ends
-after the session's 7 days.
+after the session's 7 days. Since 1.19.21 (issue #386) it also covers the
+API reference's network section (see [URLs](#urls)), which gives this site's
+server address, its port and its notice of a new address: such a copy's
+`/docs`, `/openapi.json` and `llms-full.txt` have no network section, nor the
+stability policy's sentence pointing at it. A copy built with the texts and
+no second address keeps the section but leaves out its bullet on the move to
+`webhook.qa-tools.ru`, which there would name one address on both sides.
 
 ## Footer
 

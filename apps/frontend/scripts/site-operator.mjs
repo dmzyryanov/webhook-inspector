@@ -21,6 +21,17 @@ import { OPERATOR, statusPageInProse } from '../src/lib/operator.ts';
  * that name the changelog without linking it stay: they refer to the
  * repository's `CHANGELOG.md`, which a copy's operator has.
  *
+ * The API description's `## Network` section is among them too since issue
+ * #386: every bullet of it is this site's server — its address, which the
+ * rename does not touch, its IPv4 and its lack of a CDN — or this site's
+ * promise about it, the 14 days' notice of a new address (D204). A build
+ * without the texts leaves the section out whole, and with it the Stability
+ * sentence that points at it, `… under Network above.`; one with them and
+ * no second origin leaves out the section's bullet on production's move to
+ * its second origin, `**Moving to …**`, which such a build would name as a
+ * move from the site's origin to the same one, as the changelog leaves out
+ * the move's notices (#343).
+ *
  * Built with production's settings, every file is its source byte for byte.
  * Each function refuses a source that no longer has the part it expects, so
  * a rewording cannot let production's name through unnoticed.
@@ -34,6 +45,13 @@ export const WRITTEN_STATUS_PAGE_IN_PROSE = 'https://status.qa-tools.ru';
 
 /** The contact address the API description written for production gives. */
 export const WRITTEN_CONTACT = 'contact@qa-tools.ru';
+
+/**
+ * The server's address the API description written for production publishes
+ * in its Network section (D204), which `docs/API.md` publishes too and the
+ * backend's tests hold the two to.
+ */
+export const WRITTEN_SERVER_ADDRESS = '80.87.198.166';
 
 /** The sitemap's entry of a legal page, under whatever origin: `/terms` or `/privacy`. */
 const LEGAL_SITEMAP_ENTRY =
@@ -178,18 +196,97 @@ function paragraphIndex(paragraphs, start) {
 }
 
 /**
+ * The heading of the API description's section on this site's server
+ * (D204), a paragraph of its own: the section is it and every paragraph
+ * after it up to the next heading of its level or above (issue #386).
+ */
+export const NETWORK_HEADING = '## Network';
+
+/**
+ * The Stability section's sentence that points at the Network section, its
+ * space before it included: left out with the section.
+ */
+export const NETWORK_POINTER =
+  ' A change of the address Webhook Inspector answers on has a notice of its own, under Network above.';
+
+/** How the Network section's bullet on production's move begins, at the start of its line. */
+export const MOVE_BULLET = '- **Moving to ';
+
+/** A heading that ends a `##` section: `#` or `##` and a space, opening a paragraph. */
+const SECTION_END = /^#{1,2} /;
+
+/** The section's title as a word, as a pointer to it names it: `under Network above`. */
+const NETWORK_NAMED = /\bNetwork\b/;
+
+/**
+ * Where the Network section is among `paragraphs`: its heading's index and
+ * the index after its last paragraph. Refused: a description with no
+ * paragraph that is exactly the heading, or several.
+ */
+function networkSection(paragraphs) {
+  const found = paragraphs.flatMap((paragraph, index) =>
+    paragraph === NETWORK_HEADING ? [index] : [],
+  );
+
+  if (found.length !== 1) {
+    throw new Error(
+      `the API description has ${found.length} paragraphs that are "${NETWORK_HEADING}", not one`,
+    );
+  }
+
+  const start = found[0];
+  const next = paragraphs.findIndex(
+    (paragraph, index) => index > start && SECTION_END.test(paragraph),
+  );
+
+  return { start, end: next === -1 ? paragraphs.length : next };
+}
+
+/** Whether `line` begins the move's bullet. */
+const isMoveBullet = (line) => line.startsWith(MOVE_BULLET);
+
+/**
+ * `paragraph` without the move's bullet: its line and the lines that go on
+ * with it, up to the next line that begins a bullet of its own.
+ */
+function withoutMoveBullet(paragraph) {
+  const lines = paragraph.split('\n');
+  const start = lines.findIndex(isMoveBullet);
+
+  if (start === -1) {
+    return paragraph;
+  }
+
+  let end = start + 1;
+
+  while (end < lines.length && !lines[end].startsWith('- ')) {
+    end += 1;
+  }
+
+  return [...lines.slice(0, start), ...lines.slice(end)].join('\n');
+}
+
+/**
  * The API description's introduction for `operator`: the status sentence
  * naming the operator's status page, or left out with none; the paragraphs
  * on who runs the service and on the Terms and the Privacy Policy left out
  * without the operator's texts, and with them the changelog's links and the
- * sentence of its feeds (issue #396, `withoutChangelogLinks`).
+ * sentence of its feeds (issue #396, `withoutChangelogLinks`), the Network
+ * section and the Stability sentence that points at it (issue #386). With
+ * the texts, a build with no move — no second origin, `hasMove` false —
+ * leaves out the Network section's bullet on production's move (#386).
+ * Refused: a description without the section, the sentence or the bullet,
+ * and one without the texts that still names the server's address or the
+ * section once they are left out, so a rewording cannot keep either.
  */
-export function operatorDescription(description, operator = OPERATOR) {
+export function operatorDescription(description, operator = OPERATOR, hasMove = true) {
   const paragraphs = description.split('\n\n');
   const status = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.status);
   const about = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.about);
   const legal = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.legal);
   const feeds = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.feeds);
+  const network = networkSection(paragraphs);
+  const inNetwork = (index) => index > network.start && index < network.end;
 
   if (!paragraphs[status].includes(WRITTEN_STATUS_PAGE_IN_PROSE)) {
     throw new Error(
@@ -197,10 +294,29 @@ export function operatorDescription(description, operator = OPERATOR) {
     );
   }
 
+  if (description.split(NETWORK_POINTER).length !== 2) {
+    throw new Error(
+      `the API description does not hold once the sentence "${NETWORK_POINTER.trim()}"`,
+    );
+  }
+
+  const moves = paragraphs
+    .filter((_paragraph, index) => inNetwork(index))
+    .flatMap((paragraph) => paragraph.split('\n').filter(isMoveBullet));
+
+  if (moves.length !== 1) {
+    throw new Error(
+      `the API description's Network section has ${moves.length} bullets beginning "${MOVE_BULLET}", not one`,
+    );
+  }
+
   const left = new Set([
     ...(operator.statusPageUrl === null ? [status] : []),
     ...(operator.texts ? [] : [about, legal]),
     ...(changelogShown(operator) ? [] : [feeds]),
+    ...(operator.texts
+      ? []
+      : Array.from({ length: network.end - network.start }, (_, offset) => network.start + offset)),
   ]);
   const url = operator.statusPageUrl;
   const kept = paragraphs.flatMap((paragraph, index) => {
@@ -208,10 +324,34 @@ export function operatorDescription(description, operator = OPERATOR) {
       return [];
     }
 
-    return index === status && url !== null
-      ? [paragraph.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))]
-      : [paragraph];
+    if (index === status && url !== null) {
+      return [paragraph.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))];
+    }
+
+    if (!operator.texts) {
+      return [paragraph.replace(NETWORK_POINTER, '')];
+    }
+
+    if (!hasMove && inNetwork(index)) {
+      const rest = withoutMoveBullet(paragraph);
+
+      return rest === '' ? [] : [rest];
+    }
+
+    return [paragraph];
   });
+
+  if (!operator.texts) {
+    const named = kept.find(
+      (paragraph) => paragraph.includes(WRITTEN_SERVER_ADDRESS) || NETWORK_NAMED.test(paragraph),
+    );
+
+    if (named !== undefined) {
+      throw new Error(
+        `the API description names the server's address or its Network section outside it: "${named.slice(0, 60)}…"`,
+      );
+    }
+  }
 
   return (changelogShown(operator) ? kept : withoutChangelogLinks(kept)).join('\n\n');
 }
@@ -223,10 +363,11 @@ const INFO_CONTACT =
 /**
  * The API description's text for `operator`: `info.contact` giving the
  * operator's address, or left out with none, and `info.description` as
- * `operatorDescription` writes it. Edited as text, so every other byte is
+ * `operatorDescription` writes it, for a build with a second origin unless
+ * `hasMove` is false (issue #386). Edited as text, so every other byte is
  * the source's.
  */
-export function operatorOpenApi(text, operator = OPERATOR) {
+export function operatorOpenApi(text, operator = OPERATOR, hasMove = true) {
   const contacts = [...text.matchAll(INFO_CONTACT)];
 
   if (contacts.length !== 1 || JSON.parse(contacts[0][1]) !== WRITTEN_CONTACT) {
@@ -245,7 +386,9 @@ export function operatorOpenApi(text, operator = OPERATOR) {
     address === null ? '' : block.replace(email, () => JSON.stringify(address)),
   );
 
-  return contact.replace(written, () => JSON.stringify(operatorDescription(description, operator)));
+  return contact.replace(written, () =>
+    JSON.stringify(operatorDescription(description, operator, hasMove)),
+  );
 }
 
 /**

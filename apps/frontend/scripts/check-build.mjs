@@ -81,10 +81,10 @@
  *   (#339).
  * - No file of the build names one of production's operator details its
  *   settings do not name (issue #369): `status.qa-tools.ru`,
- *   `contact@qa-tools.ru`, `FirstVDS` or `Yandex Object Storage`, in any
- *   case, inside a longer word, split across lines or escaped, outside the
- *   changelog's history. A copy built with none of the settings names none
- *   of them.
+ *   `contact@qa-tools.ru`, `FirstVDS`, `Yandex Object Storage` or, since
+ *   #386, the server's address `80.87.198.166`, in any case, inside a longer
+ *   word, split across lines or escaped, outside the changelog's history. A
+ *   copy built with none of the settings names none of them.
  *
  * Usage: node scripts/check-build.mjs [dist directory]
  */
@@ -917,10 +917,14 @@ const GAP = String.raw`(?:\s|&nbsp;|&#0*160;|&#x0*a0;|\\[nrt]|\\u00a0|\\xa0|<br\
  * Production's operator details (issue #369): what a build names only when
  * its settings name it. `named` says whether `operator`'s do: the status page
  * and the contact address when they are production's, the hosting the
- * operator's texts name when the build shows them. Each `pattern` is fixed
- * text, the escapes above and a run of `GAP`, whose alternatives begin with
- * different characters, so a scan is linear in the text's length; every
- * pattern ignores case and finds the name inside a longer word too.
+ * operator's texts name when the build shows them, and since #386 the
+ * server's address, which the API description's Network section publishes
+ * (D204) and a build without the texts leaves out with it
+ * (`site-operator.mjs`), its four numbers read with a `GAP` allowed on
+ * either side of each dot. Each `pattern` is fixed text, the escapes above
+ * and a run of `GAP`, whose alternatives begin with different characters,
+ * so a scan is linear in the text's length; every pattern ignores case and
+ * finds the name inside a longer word too.
  */
 export const OPERATOR_NAMES = Object.freeze([
   {
@@ -943,6 +947,11 @@ export const OPERATOR_NAMES = Object.freeze([
   {
     name: 'Yandex Object Storage',
     pattern: new RegExp(`yandex${GAP}object${GAP}storage`, 'gi'),
+    named: (operator) => operator.texts,
+  },
+  {
+    name: '80.87.198.166',
+    pattern: new RegExp(['80', '87', '198', '166'].join(`(?:${GAP})?${DOT}(?:${GAP})?`), 'gi'),
     named: (operator) => operator.texts,
   },
 ]);

@@ -689,7 +689,11 @@ second origin names `https://webhook.qa-tools.ru` as its own site, so it also
 leaves out of the changelog every Breaking, Deprecated or Notice paragraph
 that names that host, such as 1.16.0's notice of the move, which would come
 out moving the site from its origin to the same one; an entry left with none
-is no longer marked, and the breaking feed leaves it out (#343). Built for
+is no longer marked, and the breaking feed leaves it out (#343). For the same
+reason such a build leaves the bullet `**Moving to …**` out of the API
+description's Network section (#386, `operatorOpenApi()`, given whether the
+build has a second origin by `openApiText()`); without the operator's texts
+the whole section goes (The operator's details, below). Built for
 production, every file is byte for byte what it was. The places that compose
 an address themselves — the feeds' links,
 `security.txt`'s `Canonical`, the about page's MCP address, the legal pages'
@@ -750,6 +754,16 @@ inspector's address, above); set empty, the image leaves it out.
   footer line's last clause, on how long the backups keep requests, which a
   build without them ends after the session's 7 days (`footerLine()` of
   `src/lib/privacy-footer.ts`, the dictionaries' `footer.lineWithoutBackups`).
+  Since #386 they also cover the API description's `## Network` section,
+  whose every bullet is this site's server — its address `80.87.198.166`,
+  which the rename does not touch, IPv4 only, no CDN — or this site's
+  promise about it, the 14 days' notice of a new address (D204): a build
+  without them leaves the section out of `openapi.json`, and so of `/docs`
+  and `llms-full.txt`, with the Stability sentence that points at it, `… under
+  Network above.` (`operatorDescription()` of `scripts/site-operator.mjs`),
+  refusing a description without the section, the sentence or the section's
+  bullet on the move, and one that still names the address or the section
+  once they are left out.
 
 Since #381 `scripts/check-deployment.mjs` checks the three as the deployment's
 settings give them, rather than production's values written into it: options
@@ -784,10 +798,12 @@ them or leaves the part out on their way into `dist/`, refusing a source
 that lost the part it edits; with production's settings each file is its
 source byte for byte. The build check refuses any file of the build — every
 file, read as UTF-8, images and fonts among them — that names production's
-status page host, its contact address, its hosting provider or its backup
-storage when the build's settings do not name it, in any case, inside a
-longer word, split across lines or escaped as a character reference, a
-percent escape or a JavaScript escape, outside the changelog's history:
+status page host, its contact address, its hosting provider, its backup
+storage or, since #386, the server's address `80.87.198.166`, whose dots may
+have a line break or a space on either side, when the build's settings do
+not name it, in any case, inside a longer word, split across lines or
+escaped as a character reference, a percent escape or a JavaScript escape,
+outside the changelog's history:
 `changelog.md`, the two feeds and the entries of `/changelog`, whose header
 and footer it does read (`operatorNameProblems`). The frontend suite runs
 with production's settings in its environment
