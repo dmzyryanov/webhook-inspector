@@ -218,7 +218,7 @@ function templateBody(
  *
  * A configured `Content-Type` is one of the configured pairs: sent as it was
  * configured, in its place, duplicates included, with no `charset` added, and
- * also when there is no body - the tester asked for it (D179).
+ * also when there is no body - the user configured it (D179).
  *
  * Names are emitted in lower case, which is what Fastify has always put on the
  * wire; HTTP field names are case-insensitive, and the configured case is not

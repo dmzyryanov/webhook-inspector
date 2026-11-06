@@ -17,7 +17,7 @@
  *   once a slot frees, which then goes back;
  * - with the gate full, a call of every route registered under `/api` and
  *   `/mcp` waits for its turn and is answered once it comes (a census of the
- *   registered routes, criterion 3 of #243): no handler runs outside the
+ *   registered routes, #243): no handler runs outside the
  *   gate; over `POST /mcp`, besides a tool call, `initialize`, `ping`,
  *   `tools/list`, a notification and a method it does not know, every
  *   message the transport and the count let through; `/mcp`'s other
@@ -247,9 +247,9 @@ interface RouteCall {
 /**
  * The messages of `POST /mcp` the server answers itself, without a tool,
  * once the transport and the count have let them through - each takes its
- * turn in the gate as a tool call does (#243's correction round 3, the
- * outside review's finding 2): `initialize`, `ping`, `tools/list`, a
- * notification, answered `202`, and a method the server does not know.
+ * turn in the gate as a tool call does, since no handler runs outside it
+ * (#243): `initialize`, `ping`, `tools/list`, a notification, answered
+ * `202`, and a method the server does not know.
  */
 const MCP_PROTOCOL_MESSAGES: readonly (readonly [string, Record<string, unknown>])[] = [
   [

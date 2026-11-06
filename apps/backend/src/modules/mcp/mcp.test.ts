@@ -447,7 +447,7 @@ describe('create_session', () => {
     );
   });
 
-  /** Criterion 8 of #129 (D220). */
+  /** #129's fixed lifetime over MCP: no use moves it (D220). */
   it('creates a session that ends expiresInSeconds after its creation, which set_response does not move', async () => {
     const sentAt = Date.now();
     const created = await ok('create_session', { expiresInSeconds: 600 });
@@ -540,7 +540,7 @@ describe('create_session', () => {
     );
   });
 
-  /** Criterion 7 of #158 (D242). */
+  /** #158's idle window over MCP: `set_response` moves it (D242). */
   it('creates a session that slides by expiresAfterIdleSeconds, which set_response moves', async () => {
     for (const window of [3600, 86_400, 604_800]) {
       const sentAt = Date.now();
@@ -672,7 +672,7 @@ describe('create_session', () => {
     );
   });
 
-  /** Criteria 3 and 8 of #166 (D243). */
+  /** #166 over MCP: a session that keeps no sender address (D243). */
   it('creates a session that keeps no sender address: every reading tool gives sourceIp null, as a default one gives the address', async () => {
     const sender = '198.51.100.23';
     const created = await ok('create_session', { storeSourceIp: false });
@@ -750,7 +750,7 @@ describe('create_session', () => {
     );
   });
 
-  /** Criteria 2 and 8 of #166 (D243). */
+  /** #166 over MCP: the flag refused with the API's message (D243). */
   it('refuses a storeSourceIp that is no boolean with the API’s 1005 message, in the API’s order', async () => {
     const rule = 'storeSourceIp must be true or false';
     const fix = 'Fix that rule and call again.';
@@ -1762,8 +1762,8 @@ describe('the transport (D203)', () => {
 
   it('answers every other method 405 before its body is read: a body over 1 MiB, a Content-Type that is no media type (D213)', async () => {
     // The route has no use for a body, and reading one would hold up to
-    // 1 MiB of it while it arrives (the second outside review's finding 2):
-    // so neither Fastify's 413 nor its 415 is met first.
+    // 1 MiB of it while it arrives: so neither Fastify's 413 nor its 415 is
+    // met first.
     for (const method of ['DELETE', 'PUT', 'PATCH', 'OPTIONS'] as const) {
       for (const [headers, payload] of [
         [HEADERS, `{"pad":"${'a'.repeat(1024 * 1024)}"}`],

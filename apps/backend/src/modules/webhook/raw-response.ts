@@ -27,8 +27,8 @@ import { STATUS_CODES } from 'node:http';
  *
  * An answer over HTTP/2, `http2`, has no status line: its head reads as the
  * raw request of an HTTP/2 capture does, the `:status` pseudo-header field
- * first, then the fields the backend set, each `name: value` (D263, Figma
- * direction B). Node adds `date` there too, absent here by construction.
+ * first, then the fields the backend set, each `name: value` (D263). Node
+ * adds `date` there too, absent here by construction.
  *
  * Header bytes are written as latin1, which is how Node decodes them, so any
  * byte the backend set is written back unchanged.

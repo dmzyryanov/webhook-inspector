@@ -1,13 +1,14 @@
 /**
  * `/mcp` over HTTP with the official MCP TypeScript SDK's client (D203), on
  * both listeners of the process bound to real ports: the client connects and
- * negotiates, `tools/list` gives the seven tools, and the whole flow of the
- * issue's second criterion runs through it, the webhook sent over HTTP to the
- * receive listener. The client checks every structured result against the
- * tool's output schema, so a result the schema does not describe fails here,
- * and its own validator holds the arguments of `create_session` and
- * `set_response` to their listed input schemas, as a client that validates
- * them would, a `body` of `null` among them, taken as the API takes it.
+ * negotiates, `tools/list` gives the seven tools, and the whole flow - create,
+ * respond, wait, send, read, clear, delete - runs through it, the webhook sent
+ * over HTTP to the receive listener. The client checks every structured
+ * result against the tool's output schema, so a result the schema does not
+ * describe fails here, and its own validator holds the arguments of
+ * `create_session` and `set_response` to their listed input schemas, as a
+ * client that validates them would, a `body` of `null` among them, taken as the
+ * API takes it.
  * The SDK is a development dependency only; the server is written by hand.
  * And what Fastify's injection cannot send: a URL with an empty `?` or a `#`,
  * refused as any query string is.
@@ -163,7 +164,7 @@ describe('an MCP client over HTTP (D203)', () => {
       response: { status: 202, headers: [['X-Mock', 'yes']], body: '{"accepted":true}' },
     });
 
-    // Waiting before the webhook is sent, as the criterion has it.
+    // Waiting before the webhook is sent, so the wait is what sees it arrive.
     const waiting = tool('wait_for_request', { sessionId, wait: 15 });
 
     await delay(300);

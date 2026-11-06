@@ -107,7 +107,7 @@ export function malformedRequestBody(): AppError {
 /**
  * A search whose `words` break a rule: not an array, too few or too many, an
  * entry that is not a string, or one too short or too long (D191). The message
- * names the rule and never echoes a word: a word is what the tester is looking
+ * names the rule and never echoes a word: a word is what the user is looking
  * for in captured data, and it must reach neither an error body nor a log
  * (D106).
  */
@@ -120,7 +120,7 @@ export function invalidSearchWords(message: string): AppError {
  * or invalid query parameter of `GET .../requests`, or an unknown key or an
  * invalid field or condition in the body of `POST .../requests/query`. The
  * message names the parameter or field and the rule, and never echoes a
- * value: a condition is what the tester is looking for in captured data, and
+ * value: a condition is what the user is looking for in captured data, and
  * it must reach neither an error body nor a log (D106).
  */
 export function invalidListQuery(message: string): AppError {

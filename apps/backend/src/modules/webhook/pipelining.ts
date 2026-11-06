@@ -33,7 +33,7 @@
  * Bytes dense in `LF CR LF` - a body of nothing else, or of empty CRLF
  * lines, one every two bytes - would be cut into slices of a few bytes each
  * once few requests are free, each a call into Node's parser and each a
- * piece of the body Node keeps apart (#181's round 1: 32 connections each
+ * piece of the body Node keeps apart (measured for #181: 32 connections each
  * pipelining 30 delayed `GET`s and a 1 MiB body of them left 1.4 million
  * pieces, 280 MiB of heap, unread). So two things hold them to what Node's
  * own parsing costs, or near it:

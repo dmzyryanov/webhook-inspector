@@ -1,6 +1,6 @@
 /**
- * Creating a private session through the API (D253, issue #227, criteria 1 to
- * 4): `POST /api/sessions` with `"private": true` draws a key and answers it
+ * Creating a private session through the API (D253, issue #227):
+ * `POST /api/sessions` with `"private": true` draws a key and answers it
  * once, or creates the session under the key `Authorization: Bearer` carries,
  * or refuses a header that carries no key; without `private` the header is
  * ignored as it always was. Beside `access-key.test.ts`, which tests the check
@@ -37,7 +37,7 @@ import {
 } from './response-config.ts';
 import { KEYS_RULE } from './status-body.ts';
 
-/** A key the server never drew, which a creation takes all the same (D253, decision 3). */
+/** A key the server never drew, which a creation takes all the same (D253). */
 const KEY = 'Pv4Kq8Zx2Wm6Nb1Lc7Hj3Rt9Fd5Sg0Ya2Ue7Io4TmNq';
 const OTHER = 'Wr5Tn2Bv8Cx1Zl6Kj9Hg3Fd7Sa0Qp4Ow2Ie8Uy5Rt1M';
 /** A key of the shape ids had before D161, with `_` and `-`. */

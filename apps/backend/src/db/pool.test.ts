@@ -1,6 +1,6 @@
 /**
- * The application's connections and the idle-in-transaction timeout (#132's
- * MR B, D221 point 19): every connection of the pool and the realtime
+ * The application's connections and the idle-in-transaction timeout (#132,
+ * D221 point 19): every connection of the pool and the realtime
  * listener's own asks for it at its start, and a connection with none keeps
  * the server's default; a connection left idle inside a transaction past a
  * shortened timeout is ended by the server, its transaction rolled back - an

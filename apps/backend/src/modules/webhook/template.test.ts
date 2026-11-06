@@ -249,7 +249,7 @@ async function settled(
 }
 
 /**
- * Holds what was sent against what was recorded (criterion 3): the record's
+ * Holds what was sent against what was recorded: the record's
  * body and size are the bytes on the socket, its raw is its head and those
  * bytes, `Content-Length` their count - and for a `HEAD` the count of the
  * body as this request filled it in, which was produced and not sent.
@@ -512,12 +512,12 @@ describe('what is recorded is what was sent (criterion 3)', () => {
     }
   });
 
-  // The outside review's case: a template in the default answer's shape - this
-  // request's id where the default answer names it, then a last "sourceIp"
-  // member filled in from the query string - answering a session that keeps
-  // no address. Migration 015's trigger holds the record of the previous
-  // image's default answer to the row (D243); a template's record is what was
-  // sent, whatever it holds (D251, migration 019).
+  // A template in the default answer's shape - this request's id where the
+  // default answer names it, then a last "sourceIp" member filled in from the
+  // query string - answering a session that keeps no address. Migration 015's
+  // trigger holds the record of the previous image's default answer to the row
+  // (D243); a template's record is what was sent, whatever it holds (D251,
+  // migration 019).
   it('records as sent a template in the default answer’s shape, for a session that keeps no address', async () => {
     const shaped = {
       status: 200,

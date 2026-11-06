@@ -8,8 +8,8 @@
  * call refused by its count giving its place back before its refusal is
  * written; a body the server drains holding a place while it is drained, a
  * refusal that cannot hold one answered at once - the 129th call, a `1015`
- * with none free, eight large bodies held and 200 more refused - the outside
- * review's finding 1; the place given back on every way a call ends - an
+ * with none free, eight large bodies held and 200 more refused, none left
+ * pending; the place given back on every way a call ends - an
  * answer, a refusal after the place was taken, a hijacked reply, a client
  * gone in the middle of its body, while its handler waits for the pool or a
  * session's row lock, while its wait is pending, and pipelined answers still
@@ -711,7 +711,7 @@ describe('128 calls in flight from one address (D213)', () => {
 
     // Its headers and 16 bytes of a declared body, the rest never sent: with
     // no place to hold it by, it is answered now, not once its body ends
-    // (D213, the outside review's finding 1).
+    // (D213).
     const api = send(port, `/api/sessions/${sessionId}/response`, {
       method: 'PUT',
       headers: { 'content-type': JSON_TYPE },
@@ -1118,7 +1118,7 @@ describe('the place given back however a call ends (D213)', () => {
     // On a connection that closes, the refusal drains the body before it is
     // answered (D143), and the drain keeps the call's place among the calls
     // in flight - while it holds none of large bodies - so that drains count
-    // toward the 128 (D213, the outside review's finding 1).
+    // toward the 128 (D213).
     const drained = refusedQuery({ closing: true });
 
     await until(() => places.takenBy(A) === 2, 'the drained 1017 keeps its place');
@@ -1170,7 +1170,7 @@ describe('the place given back however a call ends (D213)', () => {
       'eight large bodies hold both places',
     );
 
-    // The outside review's finding 1: each declares 200,000 bytes, sends 16
+    // Two hundred bodies cut short: each declares 200,000 bytes, sends 16
     // and stops, on a connection that closes. 120 are refused 1017 and
     // drained, each holding a place while it is; the other 80 find none and
     // are refused 1019 at once, undrained - their answer read, or their
@@ -1375,8 +1375,7 @@ describe('the header lines of a request (D213)', () => {
 });
 
 /**
- * A connection answered while its request's body is still arriving (D213, the
- * Coordinator's decision answering the second outside review's finding 1).
+ * A connection answered while its request's body is still arriving (D213).
  * Kept alive, Node keeps such a request until the rest of its body has come,
  * while its place among the calls in flight has gone back with the answer or
  * was never taken - a `1019`, a `1015` with no drain, a `1017` kept alive - so

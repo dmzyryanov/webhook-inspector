@@ -909,10 +909,10 @@ describe('the HTTP/2 preface on the HTTP/1.1 path, RECEIVE_HTTP2 off and on (#27
   }
 
   // What follows a PRI head Node's parser holds reaches it at once, whatever
-  // room the sender's address has: in the first fix, where what followed a
-  // `PRI` head was still counted, it waited for room once the address's
+  // room the sender's address has: in an earlier version, where what followed
+  // a `PRI` head was still counted, it waited for room once the address's
   // lines were all in flight, and was answered Node's 408 at its 60 s
-  // `headersTimeout` (the outside review's finding).
+  // `headersTimeout`.
   // With the setting on, the preface layer hands the head on together with
   // the byte after it, so nothing can take the address's lines between them.
   for (const proxy of ['off', 'v2'] as const) {
@@ -2265,7 +2265,7 @@ describe('answers over HTTP/2 (criterion 6)', () => {
         assert.equal(answer.body.toString(), `POST /s/${sessionId}/t`);
       }
 
-      // Direction B: `:status` first, then the fields, a blank line, the body.
+      // The head as stored: `:status` first, then the fields, a blank line, the body.
       const head = [`:status: ${response.status}`, ...record.headers.map(([n, v]) => `${n}: ${v}`)];
 
       assert.equal(
@@ -2513,7 +2513,7 @@ describe('cancellation over HTTP/2 (criterion 7)', () => {
   }
 
   // RFC 9113 §6.8: a GOAWAY with NO_ERROR is its sender's graceful
-  // shutdown, which cancels nothing - criterion 7's GOAWAY is one with an
+  // shutdown, which cancels nothing - the GOAWAY that cancels is one with an
   // error code (D263 point 9).
   it("answers every open stream of a connection left open whose client sends a GOAWAY with NO_ERROR, Node's client", async () => {
     const delayed = await newSession({ status: 200, delayMs: 600 });

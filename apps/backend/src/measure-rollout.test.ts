@@ -1,14 +1,13 @@
 /**
- * The production probe of #132, `scripts/measure-rollout.mjs` (criterion 8,
- * D221), run as a child process against both listeners on the task's
- * database and a stand-in for the frontend's home page, for a few seconds:
- * what it reports when nothing goes wrong, that it deletes its sessions, and
- * that a viewer cut while it runs - the process's realtime listener losing
+ * The production probe of #132, `scripts/measure-rollout.mjs` (D221), run
+ * as a child process against both listeners on the task's database and a
+ * stand-in for the frontend's home page, for a few seconds: what it
+ * reports when nothing goes wrong, that it deletes its sessions, and that a
+ * viewer cut while it runs - the process's realtime listener losing
  * its channel - reconnects, reloads and loses nothing in its report. And
- * MR B's corrections (the outside review's notes 4 and 5 on MR A): a failed
- * wait call, a failed reload and a `request.received` sent twice on one
- * connection each fail the report; a second session that cannot be created
- * leaves the first deleted.
+ * that nothing it could not check passes: a failed wait call, a failed
+ * reload and a `request.received` sent twice on one connection each fail the
+ * report; a second session that cannot be created leaves the first deleted.
  *
  * Requires the local database: npm run db:up && npm run db:migrate
  */

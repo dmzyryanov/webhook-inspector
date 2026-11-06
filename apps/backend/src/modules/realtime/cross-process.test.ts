@@ -1,6 +1,6 @@
 /**
  * Two backend processes on one database, as a rolling update runs them (#132,
- * criteria 1 to 5; D221): two instances, each with its pool, its listeners,
+ * D221): two instances, each with its pool, its listeners,
  * its hub and its realtime listener, built on the task's database. What one
  * changes reaches the viewers and the waits of the other through the outbox,
  * each event once, the events that move a session's queue in the order the

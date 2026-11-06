@@ -286,7 +286,7 @@ describe('what the status read answers (D199)', () => {
   });
 
   /**
-   * Criterion 7 of #129 (D220): no use moves the expiry of a session created
+   * A fixed lifetime (D220): no use moves the expiry of a session created
    * with a lifetime, so its expiry minus 7 days says nothing about its last
    * use. Its `lastUsedAt` is the later of its creation and its newest
    * request; a read or a response change, which this read cannot see, does
@@ -347,7 +347,7 @@ describe('what the status read answers (D199)', () => {
   });
 
   /**
-   * Criterion 5 (D242): `lastUsedAt` is the expiry minus the session's own
+   * An idle window (D242): `lastUsedAt` is the expiry minus the session's own
    * window. Each session is last moved `ago` before the read - its expiry set
    * as a use that long ago would have left it - then used once more after
    * its throttle, which moves it; the read gives that use, within 2 s.

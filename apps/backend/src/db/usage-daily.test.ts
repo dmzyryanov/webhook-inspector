@@ -371,10 +371,10 @@ function quietDay(day: string, databaseBytesSet = false): DailyRow {
 const LONG_USER_AGENT = `agent/${'x'.repeat(300)}`;
 
 /**
- * The busy day of the acceptance criteria and the days around it, relative to
- * yesterday (Y): the day before it (Y-4), the busy day (Y-3), the day after it
- * (Y-2), a quiet day (Y-1) and yesterday. The boundary instants - 00:00:00 and
- * 23:59:59.999 UTC - fall on other local days in both time zones the test uses.
+ * A busy day and the days around it, relative to yesterday (Y): the day before
+ * it (Y-4), the busy day (Y-3), the day after it (Y-2), a quiet day (Y-1) and
+ * yesterday. The boundary instants - 00:00:00 and 23:59:59.999 UTC - fall on
+ * other local days in both time zones the test uses.
  */
 interface BusyDays {
   before: string;

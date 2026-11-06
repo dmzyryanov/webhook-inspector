@@ -1,6 +1,6 @@
 /**
- * The `field` of a `1005` answer over the routes (D257, issue #232, criterion
- * 2): `PUT .../rules`, `PUT .../queue`, `PUT .../response` and
+ * The `field` of a `1005` answer over the routes (D257, issue #232):
+ * `PUT .../rules`, `PUT .../queue`, `PUT .../response` and
  * `POST /api/sessions` answer a refusal that names a place `400` with
  * `errorCode`, `message` and `field`; a key of the body itself and every other
  * error answer carry no `field`; no answer holds a key the client sent.

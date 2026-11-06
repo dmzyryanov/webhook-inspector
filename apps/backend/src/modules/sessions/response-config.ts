@@ -466,9 +466,9 @@ export function parseResponse(value: unknown, field = 'response'): ResponseConfi
 
   // A body on a status that forbids one is refused now rather than dropped
   // later (D101). It was decided while a configuration could never be
-  // repaired, and it stands now that one can be changed (D150): the owner
-  // confirmed the rule for the change as well, and the reply to such a session
-  // would not carry the body it was configured with.
+  // repaired, and it stands now that one can be changed (D150): it holds for
+  // the change as well, since the reply to such a session would not carry the
+  // body it was configured with.
   if (
     STATUSES_WITHOUT_BODY.includes(status) &&
     typeof value.body === 'string' &&
@@ -895,7 +895,7 @@ function isReservedHeaderName(name: string): boolean {
 /**
  * The body is kept as the exact text the caller sent and is only checked, never
  * rewritten (D101). Any text is a body - JSON or not, valid or broken - since
- * D179: the tester announces what it is with a configured `Content-Type`.
+ * D179: the user announces what it is with a configured `Content-Type`.
  *
  * `null` is accepted as the absence of a body: it is exactly what
  * `GET /api/sessions/:sessionId` emits for a session without one (D106). An

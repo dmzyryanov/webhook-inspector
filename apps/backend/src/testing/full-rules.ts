@@ -1,8 +1,8 @@
 /**
  * Response rules at the limits (D246), for the tests that hold them within
  * the 1 MiB body of the JSON routes: rules whose responses are at every limit
- * of D101 in ordinary text - fourteen fit, as the owner's decision 3 of #134
- * says - twenty of ordinary size, and rules as large as 1 MiB admits written
+ * of D101 in ordinary text - fourteen fit in a save and fifteen
+ * do not - twenty of ordinary size, and rules as large as 1 MiB admits written
  * with text JSON escapes, which is as large in an event as in the call.
  *
  * Not a test file itself: only `*.test.ts` files import it.

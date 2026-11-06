@@ -1,6 +1,6 @@
 /**
  * What a pending `wait_for_request` keeps of the `POST` that asked for it
- * (D203, correction rounds 2 and 3). A wait holds its request for up to 30 s,
+ * (D203). A wait holds its request for up to 30 s,
  * and the shared limits let one address have hundreds pending, so it must keep
  * only values built afresh from what its checks let through - never the body,
  * which can be valid JSON of nearly 1 MiB, nor the message parsed from it,
@@ -17,16 +17,16 @@
  * be gone - a `WeakRef` to it, taken as the handler is reached, is cleared -
  * and the process must hold at most `PER_WAIT_BYTES` more per wait than before
  * they began: about twice what a wait with a plain body of under 500 bytes
- * holds, its socket, request, reply, subscription and timer. On the code
- * before correction round 3 the duplicate `wait` keys held about 6 MiB a wait.
+ * holds, its socket, request, reply, subscription and timer. An earlier
+ * version of the code held about 6 MiB a wait with the duplicate `wait` keys.
  * Before its baseline, each shape makes one round of its own calls and clears
  * it, so what its parsing and checks compile and keep for good is not counted
  * against its waits; the report gives the growth of each heap space as well
  * (`docs/testing/flakes.md`, F-18).
  *
  * And a wait whose URL carries a query string, which the request would keep
- * as long as it waits: on the code before correction round 4 the two shapes
- * below held about 61 and 81 KiB a wait here. It is refused before its body
+ * as long as it waits: while its body was still read, the two shapes below
+ * held about 61 and 81 KiB a wait here. It is refused before its body
  * is read now, so no body reaches the handler, nothing waits, and nothing is
  * held.
  *
@@ -312,7 +312,7 @@ const SHAPES: Shape[] = [
       ),
   },
   {
-    // The outside review's shape: Object.keys sees only the five arguments.
+    // Keys repeated inside `arguments`: Object.keys sees only the five arguments.
     name: 'about 99,000 duplicate wait keys in arguments',
     body: (id, args) =>
       filled(

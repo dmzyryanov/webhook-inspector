@@ -628,9 +628,8 @@ describe('the session check is bound to the operation (D068)', () => {
 /**
  * The routes that take no body - the four deletions and the queue's restart -
  * read at most 1 KiB of one sent anyway, check it by the rules of D104 and
- * keep none of it (D213, the Coordinator's decision answering the second
- * outside review's finding 2): before, they read up to the listener's 1 MiB
- * and kept what they parsed while their handler waited. What they keep is
+ * keep none of it (D213): before, they read up to the listener's 1 MiB and
+ * kept what they parsed while their handler waited. What they keep is
  * measured in `modules/limits/calls-memory.test.ts`. The not-found route was
  * one of them until D227, and reads none at all now: whatever body a path or
  * method no route has is sent, it answers `404` / `1000` unread

@@ -452,8 +452,8 @@ export const DEFAULT_RECEIVE_ORIGIN = 'http://127.0.0.1:3001';
  * durations and byte counts. The weakness is named rather than answered.
  *
  * Removing this serializer restores Fastify's behaviour - the sender's address,
- * and the routed URL - and changes nothing else, which is how the owner
- * reverses the choice if he wants the sender's address in the logs.
+ * and the routed URL - and changes nothing else, which is how the operator
+ * reverses the choice if they want the sender's address in the logs.
  */
 function serializeRequest(request: FastifyRequest): Record<string, unknown> {
   return {

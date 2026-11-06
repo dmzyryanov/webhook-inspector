@@ -651,8 +651,8 @@ describe('the lines in flight are given back however a connection leaves, and ev
     // The holder stalls in a chunked body's trailer section, past its head,
     // so `headersTimeout` does not end it and its `requestTimeout` is far
     // off: its lines stay in flight until its client closes it, and nothing
-    // but the held connection's own timeout can end its wait (#182, the
-    // Tester's T2: a holder ended by the same timeout freed its lines first).
+    // but the held connection's own timeout can end its wait (#182; a holder
+    // ended by the same timeout would free its lines first).
     const server = await lineServer(budget, { headersTimeout: 1_000, requestTimeout: 60_000 });
 
     try {
@@ -850,8 +850,8 @@ describe('what Node does itself is left to it, and the lines given back (D238)',
   it('gives Node’s parser what follows a PRI head it holds at once, while the address’s lines are all in flight: its own 400 and close as before, never held for room, every line given back, nothing logged at error or warn (#277)', async () => {
     const budget = createHeaderLineBudget({ perAddress: 100, perProcess: 1_000 });
     // A connection held for room is ended by Node's `headersTimeout`, its
-    // 408 - what the outside review saw on the first fix, where what
-    // followed a `PRI` head was still counted. The holder stalls in a
+    // 408 - as on an earlier version of this fix, where what followed a
+    // `PRI` head was still counted. The holder stalls in a
     // chunked body's trailer section, past its head, which that timeout
     // does not end.
     const server = await lineServer(budget, { headersTimeout: 5_000, requestTimeout: 60_000 });

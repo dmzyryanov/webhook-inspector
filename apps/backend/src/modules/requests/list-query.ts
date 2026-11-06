@@ -9,7 +9,7 @@
  *
  * Every refusal is `400` / `1013` with a message that names the parameter or
  * the field and the rule, and never a value (D106): the header and body
- * conditions are what the tester is looking for in captured data, and they
+ * conditions are what the user is looking for in captured data, and they
  * travel in a body precisely so that no log line and no error can hold them.
  * Two answers are not this code: a body that is not a JSON object is `1006`,
  * as for every route that reads one (D104), and an `after` that cannot be a

@@ -23,8 +23,8 @@
  * read of one unread in the request's stream until the reply has closed. So
  * twelve `GET`s each declaring and sending 1 MiB, their replies held by a
  * delay, must be counted in the budget for at least what the process holds
- * for them; counted at their headers alone, as before the outside review's
- * finding, they held about 158 KiB each against 17 KiB counted.
+ * for them; counted at their headers alone, as they once were, they held
+ * about 158 KiB each against 17 KiB counted.
  *
  * The collector is exposed inside this file's own process with
  * `v8.setFlagsFromString` and a new context's `gc`, as
@@ -55,7 +55,7 @@ const collectGarbage = vm.runInNewContext('gc') as () => void;
 /** Replies held at once. */
 const REPLIES = 16;
 
-/** What one held reply may add to the process, at most (#144, criterion 3). */
+/** What one held reply may add to the process, at most (#144). */
 const PER_REPLY_BYTES = 200 * 1024;
 
 /** The delay every reply is held by: longer than the test. */

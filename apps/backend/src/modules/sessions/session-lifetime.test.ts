@@ -402,7 +402,7 @@ describe('once the lifetime has passed (criterion 5, D220)', () => {
 });
 
 /**
- * Criterion 6 (D220, as D205 did for its queue). The previous image, 0.52.1
+ * Rollback safety (D220, as D205 did for its queue). The previous image, 0.52.1
  * (`223fdb3`), keeps running on this schema after a `helm rollback`, which
  * never undoes a migration (D055), and beside this image during a rolling
  * update. Its refresh, copied from `apps/backend/src/modules/sessions/repository.ts`
@@ -682,7 +682,7 @@ async function untilWaiting(pid: number | undefined, count: number): Promise<num
 }
 
 /**
- * Criterion 3 (D242). A session created with `expiresAfterIdleSeconds` slides
+ * An idle window (D242). A session created with `expiresAfterIdleSeconds` slides
  * by its own window: every use moves its expiry to a full window from now,
  * throttled to a tenth of a window shorter than 10 hours and to an hour
  * otherwise. The clock is moved as above, by setting the expiry: a session
@@ -954,7 +954,7 @@ describe('every writer is held to the window (D242)', () => {
 });
 
 /**
- * Criterion 6 (D242). The base image, 1.0.14 (`330492f`), keeps running on
+ * Rollback safety (D242). The base image, 1.0.14 (`330492f`), keeps running on
  * this schema after a `helm rollback`, which never undoes a migration (D055),
  * and beside this image during a rolling update (D221). Its refresh and its
  * session insert, copied from `apps/backend/src/modules/sessions/repository.ts`

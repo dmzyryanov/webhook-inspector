@@ -294,9 +294,9 @@ function deferred(): {
 }
 
 /**
- * The handler's hold (correction round 4, the outside review's finding): a
- * handler can wait for the pool or the session's lock with the parsed body in
- * hand after its client has gone, so the place is kept until it settles.
+ * The handler's hold: a handler can wait for the pool or the session's lock
+ * with the parsed body in hand after its client has gone, so the place is kept
+ * until it settles.
  */
 describe('the place held by the handler while it runs (D205)', () => {
   it('outlasts a close while the handler runs, and goes once when the handler settles', async () => {

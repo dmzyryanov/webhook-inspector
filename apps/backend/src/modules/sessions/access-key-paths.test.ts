@@ -1,6 +1,6 @@
 /**
  * Every path that reads or changes a session, walked against a keyed session
- * (D245, issue #98, criterion 9): each operation of `packages/shared/openapi.json`
+ * (D245, issue #98): each operation of `packages/shared/openapi.json`
  * whose path takes a session id, `POST /api/sessions/status`, every MCP tool
  * of `MCP_TOOLS` that takes a `sessionId`, and `/ws/:sessionId`.
  *
@@ -11,14 +11,14 @@
  *
  * Without a key and with another, a keyed session answers exactly what a
  * session that does not exist answers, and nothing of it changes - its row,
- * its expiry, which every refused call leaves where a use would have moved it
- * (criterion 4), its requests and its events. With its key it answers what a
+ * its expiry, which every refused call leaves where a use would have moved it,
+ * its requests and its events. With its key it answers what a
  * public session answers, and so does a public session sent any key.
  *
  * Tests make a keyed session by writing the fingerprint straight to the row,
  * which reaches every state a session can be in; the walk of the description's
  * operations runs once more against a session created private through
- * `POST /api/sessions` (D253, #227 criterion 5), with the same answers.
+ * `POST /api/sessions` (D253, #227), with the same answers.
  *
  * Requires the local database: npm run db:up && npm run db:migrate
  */
@@ -175,7 +175,7 @@ interface Recorded {
   columns: string[] | undefined;
 }
 
-/** The statements sent while `recording`, for the refusals of criterion 8. */
+/** The statements sent while `recording`, for what a refusal reads. */
 const recorded: Recorded[] = [];
 let recording = false;
 /**
@@ -496,8 +496,8 @@ describe('the census: every path that takes a session id is walked (D245)', () =
     // status read does - is walked by a test of its own below, and one added
     // later fails here until it is.
     assert.deepEqual(CENSUS.unscoped.sort(), ['POST /api/sessions', 'POST /api/sessions/status']);
-    // The receive host's capture, which never asks for a key (criterion 6),
-    // is tested below too.
+    // The receive host's capture, which never asks for a key, is tested below
+    // too.
     assert.deepEqual(CENSUS.elsewhere, ['/s/{sessionId}']);
   });
 
@@ -561,7 +561,7 @@ async function walkOperation(operation: Operation, throughApi: boolean): Promise
   assert.equal(await eventsSince(keyed.id, mark), 0, `${label(operation)} announced a refusal`);
 
   // With its key, as a public session is answered; a public session sent
-  // any key, as it always was (criteria 2 and 3).
+  // any key, as it always was.
   const plain = await session();
   const plainWithKey = await session();
   const today = await call(operation, plain, undefined);
@@ -748,8 +748,8 @@ const carrying = (key: string): string[] => [
 ];
 
 /**
- * What a refusal reads, for a keyed session and a missing one alike (D245,
- * criterion 8): the one statement of `sessionAccess`, whose answer carries the
+ * What a refusal reads, for a keyed session and a missing one alike (D245):
+ * the one statement of `sessionAccess`, whose answer carries the
  * fingerprint and the expiry's verdict and no column of what the session
  * answers with, so its cost does not grow with what the session stores.
  */
@@ -923,7 +923,7 @@ describe('the socket, /ws/:sessionId, against a keyed session (D245)', () => {
 
 /**
  * The socket's names under the service's name beside the old ones (#334,
- * D279, criteria 2 and 5): a connection offering only the old names - as a
+ * D279): a connection offering only the old names - as a
  * tab opened before 1.19.0 does, its offer written out here as it was - only
  * the new ones, or both, as the page offers them now, opens a public and a
  * private session, echoing the first name offered that carries no key; a
@@ -1101,13 +1101,12 @@ function handshake(
 }
 
 /**
- * A name that starts like a key's prefix in another letter case (#356, the
- * owner's decision of 2026-11-02): the prefixes are compared exactly (D245),
- * so such a name carries no key, and the handshake answers it as any other
- * name, as before 1.19.0; from 1.19.0 until this fix it answered none, and a
- * browser failed the handshake `1006`. A name under an exact prefix is still
- * never answered, and an empty name never reaches the choice: `ws` refuses it
- * `400`.
+ * A name that starts like a key's prefix in another letter case (#356): the
+ * prefixes are compared exactly (D245), so such a name carries no key, and the
+ * handshake answers it as any other name, as before 1.19.0; from 1.19.0 until
+ * this fix it answered none, and a browser failed the handshake `1006`. A name
+ * under an exact prefix is still never answered, and an empty name never
+ * reaches the choice: `ws` refuses it `400`.
  */
 describe('the socket offering a name like a key prefix in another letter case (#356)', () => {
   const MISTYPED = [

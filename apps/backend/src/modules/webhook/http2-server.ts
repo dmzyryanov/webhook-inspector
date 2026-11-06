@@ -151,7 +151,7 @@ export const HTTP2_MAX_SESSION_MEMORY_MB = 10;
  * `:authority`: a regular `host` field, which Fastify reads first, is held by
  * the list's bytes alone). Rather than measure each consumer,
  * the stream whose `:path` or `:authority` is longer is refused where the
- * header list is measured, as #207's final review suggested.
+ * header list is measured (#207).
  */
 export const HTTP2_MAX_PSEUDO_HEADER_BYTES = HTTP1_HEAD_BYTES;
 
@@ -177,7 +177,7 @@ export const HTTP2_STREAM_RESET_RATE = 33;
  * bytes a field (210 x 4,100), about 0.9 MiB with the connection's own cost.
  * 32 of them hold an address to about 29 MiB (0.9 MiB x 32), where D227's 512
  * would let one address reach the container's 512 MiB (D266). These are
- * the architect's estimates, which #298 measures. The 33rd is destroyed
+ * estimates, which #298 measures. The 33rd is destroyed
  * before Node's HTTP/2 server sees it, with nothing written, as D227
  * refuses the 513th.
  */

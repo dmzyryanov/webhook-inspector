@@ -105,7 +105,7 @@ function rule(method: string | null, path: string, answer: ResponseConfig): Resp
   return { method, path, response: answer };
 }
 
-/** The three rules of criterion 3. */
+/** Three rules: two of a method and an exact path, one of any method and a prefix. */
 const ORDERS = rule('POST', '/orders', response(201, { body: '{"rule":1}' }));
 const STATUS = rule('GET', '/status', response(202, { body: '{"rule":2}' }));
 const ITEMS = rule(null, '/items/*', response(203, { body: '{"rule":3}' }));
@@ -590,7 +590,7 @@ describe('matching a request (criterion 3, D173)', () => {
     id = await create({ response: CUSTOM_200, rules: CRITERION_3 });
   });
 
-  /** The cases of criterion 3 and the attack list: [method, path, rule]. */
+  /** The matching cases and the attack list: [method, path, rule]. */
   const CASES: [string, string, number | null][] = [
     ['POST', '/orders', 1],
     ['POST', '/orders?x=1', 1],
@@ -919,11 +919,11 @@ describe('what a rule answers (criterion 4)', () => {
 });
 
 /**
- * Criterion 1 of #334 (D279): every kind of stored answer - the default, a
- * custom response, a rule's and a queue step's, a `HEAD` among them - carries
- * the request id under its new name and its old one, the same value, after
- * the configured pairs, the new name first; and the id is the stored
- * request's.
+ * The request id under both its names (D279): every kind of stored answer -
+ * the default, a custom response, a rule's and a queue step's, a `HEAD`
+ * among them - carries the request id under its new name and its old one,
+ * the same value, after the configured pairs, the new name first; and the id
+ * is the stored request's.
  */
 describe('the request id under both names on every kind of answer (#334, D279)', () => {
   const ID_LINE = /^x-(?:webhook-inspector|qa-tools)-request-id: /;
@@ -1141,7 +1141,7 @@ describe('a save of the rules (criterion 7)', () => {
 
 /**
  * A session with no rules answers every request byte for byte as before this
- * change (criterion 8): the head, its lines in their order - the configured
+ * change: the head, its lines in their order - the configured
  * headers, the receiver's three, the content type, the length - and the body,
  * pinned here as the receiver wrote them before rules existed, for a default
  * session, a custom one and a queue's step, on every kind of path, a `HEAD`

@@ -593,10 +593,10 @@ describe('RealtimeHub.inOrder', () => {
 });
 
 /**
- * How far behind a connection may fall (D205; the outside review's finding 2
- * on correction round 6): an event that would take what a connection has not
- * yet written, or what is held for it, over `MAX_SUBSCRIBER_BACKLOG_BYTES`
- * terminates it and drops it, and is never skipped for a connection kept.
+ * How far behind a connection may fall (D205): an event that would take what a
+ * connection has not yet written, or what is held for it, over
+ * `MAX_SUBSCRIBER_BACKLOG_BYTES` terminates it and drops it, and is never
+ * skipped for a connection kept.
  */
 describe('RealtimeHub’s bound on a connection’s backlog', () => {
   const READY = '{"type":"ready"}';
@@ -752,10 +752,9 @@ describe('RealtimeHub’s bound on a connection’s backlog', () => {
    * The largest `session.updated` a valid session with no response rules
    * can publish fits twice under the bound, so a viewer that has read
    * everything is never cut by one, and one on a slow link survives a save
-   * followed by `Run again` (C3 of the Architect's note on correction round
-   * 7). It is a response at every limit of D101 whose body JSON writes six
-   * bytes a character, kept as the custom response and answered as the
-   * response, and a queue as large as the 1 MiB body of `PUT .../queue`
+   * followed by `Run again`. It is a response at every limit of D101 whose body
+   * JSON writes six bytes a character, kept as the custom response and answered
+   * as the response, and a queue as large as the 1 MiB body of `PUT .../queue`
    * admits written the same way; and beside it the ordinary full queue of
    * `testing/full-queue.ts`. A change of those limits that breaks this fails
    * here.

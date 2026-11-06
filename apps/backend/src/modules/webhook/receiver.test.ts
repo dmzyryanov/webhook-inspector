@@ -8,7 +8,7 @@
  *   with more than 1000 header lines with `431`, well within its size limit,
  *   16 KiB of request target and header names and values.
  * - A sender that ends its side of the connection before its answer is written
- *   gets no answer (D187, option B of review round 1). Node's HTTP server
+ *   gets no answer (D187). Node's HTTP server
  *   keeps `httpAllowHalfOpen` at its default, `false`: a FIN after a complete
  *   request aborts it. Through Traefik's TCP route every departure of a sender
  *   reaches the backend as a FIN - a TCP FIN, a TLS `close_notify`, a closed

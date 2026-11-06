@@ -3,7 +3,7 @@
  * the realtime listener and the two pools of their own, capture's and the
  * API's (D244), on the task's database:
  *
- * - criterion 6 of #132: a capture whose configured response delay is 30 s,
+ * - a delayed answer (#132): a capture whose configured response delay is 30 s,
  *   sent just before the process is told to stop, is answered in full, its
  *   outcome recorded and announced before the pools end, and both end;
  * - the drain SIGUSR2 starts: every answer then closes its connection, the

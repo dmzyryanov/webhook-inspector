@@ -243,7 +243,7 @@ describe('PUT /api/sessions/:sessionId/response — changing the response', () =
     });
   });
 
-  /** Owner's rule 1: picking Default keeps the custom response (D151). */
+  /** Picking Default keeps the custom response (D151). */
   it('keeps every custom field when the default is picked, and restores them', async () => {
     const configuration: ResponseConfig = { ...CUSTOM, delayMs: 500 };
     const id = await createCustom(configuration);
@@ -626,9 +626,9 @@ describe('capture after a change', () => {
   });
 
   /**
-   * Decision 3 of the issue, and D105/D109: a request already waiting out its
-   * delay when the change commits answers with what it was composed with; only
-   * a request captured after the change sees the new response.
+   * A request already waiting out its delay when the change commits answers
+   * with what it was composed with; only a request captured after the change
+   * sees the new response (D105/D109).
    */
   it('lets a request inside its delay keep the answer it was composed with', async () => {
     const id = await createCustom({ ...CUSTOM, delayMs: 1000 });
@@ -769,7 +769,7 @@ describe('a change and a capture serialise on the session row', () => {
   });
 });
 
-/** Decision 8 of the issue: a change is a use of the session (D133). */
+/** A change is a use of the session (D133). */
 describe('a change slides the expiry', () => {
   it('moves the expiry a full window ahead when the last refresh is over an hour old', async () => {
     const id = await createCustom();

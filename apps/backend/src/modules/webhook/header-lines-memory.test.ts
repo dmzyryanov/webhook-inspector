@@ -4,8 +4,8 @@
  * its connection is kept alive afterwards.
  *
  * The bound kept the latest request of every connection, to check its
- * framing against, until the connection's next request replaced it (the
- * outside review's finding on `ab82a00`): 64 `GET /robots.txt` of 16,000
+ * framing against, until the connection's next request replaced it (as
+ * measured on `ab82a00`): 64 `GET /robots.txt` of 16,000
  * header lines each, answered and read, their connections kept alive, held
  * all 64 requests and 53.7 MiB after garbage collection, outside the line
  * budget, where the receiver before #182 held none and 0.8 MiB. At 512

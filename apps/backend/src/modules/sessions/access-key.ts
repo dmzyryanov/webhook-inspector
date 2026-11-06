@@ -272,7 +272,7 @@ export type SessionAccess = 'active' | 'expired' | 'missing';
  * queue of up to ten 64 KiB bodies - is read only once `key` has opened it,
  * so a refused keyed session costs what a missing one costs, the same
  * statement answered by one such row or by none, and the two cannot be told
- * apart by the time their refusal takes (criterion 8).
+ * apart by the time their refusal takes.
  *
  * A caller that reads more of the session after this answered `active` or
  * `expired` finds the same session, keyed the same way, since a fingerprint

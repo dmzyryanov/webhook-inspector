@@ -97,8 +97,7 @@ export function shouldDrainRefusedBody(rawHeaders: string[], keepAlive: boolean)
  * been discarded - up to the 90 s of `requestTimeout` for a client that stalls
  * - while nothing that counts the calls in flight holds it any longer. So such
  * an answer ends its connection (`Connection: close`), and the request goes
- * with it (D213, the Coordinator's decision answering the second outside
- * review's finding 1): on `/api` and `/mcp` since 0.52.1, and on every answer
+ * with it (D213): on `/api` and `/mcp` since 0.52.1, and on every answer
  * of both listeners since D227 (`createApp`'s `onSend`, `server.ts`), the
  * receiver's reply to a captured webhook included (`webhook/routes.ts`). A body
  * that has arrived whole, or none framed, leaves the connection as it was.

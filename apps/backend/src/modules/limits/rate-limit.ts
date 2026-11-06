@@ -440,8 +440,7 @@ function pathOf(url: string): string {
  * it. Every handler of the API and of `/mcp` is wrapped as its route is
  * registered, so that it holds its call's place while it runs.
  *
- * The rule (D213, the Coordinator's decision answering the outside review's
- * finding 1): a request whose body the server reads or drains holds a place
+ * The rule (D213): a request whose body the server reads or drains holds a place
  * among its address's calls in flight for as long as it does, and a refusal
  * that cannot hold one is answered at once, without draining. A drain lasts
  * as long as its client takes to send the body, keeping the request - its URL
@@ -455,8 +454,7 @@ function pathOf(url: string): string {
  *
  * And every answer of a route of `/api` or of `/mcp` written while its
  * request's body has not all arrived - a refusal before the body above all -
- * carries `Connection: close` (D213, the Coordinator's decision answering the
- * second outside review's finding 1): since D227 by `createApp`'s `onSend`
+ * carries `Connection: close` (D213): since D227 by `createApp`'s `onSend`
  * (`server.ts`), which every answer of both listeners passes, rather than by
  * this one, which ended only those of `/api` and `/mcp`.
  *
@@ -534,7 +532,7 @@ export function registerRateLimits(
    * refuses it `429` / `1019` at once, with the body unread and never
    * drained, even on a connection Node is about to close: a drain holds the
    * request for as long as its client takes to send the body, and this call
-   * has no place to hold it with (D213, the outside review's finding 1). The
+   * has no place to hold it with (D213). The
    * answer can then be lost to a reset on a client still sending, the case
    * D143 accepts for the bodies it does not drain.
    */
@@ -597,8 +595,8 @@ export function registerRateLimits(
     // answer (D143). The drain holds the request for as long as its client
     // takes, so it holds a place among the address's calls in flight while
     // it does, given back when the refusal's response closes; with none
-    // free the refusal is answered at once, undrained (D213, the outside
-    // review's finding 1). A refusal that needs no drain takes no place.
+    // free the refusal is answered at once, undrained (D213). A refusal that
+    // needs no drain takes no place.
     if (
       shouldDrainRefusedBody(request.raw.rawHeaders, reply.raw.shouldKeepAlive) &&
       inFlight.take(request, reply, key)
@@ -618,8 +616,7 @@ export function registerRateLimits(
   // Every answer of a call let through passes here, the error handler's too.
   //
   // An answer on `/api` and `/mcp` written before its request's body has all
-  // arrived ends its connection (D213, the Coordinator's decision answering
-  // the second outside review's finding 1): Node keeps such a request until
+  // arrived ends its connection (D213): Node keeps such a request until
   // the rest of its body has come, while its place among the calls in flight
   // goes back once the answer is written - or was never taken, by a `1019`, a
   // `1015` with no drain, a `1017` kept alive - so on connections kept alive

@@ -24,14 +24,13 @@
  * address that sends calls and leaves have more than 128 held. It is given
  * back once, when neither holds it any longer.
  *
- * A request whose body the server reads or drains holds a place for as long
- * as it does, and a refusal that cannot hold one is answered at once, without
- * draining (the Coordinator's decision answering the outside review's finding
- * 1): a drain (D143) lasts as long as its client takes to send the body, and
- * keeps the request all that time. So the 129th call is refused `1019` at
- * once, its body never drained, and a call refused `1015` before its body,
- * on a connection Node is about to close, takes a place for the drain or,
- * with none free, is answered at once (`rate-limit.ts`).
+ * A request whose body the server reads or drains holds a place for as long as
+ * it does, and a refusal that cannot hold one is answered at once, without
+ * draining: a drain (D143) lasts as long as its client takes to send the body,
+ * and keeps the request all that time. So the 129th call is refused `1019` at
+ * once, its body never drained, and a call refused `1015` before its body, on a
+ * connection Node is about to close, takes a place for the drain or, with none
+ * free, is answered at once (`rate-limit.ts`).
  *
  * A call that is refused after it took a place, for its rate on `/mcp`
  * (`1015`, counted there once the body has arrived, D203) or because every
@@ -40,10 +39,9 @@
  * written - gives its place back at once rather than when its refusal has
  * been written: nothing more of it is done. Node would keep such a request
  * until the rest of its body came, holding no place, so an answer written
- * while a body is still arriving ends its connection (`registerRateLimits`,
- * the Coordinator's decision answering the second outside review's finding
- * 1). A `1017` whose body is drained
- * keeps its place until its refusal's response closes.
+ * while a body is still arriving ends its connection (`registerRateLimits`).
+ * A `1017` whose body is drained keeps its place until its refusal's
+ * response closes.
  *
  * The count lives in the process: there is one outside a rollout, and two for
  * its seconds, when an address may hold up to twice the limit (D221). An

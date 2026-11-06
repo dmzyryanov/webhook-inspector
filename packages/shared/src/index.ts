@@ -470,7 +470,7 @@ export const REALTIME_CONNECTIONS_RETRY_AFTER_SECONDS = 1;
  * which the chart sets from `receive.connectionsPerAddress`; `0` turns the
  * bound off. Per process: one outside a rollout, two for its seconds (D221).
  * 512 so that D210's burst of 500 webhooks at once from one address is still
- * stored whole (the owner's decision of 2026-10-11).
+ * stored whole.
  */
 export const MAX_RECEIVE_CONNECTIONS_PER_ADDRESS = 512;
 
@@ -775,7 +775,7 @@ export interface ResponseConfig {
   template: boolean;
 }
 
-/** The most steps a response queue holds (D205, owner's decision 4 of #106). */
+/** The most steps a response queue holds (D205). */
 export const MAX_QUEUE_STEPS = 10;
 
 /**
@@ -797,7 +797,7 @@ export interface ResponseQueue {
   total: number;
 }
 
-/** The most response rules a session holds (D246, owner's decision 3 of #134). */
+/** The most response rules a session holds (D246). */
 export const MAX_RESPONSE_RULES = 20;
 
 /**
