@@ -9,25 +9,25 @@
 // copy, the versioning guard, the listing, pruning to the three newest copies
 // with everything else untouched, an object that sorts after the new copy,
 // each failure reaching the answer db-backup.sh reads, a missing credential,
-// an empty bucket, and no credential in any output. Since the first correction
-// round also: a copy of 256 MiB uploaded without the process growing by it, no
-// signature in any output even when the storage answers with it, a listing
-// that lies about its size refused, and a versioning answer read as off only
-// when it is whole. Since the second: an upload cut for silence and not for
-// its size, a too-slow one cut by the run's limit with a message of its own,
-// and what is read of a listing bounded to what the uploader's memory holds. Since
-// issue #121: an upload cut by the run's limit after an earlier attempt failed
-// names that attempt's problem first, never "too large", within the 240
-// characters of a failure at production lengths. Since issue #122: a limit
-// that fires late fails a test. In this process, where of two timers the one
-// due first always fires first, an exchange must give up on its silence
-// before an answer that comes a quarter later, and the run's limit must cut an
-// upload before the stand-in has made more pauses than fit in it; in the
-// uploader's own process, an answer ten times later than the silence must
-// never be read, and the run's limit must come before twice its pauses. A
-// stop must end a nap of a minute at once. db-backup.sh's half — the
-// encryption, the hand-over and the answer becoming `Off-server copy failed: …`
-// — is pinned in scripts/db-backup.test.mjs, which also runs the two together.
+// an empty bucket, and no credential in any output. Also pinned: a copy of
+// 256 MiB uploaded without the process growing by it, no signature in any
+// output even when the storage answers with it, a listing that lies about its
+// size refused, and a versioning answer read as off only when it is whole.
+// Also: an upload cut for silence and not for its size, a too-slow one cut by
+// the run's limit with a message of its own, and what is read of a listing
+// bounded to what the uploader's memory holds. Since issue #121: an upload cut
+// by the run's limit after an earlier attempt failed names that attempt's
+// problem first, never "too large", within the 240 characters of a failure at
+// production lengths. Since issue #122: a limit that fires late fails a test.
+// In this process, where of two timers the one due first always fires first, an
+// exchange must give up on its silence before an answer that comes a quarter
+// later, and the run's limit must cut an upload before the stand-in has made
+// more pauses than fit in it; in the uploader's own process, an answer ten
+// times later than the silence must never be read, and the run's limit must
+// come before twice its pauses. A stop must end a nap of a minute at once.
+// db-backup.sh's half — the encryption, the hand-over and the answer becoming
+// `Off-server copy failed: …` — is pinned in scripts/db-backup.test.mjs, which
+// also runs the two together.
 
 import assert from 'node:assert/strict';
 import nodeTest from 'node:test';
@@ -2718,7 +2718,7 @@ test('a listing beyond what a storage may answer is refused before it costs memo
     assert.ok(answer.message.length <= 600);
   });
 
-  // The tester's flood: twenty pages of 50,000 made-up copies each, a million
+  // A listing flood: twenty pages of 50,000 made-up copies each, a million
   // in all, about 4 MiB a page. The first page is refused; no other is asked for.
   await t.test('a million made-up copies in twenty pages', async (st) => {
     // Page n holds 50,000 names no other page has, and is made when asked for.
@@ -2781,7 +2781,7 @@ test('a versioning answer that is not exactly one whole document, or says its st
     'a status inside another element': `${open}<Wrap><Status>Enabled</Status></Wrap></VersioningConfiguration>`,
     'a longer root name': '<VersioningConfigurationResult></VersioningConfigurationResult>',
     'an unknown status': `${open}<Status>Paused</Status></VersioningConfiguration>`,
-    // The tester's two: an attribute whose quote is never closed, which made
+    // Two hostile answers: an attribute whose quote is never closed, which made
     // the root tag end at the `/>` inside its value; and a second document
     // after a first that says nothing.
     'an attribute whose quote is not closed': `<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/><Status>Enabled</Status></VersioningConfiguration>`,
@@ -2862,7 +2862,8 @@ test('a versioning answer that is not exactly one whole document, or says its st
     );
   }
 
-  // Through the uploader: the tester's two answers, each a whole HTTP body.
+  // Through the uploader: four of them, the two hostile answers above among
+  // them, each a whole HTTP body.
   for (const body of [
     refused['a status that is not closed'],
     refused['an empty status before a real one'],

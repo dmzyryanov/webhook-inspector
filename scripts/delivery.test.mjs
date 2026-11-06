@@ -1330,7 +1330,7 @@ test("the smoke expects the security.txt the build writes for the contact addres
     assert.equal(securityTxtIsCurrent(file, `x${address}`, NOW), false, address);
   }
   // The smoke's source names none of production's operator's details: the
-  // deployment's settings give them (#381, criterion 5).
+  // deployment's settings give them (#381).
   const source = readFileSync(new URL('./check-deployment.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /@qa-tools\.ru|status\.qa-tools\.ru/i);
   // With no setting given, it checks none of the three.

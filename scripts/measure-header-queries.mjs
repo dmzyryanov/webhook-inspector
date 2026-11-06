@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * The worst-case measurement of issue #130 (D250, criterion 8): header-only
- * queries of requests, which take places of their own beside the search's
- * two, against a session whose stored headers make every header condition as
- * costly as a webhook can make it.
+ * The worst-case measurement of issue #130 (D250): header-only queries of
+ * requests, which take places of their own beside the search's two, against a
+ * session whose stored headers make every header condition as costly as a
+ * webhook can make it.
  *
  * For each shape of stored headers a fresh project of
  * `measure-header-queries.compose.yml` - the backend image built from this
@@ -26,7 +26,7 @@
  * `/readyz` is read once a second. The backend's cgroup and process are read
  * from outside after each phase.
  *
- * The bounds, set before the run from criterion 8 and D201's numbers, each
+ * The bounds, set before the run from issue #130's and D201's numbers, each
  * held by every phase: every capture answered `200` and stored; capture
  * timings, from the call to the end of its answer, 95th percentile at most
  * 200 ms and every one under 500 ms; `/readyz` `200` within 1 s every time;
@@ -61,7 +61,7 @@ const COMPOSE_FILE = join(HERE, 'measure-header-queries.compose.yml');
 const INNER_SCRIPT = '/repo/scripts/measure-header-queries.mjs';
 const MIB = 1024 * 1024;
 
-/** The bounds of criterion 8, fixed before the run. */
+/** The bounds of issue #130, fixed before the run. */
 export const BOUNDS = Object.freeze({
   captureP95Ms: 200,
   captureMaxMs: 500,

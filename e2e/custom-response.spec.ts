@@ -751,7 +751,7 @@ async function changeTheRunningResponse(
     const quick = page.getByRole('dialog', { name: 'Session response', exact: true });
 
     await expect(quick).toBeVisible();
-    // C6, owner's rule 2: 204 is unavailable while a body is set, and says why.
+    // C6: 204 is unavailable while a body is set, and says why.
     await expect(quick.getByRole('button', { name: '204', exact: true })).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -872,7 +872,7 @@ async function changeTheRunningResponse(
     await expect(editor).toBeHidden();
     await expect(button).toHaveText('Custom · 500');
 
-    // C4, owner's rule 1: Default keeps the custom response...
+    // C4: Default keeps the custom response...
     await button.click();
     await quick.getByRole('radio', { name: 'Default' }).click();
     await expect(quick).toContainText(
@@ -1096,10 +1096,9 @@ async function changeTheRunningResponse(
 
     // The question's Remove appears under the pointer that clicked Remove
     // queue (716:383), so neither a double-click on Remove queue nor a second
-    // click 300 ms after the first removes the queue: both leave it asked
-    // (correction round 2, the Tester's finding). 300 ms, not the 400 the
-    // Tester also tried, keeps about 200 ms of margin under the guard's
-    // 500 ms for the input to reach a busy page.
+    // click 300 ms after the first removes the queue: both leave it asked.
+    // 300 ms, not 400, keeps about 200 ms of margin under the guard's 500 ms
+    // for the input to reach a busy page.
     const at = await removeQueue.boundingBox();
 
     if (at === null) {
@@ -1367,11 +1366,10 @@ async function setUpResponseRules(
   await expect(rows).toHaveText([/POST\s*\/orders/, /GET\s*\/status/]);
 
   // Held in flight, the save leaves nothing to edit: what the dialog shows is
-  // what it sent, which the saved list closes it on (correction round 2, the
-  // outside review's finding 2 on f6df31f). Every text field is drawn at
-  // 60 % while it waits (issue #250): the path's box, the session's URL in
-  // it and all, since its input is borderless. The first save fails, giving
-  // them back as they were; the second is let through.
+  // what it sent, which the saved list closes it on. Every text field is
+  // drawn at 60 % while it waits (issue #250): the path's box, the session's
+  // URL in it and all, since its input is borderless. The first save fails,
+  // giving them back as they were; the second is let through.
   const ruleTextFields = [
     typedMethod,
     dialog.getByLabel('Path').locator('..'),
@@ -1510,7 +1508,7 @@ async function setUpResponseRules(
   await expect(ruleMarker(observer, statusId)).toHaveCSS('background-color', WHITE);
 
   // At 320 px nothing scrolls sideways: the sheet's section and the rules
-  // full screen (criterion 7). The page opened on the list, no request open.
+  // full screen (issue #226). The page opened on the list, no request open.
   const noSidewaysScroll = () =>
     page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -1916,14 +1914,14 @@ test('a response made a template in the editor, a queue step and a rule fills in
   expect(await plain.text()).toBe(TEMPLATE_BODY);
 });
 
-/** The refusal of criterion 4: the second rule's path, as a server would place it (D257). */
+/** A refusal naming the second rule's path, as a server would place it (D257). */
 const PATH_REFUSAL = {
   errorCode: 1005,
   message: 'rules[1].path must contain no ?: the query of a request is never matched',
   field: 'rules[1].path',
 };
 
-/** The refusal of criterion 5: the second step's delay. */
+/** A refusal naming the second step's delay. */
 const DELAY_REFUSAL = {
   errorCode: 1005,
   message: 'steps[1].delayMs must be an integer between 0 and 30000',
@@ -1962,13 +1960,12 @@ async function refuseSaves(
 }
 
 /**
- * Issue #232 (D257), criteria 4, 5 and 8: a save the server refuses with a
- * `field` naming a rule or a step marks it - selected, its row in error, the
- * server's message at the field - and the footer names it counted from 1, in
- * the language shown; the first edit takes both away. On a phone the row is
- * marked and nothing opens; its screen shows the mark. The refusals are
- * answered by `page.route`, since the page's own checks refuse what the
- * server would.
+ * Issue #232 (D257): a save the server refuses with a `field` naming a rule or
+ * a step marks it - selected, its row in error, the server's message at the
+ * field - and the footer names it counted from 1, in the language shown; the
+ * first edit takes both away. On a phone the row is marked and nothing opens;
+ * its screen shows the mark. The refusals are answered by `page.route`, since
+ * the page's own checks refuse what the server would.
  */
 test('a save the server refuses at a rule or a step marks it at its field, in both languages and on a phone', async ({
   page,
@@ -2047,7 +2044,7 @@ test('a save the server refuses at a rule or a step marks it at its field, in bo
       .getByRole('list', { name: m.queue.steps })
       .getByRole('button', { name: new RegExp(`^${m.queue.step(place)}:`) });
 
-  // Criterion 4: Rule 1 selected, the save refused at rule 2's path.
+  // Rule 1 selected, the save refused at rule 2's path.
   let rules = await openRules(en, true);
   let refused = await refuseSaves(page, 'rules', PATH_REFUSAL);
 
@@ -2084,7 +2081,7 @@ test('a save the server refuses at a rule or a step marks it at its field, in bo
   expect(refused.saves()).toBe(1);
   await refused.unroute();
 
-  // Criterion 5: the queue's step 2, its delay.
+  // The queue's step 2, its delay.
   let queue = await openQueue(en, true);
 
   refused = await refuseSaves(page, 'queue', DELAY_REFUSAL);
@@ -2139,7 +2136,7 @@ test('a save the server refuses at a rule or a step marks it at its field, in bo
   await expect(queue).toBeHidden();
   await refused.unroute();
 
-  // Criterion 8: on a phone the refused rule's row is marked and nothing
+  // On a phone the refused rule's row is marked and nothing
   // opens; opened, its screen shows the mark.
   await page.evaluate(() => localStorage.setItem('qa-tools:language', '{"v":1,"lang":"en"}'));
   await page.setViewportSize({ width: 375, height: 812 });

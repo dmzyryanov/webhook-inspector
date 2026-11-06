@@ -21,7 +21,7 @@ export interface MeasuredAnswer {
   ms: number;
 }
 
-/** A set of answers tallied for the owner's choice: `200`, `429` and the rest, with p50 / p99 / max. */
+/** A set of answers tallied for the choice among #244's levers: `200`, `429` and the rest, with p50 / p99 / max. */
 export function rowLockReport(answers: readonly MeasuredAnswer[]): {
   sent: number;
   ok: number;

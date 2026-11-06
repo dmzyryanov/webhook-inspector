@@ -1404,10 +1404,9 @@ async function scrollGeometry(locator: Locator) {
 }
 
 /**
- * Criteria 1, 2 and 8 of issue #26, on the view that is showing: its box
- * scrolls in neither direction, the tab area around it never scrolls sideways,
- * and the block has exactly the caption it is expected to have, ending above
- * the box.
+ * Issue #26, on the view that is showing: its box scrolls in neither direction,
+ * the tab area around it never scrolls sideways, and the block has exactly the
+ * caption it is expected to have, ending above the box.
  *
  * With `deep`, the tab area also scrolls down through several screens, without
  * which a box that had rendered nothing at all would satisfy the rest.
@@ -1485,7 +1484,7 @@ async function boxEndsBelowTheTabArea(panel: Locator) {
 /**
  * Scrolls the tab area into the middle of the showing box and reads where its
  * copy control is, whether the text stays clear of it, and where everything
- * above the tab area is before and after (criteria 4 and 7).
+ * above the tab area is before and after (issue #26).
  */
 async function scrollIntoTheMiddle(panel: Locator) {
   const page = panel.page();
@@ -1578,7 +1577,7 @@ async function measureHangingIndent(panel: Locator, needle: string) {
   }, needle);
 }
 
-/** One `Headers` or `Query` row, found by its value cell (criterion 6). */
+/** One `Headers` or `Query` row, found by its value cell (issue #26). */
 async function measureRow(value: Locator) {
   return value.evaluate((cell) => {
     const name = cell.previousElementSibling as HTMLElement;

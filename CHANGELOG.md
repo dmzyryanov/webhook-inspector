@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.27
+
+2026-11-07
+
+**Nothing changes on this site; the comments in the deployment settings, the
+browser tests and the maintenance scripts now state the rule each one
+protects, rather than how it was decided.** The service is deployed, backed up
+and works exactly as before. (#424)
+
 ## 1.19.26
 
 2026-11-07

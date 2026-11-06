@@ -42,7 +42,8 @@ const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 // Whether `next` may follow `before`, each `[major, minor, patch]` as BigInts:
 // the next patch, the next minor with patch zero, or the next major with minor
-// and patch zero (D233). A new major is the owner's decision, not this check's.
+// and patch zero (D233). A new major is allowed here like the other two steps;
+// whether to release one is not this check's to decide.
 function follows(before, next) {
   const [major, minor, patch] = before;
   const [nextMajor, nextMinor, nextPatch] = next;

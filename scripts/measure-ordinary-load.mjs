@@ -5,7 +5,7 @@
  * arriving from their systems, a CI run calling the API - where every load
  * measurement before it was a hostile one.
  *
- * The simulated user (the owner's profile of 2026-10-12, `PROFILE` below): one
+ * The simulated user (the profile set on 2026-10-12, `PROFILE` below): one
  * session; its page open, the realtime connection `/ws/<session-id>` reading
  * events and the list reloaded on every `ready`, as the frontend does, and a
  * connection the server ends or refuses opened again after the frontend's
@@ -19,7 +19,7 @@
  * with a lifetime of an hour (`expiresInSeconds`), so that one a crash leaves
  * behind ends on its own.
  *
- * Served well (the owner's definition, `SERVED_WELL`): the p99 capture time
+ * Served well (as defined on 2026-10-12, `SERVED_WELL`): the p99 capture time
  * under 1 s, the p99 time from a capture to its row on the open page within
  * 2 s and every captured webhook shown there, no webhook lost - every one sent
  * is stored, counted through the API at the end - and no error: no answer but
@@ -221,7 +221,7 @@ import {
 const SCRIPT = fileURLToPath(import.meta.url);
 const MIB = 1024 * 1024;
 
-/** The simulated user (owner, 2026-10-12) and the choices this script made within it. */
+/** The simulated user (set on 2026-10-12) and the choices this script made within it. */
 export const PROFILE = Object.freeze({
   /** A page user's webhooks, one every 5 s, sent on time whatever the server answers. */
   webhookIntervalMs: 5_000,
@@ -355,7 +355,7 @@ export function parseProfile(text) {
   return profile;
 }
 
-/** Served well (owner, 2026-10-12). */
+/** Served well (defined on 2026-10-12). */
 export const SERVED_WELL = Object.freeze({ captureP99Ms: 1_000, realtimeP99Ms: 2_000 });
 
 /** Past these a worker may have been too busy to keep its plan: the step is not trusted. */

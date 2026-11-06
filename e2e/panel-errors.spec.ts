@@ -7,7 +7,7 @@ import {
   storedRequestId,
 } from './helpers.ts';
 
-/** The owner's wording for the depth limit (issue #59, D169). */
+/** The depth limit's message, word for word as settled (issue #59, D169). */
 const JSON_TOO_DEEP =
   'Formatting unavailable: JSON nested more than 100 levels deep is shown as stored.';
 

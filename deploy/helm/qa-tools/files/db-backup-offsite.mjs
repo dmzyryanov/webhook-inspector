@@ -6,11 +6,11 @@
 // stays unchanged. Like the notifier it is a native sidecar, an init container
 // with `restartPolicy: Always`. It holds the storage credential and never sees
 // the dump: db-backup.sh encrypts the dump it has saved and checked to the
-// owner's public key and renames the ciphertext into OFFSITE_DIR, an emptyDir
-// the two containers share, as `<database>-<UTC timestamp>.dump.gpg`. The
-// backup container then waits for this script's answer before it ends, so the
-// upload runs while the pod is alive and is never cut off by the 30 seconds a
-// sidecar has once the backup container is gone.
+// operator's public key and renames the ciphertext into OFFSITE_DIR, an
+// emptyDir the two containers share, as `<database>-<UTC timestamp>.dump.gpg`.
+// The backup container then waits for this script's answer before it ends, so
+// the upload runs while the pod is alive and is never cut off by the 30
+// seconds a sidecar has once the backup container is gone.
 //
 // One copy handed over, in this order; a step that fails ends the run:
 //
@@ -19,7 +19,7 @@
 //      nothing is uploaded there. `Suspended` is logged and passes, since
 //      objects written while it is suspended are deleted for good. Skipped
 //      when OFFSITE_CHECK_VERSIONING is `false`, for a credential that may not
-//      read the setting; the owner then checks it by hand (runbook).
+//      read the setting; the operator then checks it by hand (runbook).
 //   2. Upload. One `PUT /<bucket>/<name>` of the file, signed with AWS
 //      Signature Version 4 over its sha256, which the storage checks. The
 //      file is hashed and sent through one buffer of 128 KiB, a piece written

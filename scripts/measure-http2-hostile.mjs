@@ -26,7 +26,7 @@
  * network it started, its last line `{"down":...}` naming any left. `--keep`
  * leaves them; the built image `dev208-http2-backend` is left for the next
  * run. `--image` runs a prebuilt backend image and builds nothing. Nothing is
- * pulled; it never touches `hook.qa-tools.ru` (criterion 6).
+ * pulled; it never touches `hook.qa-tools.ru` (#208).
  *
  * Known limits: the medium and large sizes cannot complete today. The
  * backend's whole log is read into a 256 MiB buffer, which the medium

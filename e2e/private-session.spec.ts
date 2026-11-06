@@ -635,9 +635,9 @@ test.describe('E2E-21 — a private session', () => {
   });
 
   /**
-   * Finding 1 of the outside review of !252: a link put into the address bar
-   * of the session's own tab changes only the fragment - no new document, the
-   * same page - and is read all the same, its key out of the address at once.
+   * A link put into the address bar of the session's own tab changes only the
+   * fragment - no new document, the same page - and is read all the same, its
+   * key out of the address at once (!252).
    */
   test('a link with access pasted into the address bar of its keyless page opens it there, no history entry holding the key', async ({
     browser,
@@ -795,11 +795,10 @@ test.describe('E2E-21 — a private session', () => {
   });
 
   /**
-   * Finding 2 of the outside review of !252: `Remove from list` confirmed in
-   * one tab takes the key out of every tab of the browser. The tab that opened
-   * the session with it goes home within the page and Back - the same
-   * document, whose memory a reload would have cleared - and finds `Session
-   * not found`, storing nothing again.
+   * `Remove from list` confirmed in one tab takes the key out of every tab of
+   * the browser (!252). The tab that opened the session with it goes home
+   * within the page and Back - the same document, whose memory a reload would
+   * have cleared - and finds `Session not found`, storing nothing again.
    */
   test('Remove from list in one tab takes the key from every tab of the browser', async ({
     browser,

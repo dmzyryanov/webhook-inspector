@@ -268,8 +268,8 @@ test('the about page in Russian says the same in Russian, reads without a script
   // widths above and at five where 1.15.5's joints broke one of them: no line
   // starts with a dash or ends with a one-letter word or `QA`, and no line
   // holds a single word but the heading's second on a phone — the dash ends
-  // its first line, `От тестировщика —` over `тестировщикам` (the owner's
-  // option B). `laidOutLines` splits words at no-break spaces too, so a
+  // its first line, `От тестировщика —` over `тестировщикам` (option B of
+  // issue #258). `laidOutLines` splits words at no-break spaces too, so a
   // joined run's words are counted one by one.
   for (const width of [1440, 768, 540, 510, 420, 384, 375, 360, 320]) {
     await page.setViewportSize({ width, height: 900 });
