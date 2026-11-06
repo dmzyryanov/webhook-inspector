@@ -8,12 +8,14 @@ issue tracker and decision log; the site leaves them out.
 
 ## How to write an entry
 
-This file is public. Every frontend build publishes it as the page
+This file is public. Every frontend build that shows the operator's texts,
+as this site's does, publishes it as the page
 `https://webhook.qa-tools.ru/changelog`, the text
 `https://webhook.qa-tools.ru/changelog.md` and two Atom feeds,
 `https://webhook.qa-tools.ru/changelog.xml` with every version and
 `https://webhook.qa-tools.ru/changelog-breaking.xml` with the versions whose
-entry has a Breaking, a Deprecated or a Notice paragraph (D212, D224).
+entry has a Breaking, a Deprecated or a Notice paragraph (D212, D224); a
+build without them publishes none of it (#396).
 Everything above the first version heading, this header included, stays in the
 repository; the published outputs carry a public header of their own. The
 product version is in `VERSION`; delivery evidence and the exact commit live in
@@ -121,6 +123,18 @@ The rules (issue #97, D184):
   or does not open with a bold headline, and a frontend test fails when the
   published text names an issue, a decision, a repository path or an
   infrastructure object.
+
+## 1.19.20
+
+2026-11-06
+
+**Nothing changes on this site; a copy of the inspector built from its source
+no longer publishes this site's changelog, and its footer no longer promises
+how long backups keep captured requests.** A copy shows this changelog, its
+feeds and the footer's clause on backups only when whoever builds it shows
+their own texts, as it does the Terms of Use and the Privacy Policy; without
+them its footer ends after the 7 days a session lives unused. This site shows
+both as before, and every address answers exactly as before. (#396)
 
 ## 1.19.19
 
