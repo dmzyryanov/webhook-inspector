@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.25
+
+2026-11-06
+
+**Nothing changes on this site; the session page's code keeps its loading and
+its live updates in parts of their own.** The session and its requests load,
+new requests appear live, a reconnection catches up and an expired session
+shows `Session not found` exactly as before. (#422)
+
 ## 1.19.24
 
 2026-11-06
