@@ -136,19 +136,6 @@ Rerun:
   `server process <pid> was not ended within 5000 ms`. Rerun:
   `npm test -w @webhook-inspector/backend -- --test-name-pattern='ends a lent-out connection left idle' src/db/pool.test.ts`
 
-### [`apps/backend/src/modules/sessions/access-key.test.ts`](../../apps/backend/src/modules/sessions/access-key.test.ts)
-
-Open issue: #419. Both hold the fastest of five runs to 100 ms:
-
-- `answers made-up headers of 1048576 characters at once` (F-24, F-27,
-  F-30): `took 115.3 ms at best in 5 runs, over the 100 ms bound`.
-- `answer made-up handshakes of 1048576 characters under both prefixes at once`
-  (F-24, F-26, F-27, F-29, F-31): `took 113.4 ms at best in 5 runs, over the 100 ms bound`,
-  102.9 to 116.2 ms in the runs recorded.
-
-Rerun:
-`npm test -w @webhook-inspector/backend -- --test-name-pattern='headers of 1048576 characters at once$|handshakes of 1048576 characters' src/modules/sessions/access-key.test.ts`
-
 ## Changed, the cause not established
 
 Two memory tests changed after failing on CI; the log records the cause of

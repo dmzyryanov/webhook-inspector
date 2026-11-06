@@ -45,7 +45,7 @@ const OLDER_SHAPE = 'Au6JqVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2m_-MKss';
  * #419 it was 100, as at the smaller sizes still, and loaded runs of the
  * backend suite took a check over it now and then with nothing wrong
  * (F-32): the header of 1,048,576 commas, whose 1,048,577 empty names take
- * 29 to 41 ms at best of five alone and up to 174 ms beside the full backend
+ * 29 to 50 ms at best of five alone and up to 174 ms beside the full backend
  * suite and eight busy loops. 350 is about twice that. A `protocolKey`
  * quadratic in the names offered took 903 ms and more alone on the 104,858
  * names of `many`, 2.6 times the bound and more - the cheapest form measured
@@ -59,8 +59,8 @@ const PROTOCOL_KEY_MIB_BOUND_MS = 350;
  * `chooseProtocol` may take on a made-up handshake of 1 MiB, its 32,768 names
  * offered under the service's prefix: 45, the set each check is given built
  * before its runs. Until #419 it was 100, the set of the second built in its
- * runs. They take 3 to 7 ms at best of five alone and up to 22 ms loaded as
- * above: 45 is about twice that. The cheapest quadratic form measured takes
+ * runs. They take 3 to 7 ms at best of five alone and up to 25 ms loaded as
+ * above: 45 is 1.8 times that. The cheapest quadratic form measured takes
  * each name off the front of a list of them, with `shift()` again, and took
  * 82 ms and more alone, 1.8 times the bound: over it on every run, where
  * neither 100 nor `PROTOCOL_KEY_MIB_BOUND_MS` tells it apart.
