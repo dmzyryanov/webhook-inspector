@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ErrorCode,
   type RequestDetails,
@@ -29,10 +29,11 @@ import { SessionUnavailable } from '../components/SessionUnavailable.tsx';
 import { Toast, type ToastIcon, type ToastMessage } from '../components/Toast.tsx';
 import { DESKTOP_QUERY, useDesktopLayout } from '../hooks/useDesktopLayout.ts';
 import { usePushFlowHistory } from '../hooks/usePushFlowHistory.ts';
+import { useReadState } from '../hooks/useReadState.ts';
+import { useRequestFilter } from '../hooks/useRequestFilter.ts';
 import { useMessages } from '../i18n/LanguageProvider.tsx';
 import type { Phrase } from '../i18n/en.ts';
 import { cn } from '../lib/cn.ts';
-import { formatDocumentTitle } from '../lib/format.ts';
 import {
   countArrivedSince,
   focusOnViewChange,
@@ -46,7 +47,6 @@ import {
 import {
   applyRequestDeleted,
   applyResponseRecorded,
-  countUnread,
   createListLoads,
   deletionClosesDetails,
   detailToShow,
@@ -57,8 +57,6 @@ import {
   shouldRefreshDetails,
   shouldRefreshDetailsOnReady,
 } from '../lib/requests.ts';
-import { createRawSearch, RAW_SEARCH_OFF, type RawSearchState } from '../lib/raw-search.ts';
-import { filterRequests } from '../lib/request-filter.ts';
 import { resolveRequestLinkUnlessMove, takeKeyUnlessMove } from '../lib/move-link.ts';
 import {
   afterLinkedOpening,
@@ -68,18 +66,7 @@ import {
   type OpeningOutcome,
 } from '../lib/request-link.ts';
 import { accessKeyFor, heldOnlyInThisTab, settleOpenedKey } from '../lib/access-keys.ts';
-import {
-  addReadIds,
-  browserStorage,
-  loadFilter,
-  loadReadIds,
-  pruneIdleReadState,
-  pruneReadState,
-  readIdsFromStorageEvent,
-  readStateKey,
-  recordRead,
-  saveFilter,
-} from '../lib/read-state.ts';
+import { addReadIds, browserStorage, pruneReadState, recordRead } from '../lib/read-state.ts';
 import {
   classifySessionError,
   keepsNoAddress,
@@ -250,71 +237,26 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
   useLayoutEffect(() => {
     takeKeyFromAddress(sessionId, storage, addressBar);
   }, [sessionId, storage]);
-  /**
-   * Requests the viewer has opened; everything else is unread (D078). Starts
-   * from what this browser's tabs stored for the session and grows by union
-   * with what they store later (D156).
-   */
-  const [openedIds, setOpenedIds] = useState<ReadonlySet<string>>(() =>
-    loadReadIds(storage, sessionId),
-  );
-  /**
-   * The list filter as typed, kept per session in this browser and restored
-   * on reload (D180). Other open tabs pick it up on their next reload.
-   */
-  const [filterQuery, setFilterQuery] = useState(() => loadFilter(storage, sessionId));
-  /**
-   * Whether the viewer has typed in the filter on this page. Until then the
-   * filter is the one restored on reload, and it is searched at once rather
-   * than after a pause in typing (D191).
-   */
-  const filterTyped = useRef(false);
-  const changeFilter = useCallback((query: string): void => {
-    filterTyped.current = true;
-    setFilterQuery(query);
-  }, []);
-  /**
-   * What the server's search of the raw requests found for the filter's
-   * words, and what the list pane says about that search (D191).
-   */
-  const [rawSearchState, setRawSearchState] = useState<RawSearchState>(RAW_SEARCH_OFF);
-  /**
-   * Decides when the server is asked (`lib/raw-search.ts`). One per page, and
-   * everything it is built from is fixed for the page: `App` keys the page by
-   * its session (D080). A closed session answers the search as it answers any
-   * session-scoped call, and takes the page over the same way.
-   */
-  const [rawSearch] = useState(() =>
-    createRawSearch({
-      search: async (words) => {
-        try {
-          return await api.searchRequests(sessionId, words);
-        } catch (error) {
-          const classified = classifySessionError(error);
-
-          if (classified !== 'error') {
-            setStatus(classified);
-          }
-
-          throw error;
-        }
-      },
-      onChange: setRawSearchState,
-    }),
-  );
-  /**
-   * The rows the filter keeps: by their list fields, in the browser, or by
-   * their raw request, as the server found (D191). The list, the Back bar's
-   * position and its arrived badge count these; the tab title and Delete all
-   * count every request (D078, D180).
-   */
   /** Whether the session keeps no sender address, so its rows say `IP not stored` (D249). */
   const addressNotStored = keepsNoAddress(session);
-  const filteredRequests = useMemo(
-    () =>
-      filterRequests(requests, filterQuery, undefined, rawSearchState.matches, m, addressNotStored),
-    [requests, filterQuery, rawSearchState.matches, m, addressNotStored],
-  );
+  /** The list filter, its search of headers and bodies, and the rows it keeps (D180, D191). */
+  const { filterQuery, changeFilter, rawSearchState, rawSearch, filteredRequests } =
+    useRequestFilter({
+      sessionId,
+      storage,
+      requests,
+      keepsNoAddress: addressNotStored,
+      messages: m,
+      setStatus,
+    });
+  /** The requests opened in this browser, and the unread count in the tab title (D014, D156). */
+  const { openedIds, setOpenedIds } = useReadState({
+    sessionId,
+    storage,
+    requests,
+    showingRequests: status === 'ready',
+    messages: m,
+  });
 
   /** Identifies the detail request whose answer is still wanted. */
   const latestDetailRequest = useRef(0);
@@ -899,69 +841,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
   ]);
 
   /**
-   * Read state from the session's other tabs in this browser (D156). Only the
-   * read set changes: selection, detail panel and scroll stay as they are. The
-   * stored set is read once more after subscribing, so a request opened
-   * elsewhere between the first render and this effect is not missed.
-   */
-  /*
-   * Kept on every change, and on the first render too, which marks a restored
-   * filter used so it lives as long as the session's read state (D180).
-   */
-  useEffect(() => {
-    saveFilter(storage, sessionId, filterQuery, Date.now());
-  }, [storage, sessionId, filterQuery]);
-
-  /*
-   * The search of headers and bodies follows the filter (D191): by itself
-   * after a pause in typing, and at once for the filter this page was loaded
-   * with. Leaving the page stops its timers.
-   */
-  useEffect(() => {
-    rawSearch.setQuery(filterQuery, { immediate: !filterTyped.current });
-  }, [rawSearch, filterQuery]);
-
-  useEffect(() => () => rawSearch.stop(), [rawSearch]);
-
-  useEffect(() => {
-    pruneIdleReadState(storage, sessionId, Date.now());
-
-    if (storage === null) {
-      return;
-    }
-
-    const key = readStateKey(sessionId);
-
-    // `sessionStorage` fires the same event; only `localStorage` is ours.
-    function isThisStorage(event: StorageEvent): boolean {
-      try {
-        return event.storageArea === storage;
-      } catch {
-        return false;
-      }
-    }
-
-    function onStorage(event: StorageEvent): void {
-      if (event.key !== key || !isThisStorage(event)) {
-        return;
-      }
-
-      const ids = readIdsFromStorageEvent(event, sessionId);
-
-      if (ids !== null) {
-        setOpenedIds((current) => addReadIds(current, ids));
-      }
-    }
-
-    window.addEventListener('storage', onStorage);
-    setOpenedIds((current) => addReadIds(current, loadReadIds(storage, sessionId)));
-
-    return () => {
-      window.removeEventListener('storage', onStorage);
-    };
-  }, [sessionId, storage]);
-
-  /**
    * Watches the session for captured requests, their responses and their
    * deletion by any viewer. A refused connection is
    * the same verdict a session-scoped HTTP call would give, so it moves the
@@ -1103,18 +982,6 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
 
     return readSessionPeriodically(reloadSession);
   }, [status, reloadSession]);
-
-  // Nothing is waiting to be read on a page that is not showing requests.
-  const unreadCount = status === 'ready' ? countUnread(requests, openedIds) : 0;
-
-  /** The count lives in the browser tab title and nowhere else (D014). */
-  useEffect(() => {
-    document.title = formatDocumentTitle(unreadCount, m);
-
-    return () => {
-      document.title = m.title.base;
-    };
-  }, [unreadCount, m]);
 
   /**
    * Session-level failures during an action take over the page; anything else
