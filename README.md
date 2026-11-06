@@ -125,7 +125,7 @@ webhook-inspector/
 │   ├── API.md             # the HTTP, realtime and MCP contract
 │   ├── ARCHITECTURE.md    # how it is built and run
 │   ├── PRODUCT.md         # what it does and how it looks
-│   └── testing/           # the browser smoke suite and the record of flaky tests
+│   └── testing/           # the browser smoke suite and the known flaky tests
 ├── scripts/               # the local database, CI checks and measurement harnesses
 ├── .gitlab/ci/validate.yml # the validate stage: lint, types, suites, smoke, checks
 ├── .gitlab-ci.yml         # image builds, deployment and main's validation gate
