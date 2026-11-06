@@ -2563,9 +2563,9 @@ async function listRequestIds(sessionId, forwardedFor, limit = 200) {
 /**
  * A capture stream's report, capped at the newest 1000 a session keeps (D006):
  * how many were answered `200` and accepted beside their timings. `allAccepted`
- * is the criterion-2 claim - every capture stored, nothing refused - for a
- * stream nothing deletes from, as the side load is. The row-lock target has
- * requests deleted out from under it, so its `stored` is below its `ok` by
+ * is what #244 claims of a stream nothing deletes from, as the side load is:
+ * every capture stored, nothing refused. The row-lock target has requests
+ * deleted out from under it, so its `stored` is below its `ok` by
  * design and `storedAll` is false; `allAccepted` still holds, since a deletion
  * is not a refusal.
  */
