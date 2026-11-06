@@ -30,7 +30,7 @@ interface RequestFilterOptions {
   sessionId: string;
   /**
    * This browser's `localStorage`, or `null` where it is unavailable, in which
-   * case the filter stays in this tab (D156).
+   * case the filter stays in this tab (D180).
    */
   storage: ReadStateStorage | null;
   /** Every request the list holds. */
@@ -39,7 +39,11 @@ interface RequestFilterOptions {
   keepsNoAddress: boolean;
   /** The words of the language shown, which a row is matched in (D222). */
   messages: Messages;
-  /** The page's status, which a closed session answering the search takes over. */
+  /**
+   * The page's status, which a closed session answering the search takes
+   * over. Taken once, as the page's one search is made, like `sessionId`: the
+   * page's own setter, the same for the life of the page.
+   */
   setStatus: (next: SessionPageStatus) => void;
 }
 
