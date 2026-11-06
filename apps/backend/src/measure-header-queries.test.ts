@@ -1,6 +1,6 @@
 /**
  * The worst-case measurement of #130, `scripts/measure-header-queries.mjs`
- * (D250): its pure parts - the bounds criterion 8 fixed before the run, the
+ * (D250): its pure parts - the bounds fixed before the run, the
  * percentiles, the never-matching conditions, and the verdict of a phase,
  * which set `MAX_CONCURRENT_HEADER_QUERIES`. The measurement itself needs
  * Docker and runs by hand, as D201's and D232's do.

@@ -29,7 +29,7 @@
  * streamed answer (`WaitSlot.read`, `inSlot`). Given back while such a read
  * is at work, the slot goes back once the last of them settles, its
  * statement having ended; the handler settling, the answer beginning and the
- * response closing never free it before (#243's correction round 3).
+ * response closing never free it before (#243).
  *
  * Work is what holds a slot, never waiting for a client: a list answer with
  * content, streamed as its client reads it (`list-answer.ts`), takes a slot

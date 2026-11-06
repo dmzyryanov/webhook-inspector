@@ -828,7 +828,7 @@ describe('what a listener delivers (D221)', () => {
    * before the prune took its rows. A prune waiting for one of them while the
    * purge waited for a row the prune held would be a deadlock, which
    * PostgreSQL ends after a second by failing one of the two: a skipped
-   * prune, or the deletion answered `500` (correction round 3). The prune
+   * prune, or the deletion answered `500`. The prune
    * locks what it deletes `FOR UPDATE SKIP LOCKED` instead: it deletes the
    * other rows at once and leaves the held one to a later prune.
    *

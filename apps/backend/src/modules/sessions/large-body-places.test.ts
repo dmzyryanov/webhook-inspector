@@ -590,11 +590,11 @@ describe('a place given back on every way a call ends (D205)', () => {
 });
 
 /**
- * The outside review's scenario (correction round 4): whole large bodies sent,
- * their handlers waiting for the sessions' row locks with the parsed queues in
- * hand, as they wait behind a capture or a change, and the clients gone. A
- * place given back on the close alone let the next bodies in while those were
- * still held; it is now held until the handler settles.
+ * Whole large bodies sent, their handlers waiting for the sessions' row locks
+ * with the parsed queues in hand, as they wait behind a capture or a change,
+ * and the clients gone. A place given back on the close alone let the next
+ * bodies in while those were still held; it is now held until the handler
+ * settles.
  */
 describe('a place held while the handler holds the body (D205)', () => {
   it('stays taken after the client goes until the handler settles, and the ninth is refused meanwhile', async () => {
@@ -858,11 +858,10 @@ describe('the places of large bodies on PUT .../rules (D246)', () => {
 });
 
 /**
- * `POST /mcp` takes the places too since the second outside review (D213,
- * the Coordinator's decision answering its finding 2): its body is held
- * whole while it arrives, up to 1 MiB, and one address may have 128 calls in
- * flight. The place goes back once the message is read and checked, which
- * takes the body off the request, so a `wait_for_request` waits without one.
+ * `POST /mcp` takes the places too (D213): its body is held whole while it
+ * arrives, up to 1 MiB, and one address may have 128 calls in flight. The place
+ * goes back once the message is read and checked, which takes the body off the
+ * request, so a `wait_for_request` waits without one.
  */
 describe('the places of large bodies on POST /mcp (D213)', () => {
   const MCP_HEADERS = {

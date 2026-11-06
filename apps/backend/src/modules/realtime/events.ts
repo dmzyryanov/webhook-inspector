@@ -59,7 +59,7 @@ export const REALTIME_EVENT_RETENTION_SECONDS = 20;
  * capture) is left to a later prune rather than waited for. Two statements
  * each waiting for rows the other holds would be a deadlock, which
  * PostgreSQL ends after a second by failing one of them - the prune, or the
- * deletion with a `500` (correction round 3, the Reviewer's question).
+ * deletion with a `500`.
  */
 export const PRUNE_REALTIME_EVENTS_SQL = `WITH doomed AS MATERIALIZED (
          SELECT id FROM realtime_events

@@ -1,8 +1,8 @@
 /**
  * The parsers of the application listener's own scope, which every route
- * that takes no body uses: the four deletions and the queue's restart (D213,
- * the Coordinator's decision answering the second outside review's finding
- * 2). The not-found route, which answers every method of a path no route
+ * that takes no body uses: the four deletions and the queue's restart, so
+ * that a body none of them reads is not held while they wait (D213). The
+ * not-found route, which answers every method of a path no route
  * has, used them too until D227; it is answered `404` before any parser now
  * (`createApp`'s `preParsing`, `server.ts`), and reads no body. The routes
  * that read a body - the seven JSON routes and `POST /mcp` - replace them in

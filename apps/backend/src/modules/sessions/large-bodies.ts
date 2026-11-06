@@ -10,9 +10,9 @@
  *
  * A valid queue of 1 MiB is read, decoded, parsed, checked, written to `jsonb`
  * and answered whole, with several copies of it alive at once per call, and a
- * body of text V8 holds in two bytes a character costs twice that again. The
- * Tester measured such saves from one client, well within its 1200 calls a
- * minute, killing the 512 MiB backend at 100 to 120 at once, below the
+ * body of text V8 holds in two bytes a character costs twice that again.
+ * Sent from one client, well within its 1200 calls a minute, 100 to 120 such
+ * saves at once killed the 512 MiB backend, below the
  * receiver's own margin. A limit per minute bounds none of that, so the large
  * bodies being handled are counted, as list answers with bodies are (D201):
  * the ninth is refused at once, `429` / `1017` with `Retry-After`, never
@@ -20,7 +20,7 @@
  *
  * The place is taken on `onRequest`, once the headers have arrived and before
  * a byte of the body is read, and held for as long as anything holds the body
- * (correction round 4, the outside review's finding): by the connection until
+ * (so that at most eight large bodies are held at once): by the connection until
  * the answer's response closes - once the answer has been written, or as
  * soon as the connection goes - and by the route's handler from the moment it
  * starts until it settles. A handler can wait for a connection of the pool or
@@ -148,12 +148,11 @@ export interface LargeBodyHandling {
    * but the request is, for as long as the client takes to send it: such a
    * call keeps the place it took among its address's calls in flight until
    * its refusal's response closes, so that the drains count toward the 128
-   * (D213, the Coordinator's decision answering the outside review's finding
-   * 1). Any other refused call - kept alive, Node discarding the body itself
+   * (D213). Any other refused call - kept alive, Node discarding the body itself
    * once the answer is written, or with nothing it would drain - is handed to
    * `onRefusal`, which gives that place back at once, so that it holds
    * neither; its answer ends its connection when the body is still arriving
-   * (`registerRateLimits`, the second outside review's finding 1).
+   * (`registerRateLimits`).
    */
   guard: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   /**

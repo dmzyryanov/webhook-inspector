@@ -539,9 +539,8 @@ function emptyObjects(): Buffer {
 
 /**
  * The routes that take no body - the queue's restart and the four deletions
- * - sent two such arrays each while the pool does not answer (D213, the
- * Coordinator's decision answering the second outside review's finding 2):
- * the outside review measured about 44 MiB more held for two restarts. Each
+ * - sent two such arrays each while the pool does not answer (D213): two
+ * restarts that kept what Fastify parsed held about 44 MiB more. Each
  * must hold well under 1 MiB a call, `PER_IGNORED_CALL_BYTES`: the body is
  * refused `413` / `1004` past 1 KiB, before it is read. With the pool
  * blocked, a call that was let through waits for it with what it parsed.

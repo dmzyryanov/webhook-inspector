@@ -8,7 +8,7 @@
  * type is settled before `parseSearchBody` runs, Fastify's `bodyLimit` answers
  * an oversized body with `413` / `1004`, the shape of the request body is
  * `400` / `1006`, and every rule about `words` is `400` / `1010`. A message
- * names the rule and never echoes a word (D106): a word is what the tester is
+ * names the rule and never echoes a word (D106): a word is what the user is
  * looking for in captured data, and it travels in the body precisely so that
  * no log line and no error can hold it.
  */

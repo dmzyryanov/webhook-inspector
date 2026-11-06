@@ -8,7 +8,7 @@
  * (the issue's two comments) - each at its smallest size, against the #207
  * path with `RECEIVE_HTTP2` on.
  *
- * The throughline is criterion 1: for every shape the backend answers an
+ * The throughline: for every shape the backend answers an
  * ordinary webhook, on a connection of its own, during the shape where the
  * shape lasts and always after it, and stores it; the attack itself stores
  * nothing it should not. The
@@ -182,7 +182,7 @@ function client(options: http2.ClientSessionOptions = {}): ClientHttp2Session {
 /**
  * An ordinary webhook on a connection of its own: the capture path at rest.
  * It is answered `200` and stored within the deadline, whatever the attack on
- * its own connections is doing (criterion 1). `label` names the moment, so a
+ * its own connections is doing. `label` names the moment, so a
  * failure says whether the backend fell during the shape or after it.
  */
 async function ordinaryWebhook(label: string): Promise<void> {

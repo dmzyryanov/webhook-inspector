@@ -1696,8 +1696,8 @@ describe('a connection that dies gives back what its pipelined webhooks hold (D2
   // (`state.outgoing`). Their holds are given back on their replies'
   // `close`, which Node 24 emits for those too when the connection closes:
   // `socketOnClose` destroys them (`abortOutgoing`, `node:_http_server`).
-  // The reviewer's finding at 70fccd6 read a Node that destroyed only the
-  // requests; these tests held on that code.
+  // Node was once read as destroying only the requests, not their answers;
+  // these tests held at 70fccd6 all the same.
   for (const [name, source] of [
     ['directly', undefined],
     ['behind the PROXY protocol', '203.0.113.91'],
@@ -1754,7 +1754,7 @@ describe('a connection that dies gives back what its pipelined webhooks hold (D2
       // and Node sees it end only when it next reads or writes it (points 6
       // and 7). Writing the answer the delay holds, here after 2 s, often
       // brings that about, and the waiting `POST` then leaves the line as one
-      // that left; not always: in the Tester's 20 cases at af65504 on macOS,
+      // that left; not always: in 20 cases at af65504 on macOS,
       // on the default wait, 7 left only when their wait of 30 s ran out,
       // refused at `warn` to nobody. Either line is accepted. The two before
       // it give back their holds once their answers are written, and the
@@ -2071,7 +2071,7 @@ describe('the budget of an address (D210)', () => {
     );
     // What one such GET holds while its answer waits: about 80 KiB, so 203
     // fit an address's 16 MiB. Weighed at its headers alone, 992 would go in
-    // and then hold 78 MiB (the second outside review's finding).
+    // and then hold 78 MiB.
     const heldEach = storedWeight('GET', lines, Buffer.byteLength(answerBody));
     const fit = Math.floor(budget.settings.perAddressBytes / heldEach);
     const count = fit + 40;

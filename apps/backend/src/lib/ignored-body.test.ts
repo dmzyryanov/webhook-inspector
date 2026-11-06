@@ -1,10 +1,10 @@
 /**
- * Unit tests of how a route that takes no body reads one sent anyway (D213,
- * the second outside review's finding 2): at most 1 KiB, `413` past it, the
- * rest never kept. No server and no database: the reading is exercised on a
- * stream standing in for the request, with made-up bodies built to make it
- * keep more, call back twice or never, at growing sizes. The routes' answers
- * are tested in `modules/requests/requests.test.ts`, what a call keeps in
+ * Unit tests of how a route that takes no body reads one sent anyway (D213): at
+ * most 1 KiB, `413` past it, the rest never kept. No server and no database:
+ * the reading is exercised on a stream standing in for the request, with
+ * made-up bodies built to make it keep more, call back twice or never, at
+ * growing sizes. The routes' answers are tested in
+ * `modules/requests/requests.test.ts`, what a call keeps in
  * `modules/limits/calls-memory.test.ts`.
  */
 import assert from 'node:assert/strict';

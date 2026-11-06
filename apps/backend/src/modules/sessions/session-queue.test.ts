@@ -252,7 +252,7 @@ async function setExpiry(sessionId: string, interval: string): Promise<void> {
  * The id of the one request of a session whose response is still pending,
  * `besides` left out: a completion is written after its reply has ended, so
  * the record of a request answered just before may still be pending too
- * (D109), the more so under load (correction round 3 of #132).
+ * (D109), the more so under load (#132).
  */
 async function awaitPendingRecord(sessionId: string, besides: string[] = []): Promise<string> {
   for (let attempt = 0; attempt < 2_000; attempt += 1) {
@@ -273,7 +273,7 @@ async function awaitPendingRecord(sessionId: string, besides: string[] = []): Pr
 }
 
 describe('a capture takes the next step, then the session response (D205)', () => {
-  /** Criterion 1 of #106, with a custom session response. */
+  /** A queue, then a custom session response (#106). */
   it('answers 503, 503 after its delay with the request stored first, then the custom 200', async () => {
     const id = await create({ response: CUSTOM_200 });
 
@@ -338,7 +338,7 @@ describe('a capture takes the next step, then the session response (D205)', () =
     assert.equal(third.body, await defaultAnswerText(app, id, requestIdOf(third)));
   });
 
-  /** Criterion 5: the list row and the detail name the step, or none. */
+  /** The list row and the detail name the step, or none. */
   it('records the step that answered each request, and none for the session response', async () => {
     const id = await create({ response: CUSTOM_200 });
 
@@ -402,10 +402,10 @@ describe('a capture takes the next step, then the session response (D205)', () =
   });
 
   /**
-   * Criterion 2 of #106: the steps are taken under the session row's lock
-   * (D065), so twenty requests at once take steps 1 to 10 one each, in the
-   * order they took the lock - which is their receipt order (D196) - and the
-   * other ten get the session response.
+   * The steps are taken under the session row's lock (D065), so twenty requests
+   * at once take steps 1 to 10 one each, in the order they took the lock -
+   * which is their receipt order (D196) - and the other ten get the session
+   * response.
    */
   it('gives each of 10 steps to exactly one of 20 concurrent requests, in capture order', async () => {
     const steps = Array.from({ length: MAX_QUEUE_STEPS }, (_unused, index) => ({
@@ -860,10 +860,9 @@ describe('PUT /api/sessions/:sessionId/queue', () => {
   });
 
   /**
-   * Criterion 4: every step is checked by the function and the rules a
-   * response is checked by (D101, D179), and a refused step is named by its
-   * position: the message is the response change's own, with `steps[1]` for
-   * `response`.
+   * Every step is checked by the function and the rules a response is checked
+   * by (D101, D179), and a refused step is named by its position: the message
+   * is the response change's own, with `steps[1]` for `response`.
    */
   for (const [description, invalid] of INVALID_RESPONSES) {
     it(`refuses a step with ${description}, naming it, and writes nothing`, async () => {
@@ -1277,7 +1276,7 @@ describe('a queue change and a capture serialise on the session row', () => {
 });
 
 /**
- * Criterion 7 of #106 (D205, as D151 did for its flag). The previous image,
+ * Rollback safety for #106 (D205, as D151 did for its flag). The previous image,
  * 0.45.2 (`e453f2c`), keeps running on this schema after a `helm rollback`,
  * which never undoes a migration (D055). These are its statements about a
  * session's response and a capture's record, copied from

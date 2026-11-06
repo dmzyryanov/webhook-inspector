@@ -451,12 +451,12 @@ describe('the gate in front of the API’s work (D244)', () => {
     assert.equal(work.slots.taken, 0);
   });
 
-  // The outside review's finding 1 on #243's correction round 3: a wait's
-  // read under way when its wait ended - and its handler with it - left the
-  // slot free while its statement went on, and another call was let in past
-  // the bound. Each ending, during the first read, in the handler's own slot,
-  // and during a later one, in a slot taken in turn; the real `waitForList`,
-  // as the list's `wait` and `wait_for_request` run it.
+  // A wait's read under way when its wait ended - and its handler with it -
+  // keeps its slot until its statement settles: freed sooner, the slot let
+  // another call in past the bound while the statement went on (#243). Each
+  // ending, during the first read, in the handler's own slot, and during a
+  // later one, in a slot taken in turn; the real `waitForList`, as the list's
+  // `wait` and `wait_for_request` run it.
   const endings = [
     { name: 'its client leaving', end: (call: FakeCall) => leave(call) },
     {

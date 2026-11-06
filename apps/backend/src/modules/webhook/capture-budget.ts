@@ -56,8 +56,7 @@
  * what a reply held by a configured delay still keeps of it, so a delay of up
  * to 30 s stays counted. It never grows: the answer's 64 KiB were reserved
  * when the webhook was admitted, before its session was known, so a stored
- * webhook never holds more than it was let in for (found by the second
- * outside review, D210).
+ * webhook never holds more than it was let in for (D210).
  *
  * The count lives in the process: there is one outside a rollout, and two for
  * its seconds, when an address may have up to twice its share in flight
@@ -98,8 +97,7 @@ export const CAPTURE_HEADER_LINE_WEIGHT_BYTES = 256;
  * request's id in JSON, is far smaller. Reserved when the webhook is admitted,
  * before its session is read, so that once stored, when its weight counts the
  * answer's actual body, it never weighs more than it was admitted for: a hold
- * that grew after storing took memory neither budget had granted (found by the
- * second outside review).
+ * that grew after storing took memory neither budget had granted.
  */
 export const CAPTURE_ANSWER_RESERVE_BYTES = MAX_RESPONSE_BODY_BYTES;
 
@@ -752,10 +750,10 @@ interface Stop {
  * The stop belongs to the connection, not to one request: a pipelined
  * request - a `GET` followed on its connection by a `POST` of 1 MiB - shares
  * the socket with the next, and a `GET` admitted at once must not start a
- * socket a `POST` behind it still waits on (found by the outside review,
- * D210). So the webhooks of a connection are counted while they wait, the
- * first that finds it read stops it, and it is started again once the last
- * of them is admitted, refused or gone, and only if the guard stopped it.
+ * socket a `POST` behind it still waits on (D210). So the webhooks of a
+ * connection are counted while they wait, the first that finds it read stops
+ * it, and it is started again once the last of them is admitted, refused or
+ * gone, and only if the guard stopped it.
  *
  * Started again by the guard itself, not left to the body's reading: Node
  * starts a socket again when a request's body is read, but a request with no

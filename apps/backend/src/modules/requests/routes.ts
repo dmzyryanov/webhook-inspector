@@ -347,7 +347,7 @@ export function registerRequestRoutes(
     );
 
     // The list with header and body conditions (D196). The conditions are
-    // captured data the tester is looking for, so they travel in the body for
+    // captured data the user is looking for, so they travel in the body for
     // the reason the search's words do; the answer is the list's. With bodies
     // it takes one of the list's places (D201), as the GET does, before the
     // slot its statement runs in: the search's with a body condition, the

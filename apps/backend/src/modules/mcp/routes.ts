@@ -555,8 +555,7 @@ export function registerMcpRoutes(app: FastifyInstance, options: McpRouteOptions
     //
     // Answered before its body is read, never parsed: the route has no use
     // for one, and the scope's parser would hold up to 1 MiB of it while it
-    // arrives (D213, the Coordinator's decision answering the second outside
-    // review's finding 2). On a connection Node is about to close the body is
+    // arrives (D213). On a connection Node is about to close the body is
     // drained first, as the query string's refusal drains it (D143), the call
     // keeping its place among the calls in flight meanwhile; kept alive with
     // a body still arriving, the answer ends its connection

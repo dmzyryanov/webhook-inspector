@@ -10,8 +10,8 @@
  * once it had all arrived. A connection that stalled one byte short of a
  * 1 MiB body kept about 1 MiB of heap for as long as its client liked:
  * 8, 32 and 128 of them held 8.3, 32.8 and 129.7 MiB, and a few hundred from
- * one address took a process with a 259 MiB heap past it (the Tester's
- * finding 2 on #145's `dafdd27`). Answered `404` before a byte of the body,
+ * one address took a process with a 259 MiB heap past it (measured on
+ * #145's `dafdd27`). Answered `404` before a byte of the body,
  * each connection is ended by the close rule (`answer-before-body.test.ts`)
  * and keeps nothing: at most `PER_CONNECTION_BYTES` a connection here,
  * the client's own sockets included.

@@ -218,7 +218,7 @@ describe('the realtime outbox backstop job (D221)', () => {
    * session while its transaction runs. The job's statement never waits for
    * such a row - waiting while the purge waited for a row the job held would
    * be a deadlock, ended by failing one of them - but leaves it to its next
-   * run (correction round 3).
+   * run.
    */
   it('leaves an old row a transaction holds, without waiting for it, and deletes the other old ones', async () => {
     const held = `cleanup-outbox-held-${runId}`;

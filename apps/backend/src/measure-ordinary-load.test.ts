@@ -506,8 +506,8 @@ describe('measure-ordinary-load: the production budget', () => {
   });
 
   it('lets nothing it cannot count pass as within it: a profile that is not one, or a figure that is not finite', () => {
-    // The Tester's cases at 5d21c8c: each passed with 12 + 2 and then ran a
-    // reload loop with no delay, or crashed at a CI run's first pause.
+    // Each of these once passed with 12 + 2 and then ran a reload loop with
+    // no delay, or crashed at a CI run's first pause.
     for (const [change, message] of [
       [{ reloadMaxMs: -1_000_000_000 }, /reloadMaxMs takes a whole number from 1 to 3600000/],
       [{ reloadMinMs: 'x' }, /reloadMinMs takes a whole number/],
@@ -2234,7 +2234,7 @@ describe('scripts/measure-ordinary-load.mjs (D232)', () => {
       [[...common, '--ci', '20', ...file], /session creations/],
       [[...common], /needs --sessions-file/],
       [[...common, '--addresses', 'per-user', ...file], /no --addresses per-user/],
-      // The Tester's cases at 5d21c8c, each of which passed the budget.
+      // Profiles each of which the budget once let pass.
       [
         [...common, ...profile('{"reloadMaxMs":-1000000000}'), ...file],
         /--profile: reloadMaxMs takes a whole number/,

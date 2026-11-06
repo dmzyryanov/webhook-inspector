@@ -106,10 +106,9 @@ describe('shouldDrainRefusedBody', () => {
 
 /**
  * The rule that ends a connection answered while its body is still arriving
- * (D213, the second outside review's finding 1): Node's `complete` says the
- * body has not all arrived, and the framing headers say there is one. The
- * raw-socket tests that show the connection ending are in
- * `modules/limits/calls-in-flight-routes.test.ts`.
+ * (D213): Node's `complete` says the body has not all arrived, and the framing
+ * headers say there is one. The raw-socket tests that show the connection
+ * ending are in `modules/limits/calls-in-flight-routes.test.ts`.
  */
 describe('isBodyArriving', () => {
   function message(rawHeaders: string[], complete: boolean | undefined) {

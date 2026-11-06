@@ -111,7 +111,7 @@ export async function getSessionDetails(
 
   // The fingerprint and the expiry, and nothing else of the session: a keyed
   // session `key` does not open is refused at a missing session's cost, before
-  // its response and queue are read (D245, criterion 8).
+  // its response and queue are read (D245).
   const access = await sessionAccess(pool, id, key);
 
   if (access === 'missing') {

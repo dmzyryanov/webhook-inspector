@@ -74,7 +74,8 @@ const USAGE_DAILY_TOP_COLUMNS = ['day', 'dimension', 'value', 'requests', 'sessi
 const DELETIONS_DAILY_COLUMNS = ['day', 'sessions_deleted', 'requests_held'];
 /**
  * Every relation the role may read, and the only privilege it holds on each
- * (D170, D178, D198). Granting it anything more is the owner's decision.
+ * (D170, D178, D198). Granting it anything more takes a decision of its
+ * own, not only an edit of this list.
  */
 const READABLE_RELATIONS = [
   'stats.deletions_daily',

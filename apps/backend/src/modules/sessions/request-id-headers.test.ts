@@ -1,6 +1,6 @@
 /**
  * The request id's header under the service's name beside its old one (#334,
- * D279, criterion 1), without a server: both names are refused as reserved
+ * D279), without a server: both names are refused as reserved
  * in every body that carries a response - creation's response, a queue's
  * step and a rule's, a change, a queue and the rules - in any letter case,
  * as `X-QA-Tools-` names are; names that only look alike are taken; and both

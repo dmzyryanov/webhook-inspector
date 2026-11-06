@@ -697,7 +697,7 @@ describe('deletion events', () => {
     other.close();
   });
 
-  /** Criterion 5: the gate of D115 holds for both new types. */
+  /** The gate of D115 holds for both new types. */
   it('sends neither frame to a connection that declared nothing', async () => {
     const sessionId = await newSession();
     const [declaring, silent] = await Promise.all([
@@ -743,7 +743,7 @@ describe('deletion events', () => {
     watcher.close();
   });
 
-  /** Criterion 6: the service throws before the route reaches the publish. */
+  /** The service throws before the route reaches the publish. */
   it('publishes nothing for a delete answered 404', async () => {
     const sessionId = await newSession();
     const watcher = await watch(port, sessionId, DECLARES_DELETIONS);
@@ -794,7 +794,6 @@ describe('deletion events', () => {
     watcher.close();
   });
 
-  /** Criterion 7. */
   it('answers 204 to a clear of an empty session and publishes a harmless requests.cleared', async () => {
     const sessionId = await newSession();
     const watcher = await watch(port, sessionId, DECLARES_DELETIONS);
@@ -811,7 +810,6 @@ describe('deletion events', () => {
     watcher.close();
   });
 
-  /** Criterion 8. */
   it('does not deliver either event to a viewer of another session', async () => {
     const [watched, other] = await Promise.all([newSession(), newSession()]);
     const [watcher, bystander] = await Promise.all([
@@ -1040,8 +1038,7 @@ describe('response queue events', () => {
   /**
    * A restart or a removal on a session without a queue changes nothing a
    * viewer shows: it is answered with the state and is a use of the session
-   * (D133), and publishes nothing (D205; the Architect's note C4 on
-   * correction round 7). A second removal included.
+   * (D133), and publishes nothing (D205). A second removal included.
    */
   it('publishes nothing for a restart or a removal on a session without a queue', async () => {
     const sessionId = await newSession();
@@ -1155,12 +1152,11 @@ describe('response queue events', () => {
 });
 
 /**
- * The events of a session's calls reach its viewers in the order the calls
- * took the session row's lock (`RealtimeHub.inOrder`, D205; the outside
- * review's finding 1 on correction round 6). Each test runs on a pair of
- * listeners sharing one hub, as the process runs them, whose pool holds back
- * the answer to capture A's `COMMIT`: A is in the database and the row's lock
- * is free, but A has not published yet - the moment in which a later call
+ * The events of a session's calls reach its viewers in the order the calls took
+ * the session row's lock (`RealtimeHub.inOrder`, D205). Each test runs on a
+ * pair of listeners sharing one hub, as the process runs them, whose pool holds
+ * back the answer to capture A's `COMMIT`: A is in the database and the row's
+ * lock is free, but A has not published yet - the moment in which a later call
  * could publish before it. The later call is made then, and A is let go once
  * that call has answered or has been kept waiting for `HELD_MS`; without the
  * line it answers within that time and publishes first.
@@ -1609,9 +1605,9 @@ describe('publish order follows the session row lock (D205)', () => {
 
 /**
  * A real connection whose peer stops reading is terminated once it falls
- * `MAX_SUBSCRIBER_BACKLOG_BYTES` behind (D205; the outside review's finding 2
- * on correction round 6), so what `ws` reports as its `bufferedAmount` is
- * what the bound reads; a viewer that reads is sent every event meanwhile.
+ * `MAX_SUBSCRIBER_BACKLOG_BYTES` behind (D205), so what `ws` reports as its
+ * `bufferedAmount` is what the bound reads; a viewer that reads is sent every
+ * event meanwhile.
  */
 describe('a connection that does not read', () => {
   /** Opens the realtime connection by hand, reads up to its `ready`, and stops reading. */

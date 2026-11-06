@@ -104,13 +104,12 @@ export function routableUrl(url: string): string {
  * line: its head is its header list as received, the pseudo-header fields
  * first as they arrived - `:method`, `:path`, `:scheme` and `:authority` as
  * sent - then the regular fields, each line `name: value`, then the blank
- * line (D263, the owner's decision 2 of 2026-10-18, Figma direction B). HTTP/2
- * puts every pseudo-header field before the regular ones, so this is the
- * header list in its wire order. The stored raw request is this head
- * followed by the body, joined by the insert itself (`$head || $body`), so
- * the process never builds a second full copy of a body of up to 1 MiB
- * (D210). Composed here rather than on the frontend so that what the Raw tab
- * shows is what the backend actually received.
+ * line (D263). HTTP/2 puts every pseudo-header field before the regular ones,
+ * so this is the header list in its wire order. The stored raw request is this
+ * head followed by the body, joined by the insert itself (`$head || $body`), so
+ * the process never builds a second full copy of a body of up to 1 MiB (D210).
+ * Composed here rather than on the frontend so that what the Raw tab shows is
+ * what the backend actually received.
  *
  * The headers are the pairs that are stored, passed in rather than collected
  * again, so that the header list and the raw request cannot disagree.

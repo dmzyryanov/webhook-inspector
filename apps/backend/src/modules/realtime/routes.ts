@@ -164,7 +164,7 @@ export function realtimeRoutes(
 
         // The fingerprint and the expiry, and nothing else of the session,
         // which the connection does not need: a refusal costs a keyed session
-        // what it costs a missing one (D245, criterion 8).
+        // what it costs a missing one (D245).
         let access;
 
         try {
