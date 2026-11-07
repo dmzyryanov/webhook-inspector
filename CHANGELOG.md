@@ -125,6 +125,17 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.33
+
+2026-11-07
+
+**Nothing changes on this site; the inspector's own checks now notice if a
+session's page stops treating a request as open, or as closed, from the
+moment it is clicked, which a deletion by another viewer arriving just then
+relies on.** The part that decides when a failed load takes the page to
+`Session not found` now has tests of its own, and the page's checks share one
+set of helpers. Every page looks and works exactly as before. (#443)
+
 ## 1.19.32
 
 2026-11-07
