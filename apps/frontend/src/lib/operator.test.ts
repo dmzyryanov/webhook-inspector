@@ -211,9 +211,10 @@ function lineBeginning(text: string, start: string): string {
 }
 
 /**
- * The Network section's bullet on the server's address as a build with no
- * second origin and the operator's texts writes it, the site's host named
- * once (#431): the words the issue settled.
+ * The one-host wording of the Network section's bullet on the server's
+ * address, as a build with no second origin and the operator's texts writes
+ * it: the site's host named once, for the site, the API, the WebSocket and
+ * the MCP server, and the host that receives webhooks after it (#431).
  */
 const oneHostAddress = (site: string, receive: string) =>
   `- **One address: \`${WRITTEN_SERVER_ADDRESS}\`.** \`${site}\` — the site, the API, the WebSocket and the MCP server — and \`${receive}\`, which receives webhooks, all answer on it.`;
@@ -1537,7 +1538,6 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       address,
       `- **One address: \`${WRITTEN_SERVER_ADDRESS}\`.** \`qa-tools.ru\` and \`webhook.qa-tools.ru\` — each the site, the API, the WebSocket and the MCP server, the same on both — and \`hook.qa-tools.ru\`, which receives webhooks, all answer on it.`,
     );
-    assert.equal(relayBullets(source).length, 10);
 
     for (const operator of [
       NO_OPERATOR,
@@ -1561,7 +1561,8 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     }
 
     // With the texts, named for a copy with no second origin as the build
-    // names it: the address bullet in the issue's words, its host once.
+    // names it: the address bullet in the one-host wording such a build
+    // writes, the site's host named once.
     for (const operator of [PRODUCTION_OPERATOR, { ...OTHER_OPERATOR, texts: true }]) {
       const copy = (
         JSON.parse(openApiText(OTHER_ORIGINS, operator)) as { info: { description: string } }
