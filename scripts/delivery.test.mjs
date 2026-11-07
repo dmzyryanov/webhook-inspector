@@ -2542,8 +2542,10 @@ test("smoke refuses /status and /status/ unlike STATUS_PAGE_URL: anything but a 
   }
 });
 
-// The smoke keeps its own copy of the two addresses rather than importing the
-// frontend's build script; this keeps them equal to the locations it writes.
+// Without the operator's texts the image writes none of the changelog's four
+// addresses, so the smoke asks for each and takes only the site's Page not
+// found, as for the legal pages; with them, or with OPERATOR_TEXTS not given,
+// it checks the two feeds as it always has (#396).
 test("smoke checks the changelog as OPERATOR_TEXTS says: its four addresses the site's Page not found without the texts, the feeds as before with them or not given (#396)", async () => {
   // Without the texts: each of the four asked once, each Page not found, and
   // nothing else of the changelog.
@@ -2687,6 +2689,8 @@ test("the smoke asks for the changelog's addresses the image without the operato
   assert.deepEqual(CHANGELOG_PATHS, [CHANGELOG_LINK.href, ...CHANGELOG_FILE_LOCATIONS]);
 });
 
+// The smoke keeps its own copy of the two addresses rather than importing the
+// frontend's build script; this keeps them equal to the locations it writes.
 test('the smoke asks for the status page at the addresses the image build redirects (#369, #381)', () => {
   const written = statusLocations('https://status.example.com/');
   assert.deepEqual(

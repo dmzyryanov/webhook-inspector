@@ -11,7 +11,15 @@ import type { SiteOrigins } from '../../scripts/site-origin.mjs';
 import { API_DOCS_LINK } from './api-docs-link.ts';
 import { filterDays } from './changelog-controls.ts';
 import { CHANGELOG_LINK } from './changelog-link.ts';
+import { NO_OPERATOR } from './operator.ts';
 import { isWellFormedXml } from './xml-format.ts';
+import { type DevAnswer, type DevRequest, devServer } from '../testing/dev-server.ts';
+import {
+  operatorEnv,
+  PRODUCTION_OPERATOR,
+  PRODUCTION_OPERATOR_ENV,
+  withoutOperator,
+} from '../testing/production-operator.ts';
 
 /**
  * Production's origins, whatever the shell running the tests holds (#354):
@@ -66,6 +74,7 @@ const {
   versionCount,
 } = await import('../../scripts/changelog.mjs');
 const { PRODUCTION_ORIGINS, SITE_ORIGINS } = await import('../../scripts/site-origin.mjs');
+const { operatorDocsPage } = await import('../../scripts/site-operator.mjs');
 
 /** A copy at another address with no second origin of its own, as `llms.test.ts` has one (#342). */
 const ANOTHER: SiteOrigins = {
@@ -973,6 +982,75 @@ describe('the dev server', () => {
       config.includes("res.setHeader('Content-Type', 'application/atom+xml; charset=utf-8');"),
     );
     assert.match(config, /plugins: \[[^\]]*changelogPagePlugin\(\)/);
+  });
+
+  it("serves the five addresses only with the operator's texts, and /docs's head without the feeds otherwise (issue #396)", () => {
+    const paths = ['/changelog', '/changelog/', '/changelog.md', FEED_PATH, BREAKING_FEED_PATH];
+    const requests = paths.flatMap((path): DevRequest[] => [
+      ['GET', path],
+      ['HEAD', path],
+    ]);
+    const docs = read('../../docs/index.html');
+
+    // Without the texts, whether or not the copy names a status page and a
+    // contact address: each request passed on as asked, so the application
+    // answers it, `Page not found`, and `/docs` links neither feed.
+    for (const env of [
+      withoutOperator(process.env),
+      { ...process.env, ...operatorEnv({ ...PRODUCTION_OPERATOR, texts: false }) },
+    ]) {
+      const server = devServer(env, requests);
+
+      assert.deepEqual(
+        server.answers,
+        requests.map(([, path]) => ({
+          passedOn: true,
+          answered: false,
+          url: path,
+          headers: {},
+          body: null,
+        })),
+      );
+      assert.equal(server.docsPage, operatorDocsPage(docs, NO_OPERATOR));
+      assert.doesNotMatch(server.docsPage, /changelog/);
+    }
+
+    // With them: the page, its text and the feeds, written on each request by
+    // the module the build writes them with, and `/docs` as it is.
+    const served = (method: string, path: string): DevAnswer => {
+      if (path === '/changelog' || path === '/changelog/') {
+        return {
+          passedOn: true,
+          answered: false,
+          url: '/changelog/index.html',
+          headers: { 'cache-control': 'no-cache' },
+          body: null,
+        };
+      }
+
+      const [type, text] =
+        path === '/changelog.md'
+          ? ['text/markdown; charset=utf-8', markdown]
+          : [
+              'application/atom+xml; charset=utf-8',
+              changelogFeed(entries, path === FEED_PATH ? 'all' : 'breaking'),
+            ];
+
+      return {
+        passedOn: false,
+        answered: true,
+        url: path,
+        headers: { 'content-type': type, 'cache-control': 'no-cache' },
+        body: method === 'HEAD' ? null : text,
+      };
+    };
+    const server = devServer({ ...process.env, ...PRODUCTION_OPERATOR_ENV }, requests);
+
+    assert.deepEqual(
+      server.answers,
+      requests.map(([method, path]) => served(method, path)),
+    );
+    assert.equal(server.docsPage, docs);
   });
 });
 

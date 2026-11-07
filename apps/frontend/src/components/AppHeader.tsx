@@ -16,16 +16,17 @@ import { MoveBanner } from './MoveBanner.tsx';
  * The wordmark on the left, the service's own name, `Webhook Inspector`
  * (issue #322, D277): on one line from 768 px, on two at 15/17 px from 375 to
  * 767 px, the header still 56 px high there (direction A of the Figma page
- * `Webhook Inspector · Header name (#322)`). On the right `Changelog`,
- * `Status ↗` and the link to the API reference, a 1 × 16 px divider between
- * each pair, at every width, a phone included (direction B′ of the Figma page
+ * `Webhook Inspector · Header name (#322)`). On the right the links the
+ * build draws, at most `Changelog`, `Status ↗` and the link to the API
+ * reference (see the last paragraph), a 1 × 16 px divider between each pair,
+ * at every width, a phone included (direction B′ of the Figma page
  * `Webhook Inspector · Status page link (#99)`, D209, amending D184's L2′).
  * The links are 16 px apart from 768 px and 12 px below. Below 375 px the
  * wordmark gives way to the 24 px Q mark, so the row fits: at 320 px it is
  * 24 + 244.5 px of the 288 the padding leaves. `/changelog`, a static page, draws the same header in
  * its own HTML, with `Changelog` as the current page (`scripts/changelog.mjs`).
  *
- * From 768 px the `EN | RU` switch closes the links, after a third divider,
+ * From 768 px the `EN | RU` switch closes the links, after one more divider,
  * 16 px apart as they are (issue #108, D222). Below 768 px the header has no
  * room for it - the wordmark and the three links take 315 of 343 px at 375 -
  * so it is in the footer band's links there, and the header is as it was. The
@@ -38,12 +39,15 @@ import { MoveBanner } from './MoveBanner.tsx';
  * header, on every page that draws the header: the home page, a session's
  * and `Page not found` (issue #321, D276). Elsewhere it draws nothing.
  *
- * `Status ↗` leads to the build's status page (issue #369, `status-link.ts`);
- * a build that names none draws neither it nor the divider after it, and
- * the links read `Changelog | API docs ↗`. `Changelog` is the operator's
- * (issue #396, `changelogShown`): a build without the operator's texts draws
- * neither it nor the divider after it, so a copy that sets none of the
- * operator's settings reads `API docs ↗` alone. `operator` is the build's
+ * Which links are drawn is the build's (`operator.ts`). `Status ↗` leads to
+ * the build's status page (issue #369, `status-link.ts`), and `Changelog` is
+ * among the operator's texts (issue #396, `changelogShown`), which a build
+ * shows only when it names a status page and a contact address; each is left
+ * out, with the divider after it, when its setting is not given. The links
+ * therefore read one of three ways, and no other:
+ * `Changelog | Status ↗ | API docs ↗` with the operator's texts, as
+ * production's do; `Status ↗ | API docs ↗` with a status page and no texts;
+ * and `API docs ↗` alone with no status page. `operator` is the build's
  * unless a test gives another.
  */
 export function AppHeader({ operator = OPERATOR }: { operator?: Operator }) {

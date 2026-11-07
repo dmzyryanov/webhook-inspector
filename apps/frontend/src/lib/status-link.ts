@@ -9,7 +9,8 @@ import { OPERATOR } from './operator.ts';
  * and webhook receiving are up, as production's Statuser page does at
  * `https://status.qa-tools.ru/`. `/status` redirects to the same address
  * (`scripts/nginx-conf.mjs`). A build that names no status page draws no
- * link, and the header reads `Changelog | API docs ↗`.
+ * link, and shows none of the operator's texts, which name it, so its header
+ * reads `API docs ↗` alone, with no `Changelog` either (`AppHeader.tsx`).
  *
  * Built like the link to the API reference (`api-docs-link.ts`): a plain
  * `<a>` that opens in a new tab, so a session page stays where it was, with
