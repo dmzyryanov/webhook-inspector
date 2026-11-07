@@ -128,7 +128,7 @@ const check = buildCheck as {
   CHANGELOG_HISTORY_FILES: readonly string[];
   CHANGELOG_FILES: readonly string[];
   changelogLinksIn: (text: string) => string[];
-  changelogLinkProblems: (dist: string) => string[];
+  changelogLinkProblems: (dist: string, operator?: Operator, origins?: unknown) => string[];
   sitemapAddresses: (operator?: Operator) => string[];
   unservedAddresses: (operator?: Operator) => string[];
   sitemapProblems: (text: string, required?: string[], unserved?: string[]) => string[];
@@ -1350,6 +1350,125 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 
+  it('write a status page whose path is the changelog’s without the operator’s texts, its sentence kept and none of the changelog’s links, the source still refused for a link it cannot leave out (#446)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const isStatus = (paragraph: string) => paragraph.startsWith(DESCRIPTION_PARAGRAPHS.status);
+    // What a build with no status page keeps: the paragraphs besides its
+    // sentence, none of them linking the changelog.
+    const withoutPage = operatorDescription(source, NO_OPERATOR).split('\n\n');
+
+    assert.deepEqual(check.changelogLinksIn(withoutPage.join('\n\n')), []);
+
+    for (const raw of [
+      'https://status.example.com/changelog',
+      'https://status.example.com/changelog/',
+      'https://status.example.com/changelog.md',
+      'https://status.example.com/changelog.xml',
+      'https://status.example.com/changelog-breaking.xml',
+      'http://status.example.com:8443/changelog',
+      'https://status.example.com/changelog/changelog.md',
+      `https://status.example.com/changelog/${WRITTEN_SERVER_ADDRESS}/Network`,
+    ]) {
+      const page = parseStatusPageUrl(raw) as string;
+
+      // Each reads as a link to the changelog where a text names it.
+      assert.notDeepEqual(check.changelogLinksIn(` ${statusPageInProse(page)}: `), [], raw);
+
+      for (const operator of [
+        parseOperator({ STATUS_PAGE_URL: raw }),
+        parseOperator({ STATUS_PAGE_URL: raw, CONTACT_EMAIL: 'hello@inspector.example' }),
+      ]) {
+        assert.equal(operator.texts, false);
+
+        const described = operatorDescription(source, operator);
+        const paragraphs = described.split('\n\n');
+
+        // The status sentence names the operator's page; every other
+        // paragraph is what a build with no status page keeps.
+        assert.deepEqual(paragraphs.filter(isStatus), [
+          `To check whether Webhook Inspector is up — say, when a test that uses it fails — open ${statusPageInProse(page)}: the site, the API and webhook receiving, each checked every minute from outside, with its uptime history and reports of outages.`,
+        ]);
+        assert.deepEqual(
+          paragraphs.filter((paragraph) => !isStatus(paragraph)),
+          withoutPage,
+        );
+        // And so in the file the build serves.
+        assert.equal(
+          (JSON.parse(operatorOpenApi(openapi, operator)) as { info: { description: string } }).info
+            .description,
+          described,
+        );
+      }
+    }
+
+    // A source that links the changelog where the build cannot leave the
+    // link out is refused still, whatever the status page.
+    const changelog = parseOperator({ STATUS_PAGE_URL: 'https://status.example.com/changelog' });
+    const refusal = /links the changelog where the build cannot leave the link out/;
+    const linked = source.replace(
+      '**No accounts.**',
+      '**No accounts.** See https://qa-tools.ru/changelog for them.',
+    );
+
+    assert.notEqual(linked, source);
+    for (const operator of [changelog, OTHER_OPERATOR, NO_OPERATOR]) {
+      assert.throws(() => operatorDescription(linked, operator), refusal);
+    }
+
+    // So is a status sentence of the source that links it, read before the
+    // page is written in; with no status page the sentence is left out.
+    for (const named of [
+      source.replace(
+        `open ${WRITTEN_STATUS_PAGE_IN_PROSE}:`,
+        `open ${WRITTEN_STATUS_PAGE_IN_PROSE} or https://qa-tools.ru/changelog:`,
+      ),
+      source.replace(
+        DESCRIPTION_PARAGRAPHS.status,
+        `${DESCRIPTION_PARAGRAPHS.status} at https://qa-tools.ru/changelog.md`,
+      ),
+    ]) {
+      assert.notEqual(named, source);
+      for (const operator of [changelog, OTHER_OPERATOR]) {
+        assert.throws(() => operatorDescription(named, operator), refusal);
+      }
+      assert.equal(operatorDescription(named, NO_OPERATOR), withoutPage.join('\n\n'));
+    }
+  });
+
+  it('write a hostile status page that names the changelog’s addresses at growing sizes in time linear in its length (#446)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const withoutPage = operatorDescription(source, NO_OPERATOR);
+    const times: number[] = [];
+
+    for (const size of [10_000, 100_000, 400_000]) {
+      const sample = '/changelog/changelog.md/changelog-breaking.xml/changelog.xml/changelogs';
+      const raw = `https://status.example.com${sample.repeat(Math.ceil(size / sample.length))}/changelog`;
+      const operator = parseOperator({ STATUS_PAGE_URL: raw });
+      const page = statusPageInProse(operator.statusPageUrl as string);
+
+      assert.ok(page.length >= size);
+      times.push(
+        fastestRun(() => {
+          const paragraphs = operatorDescription(source, operator).split('\n\n');
+          const status = paragraphs.filter((paragraph) =>
+            paragraph.startsWith(DESCRIPTION_PARAGRAPHS.status),
+          );
+
+          assert.equal(status.length, 1);
+          assert.ok((status[0] as string).includes(` open ${page}: the site`));
+          assert.equal(
+            paragraphs.filter((paragraph) => paragraph !== status[0]).join('\n\n'),
+            withoutPage,
+          );
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time:
+    // linear with room for a busy runner, nowhere near a quadratic scan.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
+  });
+
   it('read hostile Network sections at growing sizes in time linear in their length (issue #386)', () => {
     const head = [
       'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
@@ -2265,6 +2384,146 @@ describe('the build check of production’s operator names (issue #369, criterio
     assert.deepEqual(left('https://status.qa-tools.ru/', near), ['status.qa-tools.ru']);
   });
 
+  it('reads the build’s own status page out whole where its path holds the server’s address, and finds the address anywhere else (#446)', () => {
+    const page = `https://status.example.com/${WRITTEN_SERVER_ADDRESS}`;
+
+    for (const operator of [
+      parseOperator({ STATUS_PAGE_URL: page }),
+      parseOperator({ STATUS_PAGE_URL: page, CONTACT_EMAIL: 'hello@inspector.example' }),
+    ]) {
+      assert.equal(operator.statusPageUrl, page);
+      assert.equal(operator.texts, false);
+
+      // The page as a build writes it: a link, the API description's
+      // sentence, JSON, Markdown, a script, the end of a sentence; in any case.
+      for (const textOf of [
+        `<a href="${page}">Status ↗</a>`,
+        `open ${page}: the site`,
+        `{"description":"open ${page}: the site"}`,
+        `- Status: <${page}>\n`,
+        `[Status](${page})`,
+        `const s="${page}";`,
+        `See ${page}.`,
+        `${page}`,
+        page.toUpperCase(),
+        `${page} ${page}`,
+      ]) {
+        assert.deepEqual(left(textOf, operator), [], textOf);
+      }
+      // The address anywhere else: beside the page, after its host alone or
+      // another scheme, under another path, or where a text goes on with
+      // more of the page's path.
+      for (const textOf of [
+        `${page} on ${WRITTEN_SERVER_ADDRESS}`,
+        `${WRITTEN_SERVER_ADDRESS}${page}`,
+        `status.example.com/${WRITTEN_SERVER_ADDRESS}`,
+        `http://status.example.com/${WRITTEN_SERVER_ADDRESS}`,
+        `https://status.example.com/x/${WRITTEN_SERVER_ADDRESS}`,
+        `${page}/more`,
+        `${page}6`,
+        `${page}.html`,
+        `${page}-x`,
+        `${page}%2e1`,
+      ]) {
+        assert.deepEqual(left(textOf, operator), ['80.87.198.166'], textOf);
+      }
+      // Every other name is found beside the page as before.
+      assert.deepEqual(left(`${page} FirstVDS status.qa-tools.ru`, operator), [
+        'status.qa-tools.ru',
+        'FirstVDS',
+      ]);
+    }
+
+    // A page whose path only begins the address: what goes on with it, in
+    // any form a build writes a dot, is no part of the page.
+    const begun = parseOperator({ STATUS_PAGE_URL: 'https://status.example.com/80.87.198' });
+
+    for (const rest of ['.166', '.166/', '%2E166', '&#46;166', '&period;166', '\\u002e166']) {
+      assert.deepEqual(
+        left(`https://status.example.com/80.87.198${rest}`, begun),
+        ['80.87.198.166'],
+        rest,
+      );
+    }
+    assert.deepEqual(left('open https://status.example.com/80.87.198: up', begun), []);
+    assert.deepEqual(left('See https://status.example.com/80.87.198. Then', begun), []);
+
+    // A path holding the address escaped is read out as the build writes it.
+    const escaped = parseOperator({
+      STATUS_PAGE_URL: 'https://status.example.com/80%2E87%2E198%2E166',
+    });
+
+    assert.equal(escaped.statusPageUrl, 'https://status.example.com/80%2E87%2E198%2E166');
+    assert.deepEqual(left('open https://status.example.com/80%2E87%2E198%2E166: up', escaped), []);
+    assert.deepEqual(
+      left('https://status.example.com/80%2E87%2E198%2E166 80%2E87%2E198%2E166', escaped),
+      ['80.87.198.166'],
+    );
+
+    // A build whose only address is in its status page's path passes; a file
+    // holding it anywhere else is named.
+    const operator = parseOperator({ STATUS_PAGE_URL: page });
+    const dist = treeOf({
+      'index.html': `<a class="header-link" href="${page}">Status ↗</a>`,
+      'openapi.json': `{"description": "open ${page}: the site"}`,
+      'llms.txt': `- Status: ${page}\n`,
+      'assets/main-AAAAAAAA.js': `const s={statusPageUrl:"${page}"}`,
+    });
+    const named = (file: string) =>
+      `${file} names 80.87.198.166, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name`;
+
+    try {
+      assert.deepEqual(check.operatorNameProblems(dist, operator), []);
+      // Read with no status page, each file holds the address.
+      assert.deepEqual(check.operatorNameProblems(dist, NO_OPERATOR).sort(), [
+        named('assets/main-AAAAAAAA.js'),
+        named('index.html'),
+        named('llms.txt'),
+        named('openapi.json'),
+      ]);
+      mkdirSync(join(dist, 'about'));
+      writeFileSync(
+        join(dist, 'about/index.html'),
+        `<p>See ${page}.</p><p>Allow 80.87.198.166 on port 443.</p>`,
+      );
+      writeFileSync(join(dist, 'robots.txt'), `# ${page}/robots\n`);
+      assert.deepEqual(check.operatorNameProblems(dist, operator).sort(), [
+        named('about/index.html'),
+        named('robots.txt'),
+      ]);
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a hostile status page out of hostile text at growing sizes in time linear in their length (#446)', () => {
+    const times: number[] = [];
+
+    for (const size of [100_000, 1_000_000, 4_000_000]) {
+      const sample = `/${WRITTEN_SERVER_ADDRESS}/80.87.198.`;
+      const page = `https://status.example.com${sample.repeat(Math.ceil(size / 4 / sample.length))}`;
+      const operator = parseOperator({ STATUS_PAGE_URL: page });
+      // The page whole, then all of it but its last character, again and
+      // again: every start of the page goes nearly to its end.
+      const whole = `${page}: `.repeat(3);
+      const begun = `${page.slice(0, -1)} `.repeat(3);
+
+      assert.equal(operator.statusPageUrl, page);
+      assert.ok(whole.length >= size / 2);
+      times.push(
+        fastestRun(() => {
+          assert.deepEqual(left(whole, operator), []);
+          assert.deepEqual(left(begun, operator), ['80.87.198.166']);
+          assert.deepEqual(left(`${whole}${page}.166`, operator), ['80.87.198.166']);
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time, each
+    // the fastest of five runs: linear with room for a busy runner.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
+  });
+
   it('names every file holding one, binary and non-UTF-8 files included, and leaves the changelog’s history', () => {
     const dist = treeOf({
       'index.html': '<p>clean</p>',
@@ -2662,6 +2921,145 @@ describe('the build check of production’s operator names (issue #369, criterio
       ),
       ['sitemap.xml lists https://qa-tools.ru/changelog, which this build does not serve'],
     );
+  });
+
+  it('reads the build’s own status page out before it looks for changelog links where none of the site’s origins names its host, and finds every other link (#446)', () => {
+    const page = 'https://status.example.com/changelog';
+    const operator = parseOperator({ STATUS_PAGE_URL: page });
+    const linked = (file: string, links: string) =>
+      `${file} links ${links}, though OPERATOR_TEXTS does not show the operator's texts and the build has no changelog`;
+    const dist = treeOf({
+      'index.html': `<a class="header-link" href="${page}">Status ↗</a>`,
+      'openapi.json': `{"description": "open ${page}: the site"}`,
+      'llms.txt': `- Status: <${page}>\n`,
+      'about/index.html': `<p>See ${page}. Or ${page.toUpperCase()}.</p>`,
+    });
+
+    try {
+      assert.deepEqual(check.changelogLinkProblems(dist, operator, OTHER_ORIGINS), []);
+      // Read with no status page, each file links one.
+      assert.deepEqual(check.changelogLinkProblems(dist, NO_OPERATOR, OTHER_ORIGINS).sort(), [
+        linked('about/index.html', page),
+        linked('index.html', page),
+        linked('llms.txt', page),
+        linked('openapi.json', page),
+      ]);
+      // Every other link to one of the changelog's addresses is found beside
+      // it: on the site's origin, relative, or where the text goes on with
+      // more of the page's path.
+      writeFileSync(
+        join(dist, 'robots.txt'),
+        [
+          `# ${page} ${OTHER_ORIGINS.app}/changelog.md`,
+          `# ${page}: /changelog.xml`,
+          `# ${page}.md ${page}-breaking.xml ${page}/ ${page}.xml`,
+        ].join('\n'),
+      );
+      assert.deepEqual(check.changelogLinkProblems(dist, operator, OTHER_ORIGINS), [
+        linked(
+          'robots.txt',
+          [
+            `${OTHER_ORIGINS.app}/changelog.md`,
+            '/changelog.xml',
+            `${page}.md`,
+            'https://status.example.com/changelog-breaking.xml',
+            page,
+            `${page}.xml`,
+          ].join(', '),
+        ),
+      ]);
+      // checkBuild reads the build's settings and origins with it.
+      assert.deepEqual(
+        check
+          .checkBuild(dist, new Date(), [], OTHER_ORIGINS, operator)
+          .filter((problem) => / links /.test(problem)),
+        [check.changelogLinkProblems(dist, operator, OTHER_ORIGINS)[0]],
+      );
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
+
+    // A status page on a host of the site's is read as any other link: that
+    // host may serve this build, which answers /changelog with Page not found.
+    for (const own of [
+      `${OTHER_ORIGINS.app}/changelog`,
+      `${OTHER_ORIGINS.receive}/changelog`,
+      'https://inspector.example:8443/changelog',
+      'http://inspector.example/changelog',
+    ]) {
+      const ownDist = treeOf({ 'index.html': `<a href="${own}">Status ↗</a>` });
+
+      try {
+        assert.deepEqual(
+          check.changelogLinkProblems(
+            ownDist,
+            parseOperator({ STATUS_PAGE_URL: own }),
+            OTHER_ORIGINS,
+          ),
+          [linked('index.html', own)],
+          own,
+        );
+        assert.deepEqual(
+          check.changelogLinkProblems(ownDist, parseOperator({ STATUS_PAGE_URL: own }), {
+            app: 'https://other.example',
+            receive: 'https://hook.other.example',
+            alias: null,
+          }),
+          [],
+          own,
+        );
+      } finally {
+        rmSync(ownDist, { recursive: true, force: true });
+      }
+    }
+    // So with the site's second origin.
+    const aliasDist = treeOf({
+      'index.html': '<a href="https://old.example/changelog">Status ↗</a>',
+    });
+
+    try {
+      assert.deepEqual(
+        check.changelogLinkProblems(
+          aliasDist,
+          parseOperator({ STATUS_PAGE_URL: 'https://old.example/changelog' }),
+          { ...OTHER_ORIGINS, alias: 'https://old.example' },
+        ),
+        [linked('index.html', 'https://old.example/changelog')],
+      );
+    } finally {
+      rmSync(aliasDist, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a hostile status page out of hostile text before it looks for changelog links, at growing sizes in time linear in their length (#446)', () => {
+    const times: number[] = [];
+
+    for (const size of [100_000, 1_000_000, 4_000_000]) {
+      // A page tens of thousands of characters long and more, beyond what a
+      // pattern of its text compiles to.
+      const sample = '/changelog/changelog.md/changelog-breaking.xml';
+      const page = `https://status.example.com${sample.repeat(Math.ceil(size / 4 / sample.length))}/changelog`;
+      const operator = parseOperator({ STATUS_PAGE_URL: page });
+      const whole = treeOf({ 'llms.txt': `${page}: `.repeat(3) });
+      const begun = treeOf({ 'llms.txt': `${page}.md `.repeat(3) });
+
+      assert.equal(operator.statusPageUrl, page);
+      try {
+        times.push(
+          fastestRun(() => {
+            assert.deepEqual(check.changelogLinkProblems(whole, operator, OTHER_ORIGINS), []);
+            assert.equal(check.changelogLinkProblems(begun, operator, OTHER_ORIGINS).length, 1);
+          }),
+        );
+      } finally {
+        rmSync(whole, { recursive: true, force: true });
+        rmSync(begun, { recursive: true, force: true });
+      }
+    }
+
+    // Forty times the text in at most about two hundred times the time, each
+    // the fastest of five runs: linear with room for a busy runner.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 });
 
@@ -3148,6 +3546,96 @@ describe('a build with example origins and no operator settings (issue #369, cri
       ]);
     } finally {
       rmSync(dist2, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('a build with example origins, no operator texts and a status page whose path holds the changelog’s address and the server’s (#446)', () => {
+  let dist = '';
+  const page = `https://status.example.com/changelog/${WRITTEN_SERVER_ADDRESS}`;
+  const operator = parseOperator({ STATUS_PAGE_URL: page });
+  /** The build's environment: a copy's origins and its status page alone. */
+  const environment = {
+    ...withoutOperator(process.env),
+    APP_ORIGIN: OTHER_ORIGINS.app,
+    RECEIVE_ORIGIN: OTHER_ORIGINS.receive,
+    APP_ALIAS_ORIGIN: '',
+    STATUS_PAGE_URL: page,
+  };
+
+  // Five Vite builds and five scripts, as the build above.
+  before(
+    () => {
+      dist = mkdtempSync(join(tmpdir(), 'webhook-inspector-status-path-'));
+      buildInto(dist, environment);
+    },
+    { timeout: 180_000 },
+  );
+
+  after(() => {
+    if (dist !== '') {
+      rmSync(dist, { recursive: true, force: true });
+    }
+  });
+
+  const built = (path: string) => readFileSync(join(dist, path), 'utf8');
+
+  it('passes the build check, naming the page in the API description’s sentence, and fails it, naming the file, with the address or a changelog link anywhere else', () => {
+    // `buildInto` saw every step pass, the build check last.
+    assert.equal(operator.texts, false);
+    assert.ok(
+      (
+        JSON.parse(built('openapi.json')) as { info: { description: string } }
+      ).info.description.includes(` open ${page}: the site`),
+    );
+    assert.deepEqual(check.operatorNameProblems(dist, operator), []);
+    assert.deepEqual(check.changelogLinkProblems(dist, operator, OTHER_ORIGINS), []);
+    // Read with no status page, the build's files name both in it.
+    assert.ok(
+      check
+        .operatorNameProblems(dist, NO_OPERATOR)
+        .includes(
+          "openapi.json names 80.87.198.166, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
+        ),
+    );
+    assert.ok(
+      check
+        .changelogLinkProblems(dist, NO_OPERATOR, OTHER_ORIGINS)
+        .includes(
+          "openapi.json links https://status.example.com/changelog, though OPERATOR_TEXTS does not show the operator's texts and the build has no changelog",
+        ),
+    );
+
+    for (const [file, write, refusal] of [
+      [
+        'llms.txt',
+        `${built('llms.txt')}- Server: ${WRITTEN_SERVER_ADDRESS}\n`,
+        "llms.txt names 80.87.198.166, which this build's operator settings (STATUS_PAGE_URL, CONTACT_EMAIL, OPERATOR_TEXTS) do not name",
+      ],
+      [
+        'llms.txt',
+        `${built('llms.txt')}- Changelog: ${OTHER_ORIGINS.app}/changelog\n`,
+        "llms.txt links https://inspector.example/changelog, though OPERATOR_TEXTS does not show the operator's texts and the build has no changelog",
+      ],
+    ] as const) {
+      const copy = mkdtempSync(join(tmpdir(), 'webhook-inspector-status-path-left-'));
+
+      try {
+        cpSync(dist, copy, { recursive: true });
+        writeFileSync(join(copy, file), write);
+
+        const run = spawnSync(process.execPath, ['scripts/check-build.mjs', copy], {
+          cwd: FRONTEND,
+          env: environment,
+          encoding: 'utf8',
+        });
+
+        assert.equal(run.status, 1, run.stdout);
+        assert.ok(run.stderr.split('\n').includes(`  - ${refusal}`), run.stderr);
+        assert.equal(run.stderr.match(/^ {2}- /gm)?.length, 1, run.stderr);
+      } finally {
+        rmSync(copy, { recursive: true, force: true });
+      }
     }
   });
 });

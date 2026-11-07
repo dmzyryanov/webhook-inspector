@@ -125,6 +125,19 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.37
+
+2026-11-07
+
+**Nothing changes on this site; a copy of the inspector built without this
+site's texts no longer fails to build when its status page's address has the
+path `/changelog` or contains this site's server address.** Its build took
+that address for a link to the changelog, which such a copy does not publish,
+or for a mention of this site's server, which it leaves out; it now reads the
+status page's address as the copy's own, and still refuses a link to the
+changelog or this site's server address anywhere else. This site's pages and
+files are exactly as before. (#446)
+
 ## 1.19.36
 
 2026-11-07

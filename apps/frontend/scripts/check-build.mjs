@@ -826,12 +826,23 @@ export function changelogLinksIn(text) {
  * The files of a build without the operator's texts that still link one of
  * the changelog's addresses (issue #396), each with the links:
  * that build serves none of them, so each would lead to `Page not found`.
+ * The build's own status page is read out first where none of the site's
+ * origins names its host, since its path may be `/changelog` and it leads to
+ * no page of this build (#446); one on a host of the site's is read as any
+ * other link, as that host may serve this build.
  */
-export function changelogLinkProblems(dist) {
+export function changelogLinkProblems(dist, operator = OPERATOR, origins = SITE_ORIGINS) {
+  const url = operator.statusPageUrl;
+  const host = url === null ? null : new URL(url).hostname;
+  const ours = [origins.app, origins.receive, origins.alias].some(
+    (origin) => origin !== null && new URL(origin).hostname === host,
+  );
+  const read = (text) => (url === null || ours ? text : withoutStatusPage(text, url));
+
   return filesUnder(dist)
     .filter((path) => LINKED_FILE.test(path))
     .flatMap((path) => {
-      const links = changelogLinksIn(readFileSync(join(dist, path), 'utf8'));
+      const links = changelogLinksIn(read(readFileSync(join(dist, path), 'utf8')));
 
       return links.length === 0
         ? []
@@ -990,19 +1001,70 @@ function operatorCheckedText(path, text) {
 }
 
 /**
+ * Where a text goes on with more of an address's path, read at `lastIndex`:
+ * a character a path holds, or a dot, in any form of `DOT`, before one; not
+ * a dot that ends a sentence.
+ */
+const PATH_GOES_ON = new RegExp(String.raw`[\w~%/-]|${DOT}[\w~%/-]`, 'iy');
+
+/** `text` with its ASCII capitals lowered, as a pattern's `i` flag reads them, its length unchanged. */
+function asciiLowered(text) {
+  return text.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+/**
+ * `text` with the build's status page `url` read out (#446): each place it
+ * is written whole, in any case, put as a space, but not where the text goes
+ * on with more of its path, so a name or a link that only begins with the
+ * page is still read. A search for the address as text, not a pattern, which
+ * an address of tens of thousands of characters makes too large to compile.
+ * Each search starts past the place the last one found, and the address
+ * holds `://` once, after its scheme, so two places found share at most the
+ * scheme's letters and a scan is linear in the text's length.
+ */
+function withoutStatusPage(text, url) {
+  const lowered = asciiLowered(text);
+  const page = asciiLowered(url);
+  const parts = [];
+  let from = 0;
+  let at = lowered.indexOf(page);
+
+  while (at !== -1) {
+    const end = at + page.length;
+
+    PATH_GOES_ON.lastIndex = end;
+    if (PATH_GOES_ON.test(text)) {
+      at = lowered.indexOf(page, at + 1);
+    } else {
+      parts.push(text.slice(from, at), ' ');
+      from = end;
+      at = lowered.indexOf(page, end);
+    }
+  }
+
+  parts.push(text.slice(from));
+
+  return parts.join('');
+}
+
+/**
  * The names of `OPERATOR_NAMES` that `text` holds though `operator`'s
  * settings do not name them. The build's own status page and contact address
  * are read out first, in case either holds one of the names inside a longer
- * one, such as `https://mystatus.qa-tools.ru/`.
+ * one, such as `https://mystatus.qa-tools.ru/`: the status page's whole
+ * address first (`withoutStatusPage`), whose path may hold one, such as
+ * `https://status.example.com/80.87.198.166` (#446), then its host, which a
+ * text may name alone.
  */
 export function operatorNamesLeft(text, operator = OPERATOR) {
-  const own = [
-    operator.statusPageUrl && new URL(operator.statusPageUrl).host,
-    operator.contactEmail,
-  ]
+  const url = operator.statusPageUrl;
+  const own = [url && new URL(url).host, operator.contactEmail]
     .filter((value) => value !== null)
     .map((value) => new RegExp(literally(value), 'gi'));
-  const read = own.reduce((rest, pattern) => rest.replace(pattern, ' '), text);
+  const read = own.reduce(
+    (rest, pattern) => rest.replace(pattern, ' '),
+    url === null ? text : withoutStatusPage(text, url),
+  );
 
   return OPERATOR_NAMES.filter((item) => !item.named(operator))
     .filter((item) => new RegExp(item.pattern.source, item.pattern.flags).test(read))
@@ -1195,7 +1257,7 @@ export function checkBuild(
       }
     }
 
-    addEach(problems, changelogLinkProblems(dist));
+    addEach(problems, changelogLinkProblems(dist, operator, origins));
   }
 
   for (const file of commentedPages(operator)) {
