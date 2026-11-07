@@ -13,9 +13,10 @@
  * more, as exact bytes, and answers the ids (`planRawSearch`, `RawMatches`).
  * Body size is not matched. An empty query is no filter.
  *
- * Everything here is pure. `SessionPage` holds the query, the full list and
- * what the server found, `lib/raw-search.ts` decides when the server is asked,
- * and `RequestList` draws the highlights `rowHighlights` finds.
+ * Everything here is pure. `useRequestFilter` holds the query and what the
+ * server found, `useSessionData` the full list, `lib/raw-search.ts` decides
+ * when the server is asked, and `RequestList` draws the highlights
+ * `rowHighlights` finds.
  */
 import {
   REQUEST_ID_DISPLAY_LENGTH,

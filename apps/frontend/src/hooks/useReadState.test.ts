@@ -181,6 +181,38 @@ describe('useReadState', () => {
     assert.equal(storageListeners.size, 0);
   });
 
+  it('reads the stored set once more after subscribing, so a request opened between the first render and the effect is not missed (D156)', async () => {
+    const requests = [row('req-a'), row('req-b')];
+    const page = await renderReadState({
+      storage: memoryStorage(),
+      requests,
+      showingRequests: true,
+    });
+
+    // Unmounted however it ends, so a failure here leaves no listener for the next test.
+    try {
+      assert.deepEqual([...page.current.openedIds], []);
+      assert.equal(document.title, '(2) Webhook Inspector');
+
+      // Another storage, which already holds `req-b` when the effect
+      // subscribes to it: the state's first read is not repeated, so only the
+      // read that follows the subscription can take `req-b` in. No `storage`
+      // event is dispatched.
+      const holding = memoryStorage();
+
+      recordRead(holding, SESSION, 'req-b', OPENED_AT);
+      await page.render({ storage: holding, requests, showingRequests: true });
+
+      assert.equal(storageListeners.size, 1);
+      assert.deepEqual([...page.current.openedIds], ['req-b']);
+      assert.equal(document.title, '(1) Webhook Inspector');
+    } finally {
+      await page.unmount();
+    }
+
+    assert.equal(storageListeners.size, 0);
+  });
+
   it('with no storage, keeps read state in this tab and listens to nothing (D156)', async () => {
     const page = await renderReadState({
       storage: null,

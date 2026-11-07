@@ -125,6 +125,16 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.31
+
+2026-11-07
+
+**Nothing changes on this site; the inspector's own checks now notice if a
+session's page stops counting as read a request opened in another tab of the
+same browser just as the page opens.** A comment in the list filter's source
+code now names the part of the page that holds the filter's state. Every page
+looks and works exactly as before. (#436)
+
 ## 1.19.30
 
 2026-11-07
