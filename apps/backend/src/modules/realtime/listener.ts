@@ -124,7 +124,7 @@ const TICK_MS = 1_000;
 /**
  * How long a poke waits before its read, and a wake-up before it is sent,
  * for the commits after it to join them: the commits inside one window cause
- * one read and one wake-up (#260). The issue's bound is 20 ms, well under
+ * one read and one wake-up (#260). The window is at most 20 ms, well under
  * what a person sees in the request list.
  */
 export const COALESCE_MS = 20;

@@ -775,7 +775,7 @@ export interface ResponseConfig {
   template: boolean;
 }
 
-/** The most steps a response queue holds (D205). */
+/** The most steps a response queue holds (#106, D205). */
 export const MAX_QUEUE_STEPS = 10;
 
 /**
@@ -797,7 +797,7 @@ export interface ResponseQueue {
   total: number;
 }
 
-/** The most response rules a session holds (D246). */
+/** The most response rules a session holds (#134, D246). */
 export const MAX_RESPONSE_RULES = 20;
 
 /**

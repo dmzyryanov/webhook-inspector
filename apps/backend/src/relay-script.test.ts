@@ -976,10 +976,10 @@ describe('webhook-inspector-relay.mjs against a real backend', () => {
   });
 
   /**
-   * The old name, still read beside the new one (D279): the old variable
-   * alone still relays a private session's webhook, with a line naming the
-   * new one; with both set the new one wins - here the old holds another
-   * key, which would find no session.
+   * The old name, still read beside the new one (#334, D279): the old
+   * variable alone still relays a private session's webhook, with a line
+   * naming the new one; with both set the new one wins - here the old holds
+   * another key, which would find no session.
    */
   for (const [description, keys, says] of [
     [

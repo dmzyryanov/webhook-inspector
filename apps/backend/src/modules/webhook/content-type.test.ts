@@ -13,7 +13,7 @@ const FastifyContentType = createRequire(import.meta.url)('fastify/lib/content-t
   from(value: string): { isValid: boolean };
 };
 
-/** Values Fastify refuses: the four the issue measured, then more of the set. */
+/** Values Fastify refuses: the four measured answering 415 (#19), then more of the set. */
 const UNPARSEABLE = [
   'json',
   '',

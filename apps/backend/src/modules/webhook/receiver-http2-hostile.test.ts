@@ -5,7 +5,7 @@
  * SETTINGS/PING/empty-frame/PRIORITY floods (CVE-2019-9511 to -9518),
  * MadeYouReset (CVE-2025-8671), zero and one-byte windows, oversized and
  * malformed frames, protocol confusion, and the shapes #207's delivery found
- * (the issue's two comments) - each at its smallest size, against the #207
+ * (two comments on #208) - each at its smallest size, against the #207
  * path with `RECEIVE_HTTP2` on.
  *
  * The throughline: for every shape the backend answers an

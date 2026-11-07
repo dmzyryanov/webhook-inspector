@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.32
+
+2026-11-07
+
+**Nothing changes on this site; a few more comments in the server's source
+code now state the rule they protect rather than how it was found, and name
+where it was decided.** The server answers every request exactly as before.
+(#434)
+
 ## 1.19.31
 
 2026-11-07
