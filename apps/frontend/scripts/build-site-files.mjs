@@ -34,7 +34,9 @@ import { operatorOpenApi, operatorSitemap } from './site-operator.mjs';
  * operator's contact address and status page, or leaves them out. Since
  * #386 the description's Network section, this site's server, is left out
  * without the texts, and its bullet on production's move in a build with no
- * second origin.
+ * second origin; since #431 such a build also leaves out the relay
+ * section's bullet on the script's old name, and names its one host once in
+ * the Network section's bullet on the server's address.
  *
  * Built for production, each is its source byte for byte, and the old name
  * the script's source. nginx serves them all from the image's copy of

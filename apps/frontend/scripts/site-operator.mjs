@@ -32,6 +32,14 @@ import { OPERATOR, statusPageInProse } from '../src/lib/operator.ts';
  * move from the site's origin to the same one, as the changelog leaves out
  * the move's notices (#343).
  *
+ * A build with no second origin, with the texts or without, also leaves out
+ * the relay section's bullet on the script's old name, `**Its old name.**`,
+ * which tells only production's rename and move and dates them by
+ * changelog entries such a build may not publish; and with the texts it
+ * names its one host once in the Network section's bullet on the server's
+ * address, `**One address: …**`, which would otherwise name that host
+ * twice, as if it were two (#431).
+ *
  * Built with production's settings, every file is its source byte for byte.
  * Each function refuses a source that no longer has the part it expects, so
  * a rewording cannot let production's name through unnoticed.
@@ -217,6 +225,34 @@ export const NETWORK_POINTER =
 /** How the Network section's bullet on production's move begins, at the start of its line. */
 export const MOVE_BULLET = '- **Moving to ';
 
+/**
+ * How the Network section's bullet on the server's address begins, at the
+ * start of its line. It names the site's host and the second host, which a
+ * build with no second origin names as the site's host again (#431).
+ */
+export const ADDRESS_BULLET = '- **One address';
+
+/**
+ * The address bullet as the source writes it, a line of its own: its title,
+ * the site's host, the second host with the words that compare the two, and
+ * the receive host with the rest of the sentence. The edit for one host
+ * keeps the first, the roles and the last. Each host and the address is a
+ * run of characters other than a backtick, which ends it, between fixed
+ * words, so a scan is linear in the line's length.
+ */
+const ADDRESS_BULLET_FORM =
+  /^(- \*\*One address: `[^`\n]+`\.\*\* `[^`\n]+`) and `[^`\n]+` — each (the site, the API, the WebSocket and the MCP server), the same on both( — and `[^`\n]+`, which receives webhooks, all answer on it\.)$/;
+
+/**
+ * The heading of the API description's section on the relay script (D202),
+ * a paragraph of its own: the section is it and every paragraph after it up
+ * to the next heading of its level or above (#431).
+ */
+export const RELAY_HEADING = '## Forward to a local service';
+
+/** How the relay section's bullet on the script's old name begins, at the start of its line. */
+export const OLD_NAME_BULLET = '- **Its old name.**';
+
 /** A heading that ends a `##` section: `#` or `##` and a space, opening a paragraph. */
 const SECTION_END = /^#{1,2} /;
 
@@ -224,18 +260,16 @@ const SECTION_END = /^#{1,2} /;
 const NETWORK_NAMED = /\bNetwork\b/;
 
 /**
- * Where the Network section is among `paragraphs`: its heading's index and
- * the index after its last paragraph. Refused: a description with no
- * paragraph that is exactly the heading, or several.
+ * Where the `##` section headed `heading` is among `paragraphs`: its
+ * heading's index and the index after its last paragraph. Refused: a
+ * description with no paragraph that is exactly the heading, or several.
  */
-function networkSection(paragraphs) {
-  const found = paragraphs.flatMap((paragraph, index) =>
-    paragraph === NETWORK_HEADING ? [index] : [],
-  );
+function sectionOf(paragraphs, heading) {
+  const found = paragraphs.flatMap((paragraph, index) => (paragraph === heading ? [index] : []));
 
   if (found.length !== 1) {
     throw new Error(
-      `the API description has ${found.length} paragraphs that are "${NETWORK_HEADING}", not one`,
+      `the API description has ${found.length} paragraphs that are "${heading}", not one`,
     );
   }
 
@@ -247,16 +281,30 @@ function networkSection(paragraphs) {
   return { start, end: next === -1 ? paragraphs.length : next };
 }
 
+/** The lines of the paragraphs inside `section` that `isBullet` reads as beginning its bullet. */
+function bulletLines(paragraphs, section, isBullet) {
+  return paragraphs
+    .slice(section.start + 1, section.end)
+    .flatMap((paragraph) => paragraph.split('\n').filter(isBullet));
+}
+
 /** Whether `line` begins the move's bullet. */
 const isMoveBullet = (line) => line.startsWith(MOVE_BULLET);
 
+/** Whether `line` begins the bullet on the server's address. */
+const isAddressBullet = (line) => line.startsWith(ADDRESS_BULLET);
+
+/** Whether `line` begins the bullet on the relay script's old name. */
+const isOldNameBullet = (line) => line.startsWith(OLD_NAME_BULLET);
+
 /**
- * `paragraph` without the move's bullet: its line and the lines that go on
- * with it, up to the next line that begins a bullet of its own.
+ * `paragraph` without the first bullet `isBullet` reads: its line and the
+ * lines that go on with it, up to the next line that begins a bullet of its
+ * own.
  */
-function withoutMoveBullet(paragraph) {
+function withoutBullet(paragraph, isBullet) {
   const lines = paragraph.split('\n');
-  const start = lines.findIndex(isMoveBullet);
+  const start = lines.findIndex(isBullet);
 
   if (start === -1) {
     return paragraph;
@@ -272,21 +320,47 @@ function withoutMoveBullet(paragraph) {
 }
 
 /**
+ * `paragraph` with the address bullet naming the site's host once, for a
+ * build whose second host is its site's own: `` `<site host>` — the site,
+ * the API, the WebSocket and the MCP server — and `<receive host>`, which
+ * receives webhooks, all answer on it. `` (#431). The bullet is in
+ * `ADDRESS_BULLET_FORM`, which `operatorDescription` has checked.
+ */
+function withOneHost(paragraph) {
+  return paragraph
+    .split('\n')
+    .map((line) =>
+      isAddressBullet(line)
+        ? line.replace(
+            ADDRESS_BULLET_FORM,
+            (_line, head, roles, tail) => `${head} — ${roles}${tail}`,
+          )
+        : line,
+    )
+    .join('\n');
+}
+
+/**
  * The API description's introduction for `operator`: the status sentence
  * naming the operator's status page, or left out with none; the paragraphs
  * on who runs the service and on the Terms and the Privacy Policy left out
  * without the operator's texts, and with them the changelog's links and the
  * sentence of its feeds (issue #396, `withoutChangelogLinks`), the Network
- * section and the Stability sentence that points at it (issue #386). With
- * the texts, a build with no move — no second origin, `hasMove` false —
- * leaves out the Network section's bullet on production's move (#386).
- * Refused: a description without the section, the sentence or the bullet,
- * and one without the texts that still names the server's address or the
- * section once they are left out, so a rewording cannot keep either. That
- * check reads what is kept of the source before the operator's status page
- * is written into its sentence: the page's address is the operator's own
- * setting, whose path may hold the word `Network` or digits like the
- * server's address, and names nothing of this site's server (#430).
+ * section and the Stability sentence that points at it (issue #386). A
+ * build with no move — no second origin, `hasMove` false — leaves out the
+ * relay section's bullet on the script's old name (#431), and with the texts
+ * the Network section's bullet on production's move (#386) and the second
+ * host of its bullet on the server's address, which is the site's own there
+ * (#431). Refused: a description without the Network section, the
+ * sentence, the move's bullet, the relay section or a single bullet of it on
+ * the old name; one with the texts without a single address bullet in the
+ * form the edit reads; and one without the texts that still names the
+ * server's address or the Network section once they are left out; so a
+ * rewording cannot keep any of them. That last check reads what is kept of
+ * the source before the operator's status page is written into its
+ * sentence: the page's address is the operator's own setting, whose path
+ * may hold the word `Network` or digits like the server's address, and
+ * names nothing of this site's server (#430).
  */
 export function operatorDescription(description, operator = OPERATOR, hasMove = true) {
   const paragraphs = description.split('\n\n');
@@ -294,8 +368,10 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
   const about = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.about);
   const legal = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.legal);
   const feeds = paragraphIndex(paragraphs, DESCRIPTION_PARAGRAPHS.feeds);
-  const network = networkSection(paragraphs);
+  const network = sectionOf(paragraphs, NETWORK_HEADING);
+  const relay = sectionOf(paragraphs, RELAY_HEADING);
   const inNetwork = (index) => index > network.start && index < network.end;
+  const inRelay = (index) => index > relay.start && index < relay.end;
 
   if (!paragraphs[status].includes(WRITTEN_STATUS_PAGE_IN_PROSE)) {
     throw new Error(
@@ -309,15 +385,49 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
     );
   }
 
-  const moves = paragraphs
-    .filter((_paragraph, index) => inNetwork(index))
-    .flatMap((paragraph) => paragraph.split('\n').filter(isMoveBullet));
+  const moves = bulletLines(paragraphs, network, isMoveBullet);
 
   if (moves.length !== 1) {
     throw new Error(
       `the API description's Network section has ${moves.length} bullets beginning "${MOVE_BULLET}", not one`,
     );
   }
+
+  const oldNames = bulletLines(paragraphs, relay, isOldNameBullet);
+
+  if (oldNames.length !== 1) {
+    throw new Error(
+      `the API description's relay section ("${RELAY_HEADING}") has ${oldNames.length} bullets beginning "${OLD_NAME_BULLET}", not one`,
+    );
+  }
+
+  // Read with the texts alone: without them the Network section is left
+  // out whole, its address bullet with it.
+  if (operator.texts) {
+    const addresses = bulletLines(paragraphs, network, isAddressBullet);
+
+    if (addresses.length !== 1) {
+      throw new Error(
+        `the API description's Network section has ${addresses.length} bullets beginning "${ADDRESS_BULLET}", not one`,
+      );
+    }
+
+    if (!ADDRESS_BULLET_FORM.test(addresses[0])) {
+      throw new Error(
+        `the API description's Network section has its bullet beginning "${ADDRESS_BULLET}" in a form the build cannot write for one host`,
+      );
+    }
+  }
+
+  // What a build with no second origin keeps of a paragraph of either
+  // section; only one with the texts keeps the Network section.
+  const withoutMove = (paragraph, index) => {
+    if (inRelay(index)) {
+      return withoutBullet(paragraph, isOldNameBullet);
+    }
+
+    return inNetwork(index) ? withOneHost(withoutBullet(paragraph, isMoveBullet)) : paragraph;
+  };
 
   const left = new Set([
     ...(operator.statusPageUrl === null ? [status] : []),
@@ -338,17 +448,15 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
       return paragraph;
     }
 
-    if (!operator.texts) {
-      return paragraph.replace(NETWORK_POINTER, '');
+    const rest = hasMove ? paragraph : withoutMove(paragraph, index);
+
+    // A paragraph that was a left-out bullet alone goes with it; an empty
+    // one of the source, as two blank lines in a code block write, stays.
+    if (rest === '' && paragraph !== '') {
+      return null;
     }
 
-    if (!hasMove && inNetwork(index)) {
-      const rest = withoutMoveBullet(paragraph);
-
-      return rest === '' ? null : rest;
-    }
-
-    return paragraph;
+    return operator.texts ? rest : rest.replace(NETWORK_POINTER, '');
   });
 
   if (!operator.texts) {

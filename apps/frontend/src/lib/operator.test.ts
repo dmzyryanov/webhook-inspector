@@ -25,16 +25,19 @@ import {
 } from '../../scripts/nginx-conf.mjs';
 import { siteFooter, siteHeader } from '../../scripts/site-chrome.mjs';
 import {
+  ADDRESS_BULLET,
   DESCRIPTION_PARAGRAPHS,
   DOCS_FEED_COMMENT,
   MOVE_BULLET,
   NETWORK_HEADING,
   NETWORK_POINTER,
+  OLD_NAME_BULLET,
   operatorDescription,
   operatorDocsPage,
   operatorLlmsIndex,
   operatorOpenApi,
   operatorSitemap,
+  RELAY_HEADING,
   WRITTEN_SERVER_ADDRESS,
   WRITTEN_STATUS_PAGE_IN_PROSE,
 } from '../../scripts/site-operator.mjs';
@@ -88,7 +91,7 @@ const { aboutEnglish, aboutParagraphText } = await import('./about-copy.ts');
 const { legalPages } = await import('./legal-copy.ts');
 // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
 const buildCheck = await import('../../scripts/check-build.mjs');
-const { parseSiteOrigin, PRODUCTION_ORIGINS, SITE_ORIGINS } =
+const { nameSite, parseSiteOrigin, PRODUCTION_ORIGINS, SITE_ORIGINS } =
   await import('../../scripts/site-origin.mjs');
 
 const { MemoryRouter } = await import('react-router-dom');
@@ -182,24 +185,77 @@ function networkParagraphs(description: string): string[] {
 }
 
 /**
- * A made-up Network section, a heading after it and a paragraph ending in
- * the sentence that points at it, which every description
- * `operatorDescription` reads holds (issue #386); and what of them a build
- * without the operator's texts keeps: the heading and the paragraph's first
- * sentence.
+ * The bullets of the relay section of `text` (#431): the lines from its
+ * heading to the next `##` heading that begin one, `- **`.
  */
-const NETWORK_PART = [
+function relayBullets(text: string): string[] {
+  const start = text.indexOf(`\n\n${RELAY_HEADING}\n\n`);
+
+  assert.ok(start >= 0, 'the text has a relay section');
+
+  const end = text.indexOf('\n\n## ', start + 2);
+
+  return text
+    .slice(start, end === -1 ? text.length : end)
+    .split('\n')
+    .filter((line) => line.startsWith('- **'));
+}
+
+/** The one line of `text` that begins with `start`, such as a bullet's (#431). */
+function lineBeginning(text: string, start: string): string {
+  const lines = text.split('\n').filter((line) => line.startsWith(start));
+
+  assert.equal(lines.length, 1, `one line begins "${start}"`);
+
+  return lines[0] as string;
+}
+
+/**
+ * The Network section's bullet on the server's address as a build with no
+ * second origin and the operator's texts writes it, the site's host named
+ * once (#431): the words the issue settled.
+ */
+const oneHostAddress = (site: string, receive: string) =>
+  `- **One address: \`${WRITTEN_SERVER_ADDRESS}\`.** \`${site}\` — the site, the API, the WebSocket and the MCP server — and \`${receive}\`, which receives webhooks, all answer on it.`;
+
+/**
+ * A made-up relay section, its heading and its bullet on the script's old
+ * name, which every description `operatorDescription` reads holds (#431).
+ */
+const RELAY_PART = `${RELAY_HEADING}\n\n${OLD_NAME_BULLET} It was renamed.`;
+
+/**
+ * A made-up bullet on the server's address in the form the build edits,
+ * naming one host twice as a build with no second origin names it, which
+ * the Network section of every description `operatorDescription` reads with
+ * the operator's texts holds; and the bullet as that build writes it, the
+ * host named once (#431).
+ */
+const ADDRESS_LINE =
+  '- **One address: `192.0.2.1`.** `x.example` and `x.example` — each the site, the API, the WebSocket and the MCP server, the same on both — and `hook.x.example`, which receives webhooks, all answer on it.';
+const ADDRESS_LINE_ONE_HOST =
+  '- **One address: `192.0.2.1`.** `x.example` — the site, the API, the WebSocket and the MCP server — and `hook.x.example`, which receives webhooks, all answer on it.';
+
+/**
+ * `RELAY_PART`, a made-up Network section, a heading after it and a
+ * paragraph ending in the sentence that points at it, which every
+ * description `operatorDescription` reads holds (issue #386); and what of
+ * them a build without the operator's texts keeps: the relay section, the
+ * heading and the paragraph's first sentence.
+ */
+const SECTIONS_PART = [
+  RELAY_PART,
   NETWORK_HEADING,
-  `${MOVE_BULLET}\`x.example\`.** It moves.`,
+  `${ADDRESS_LINE}\n${MOVE_BULLET}\`x.example\`.** It moves.`,
   '## Stability',
   `Addresses.${NETWORK_POINTER}`,
 ].join('\n\n');
-const NETWORK_PART_LEFT = '## Stability\n\nAddresses.';
+const SECTIONS_PART_LEFT = `${RELAY_PART}\n\n## Stability\n\nAddresses.`;
 
 /**
  * A made-up API description that `operatorDescription` reads: the
- * operator's four paragraphs, `NETWORK_PART` and the paragraphs `rest`. A
- * build without the operator's texts keeps `NETWORK_PART_LEFT` of it and
+ * operator's four paragraphs, `SECTIONS_PART` and the paragraphs `rest`. A
+ * build without the operator's texts keeps `SECTIONS_PART_LEFT` of it and
  * `rest` less the changelog's links.
  */
 function describedWith(...rest: string[]): string {
@@ -208,7 +264,7 @@ function describedWith(...rest: string[]): string {
     "QA Tools is a tester's personal project.",
     'By using the API or the MCP server, you agree to the Terms of Use.',
     'Subscribe with a feed reader: https://x.example/changelog.xml.',
-    NETWORK_PART,
+    SECTIONS_PART,
     ...rest,
   ].join('\n\n');
 }
@@ -768,7 +824,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       // and so is the Network section (issue #386).
       assert.equal(
         operatorDescription(paragraphs(written), NO_OPERATOR),
-        `${NETWORK_PART_LEFT}\n\n${left}`,
+        `${SECTIONS_PART_LEFT}\n\n${left}`,
         written,
       );
       assert.ok(
@@ -824,7 +880,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       ] as const) {
         assert.equal(
           operatorDescription(describedWith(written), NO_OPERATOR),
-          `${NETWORK_PART_LEFT}\n\n${left}`,
+          `${SECTIONS_PART_LEFT}\n\n${left}`,
           written,
         );
         assert.ok(
@@ -855,7 +911,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       "QA Tools is a tester's personal project.",
       'By using the API or the MCP server, you agree to the Terms of Use.',
       'Subscribe with a feed reader.',
-      NETWORK_PART,
+      SECTIONS_PART,
     ].join('\n\n');
     const samples = [
       ', https://',
@@ -878,7 +934,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
           // The one link, at the end, is left out; nothing else is a link.
           assert.equal(
             operatorDescription(hostile, NO_OPERATOR),
-            `${NETWORK_PART_LEFT}\n\n${body}.`,
+            `${SECTIONS_PART_LEFT}\n\n${body}.`,
           );
         }),
       );
@@ -916,7 +972,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
           // The one link, at the end, is left out; nothing else is a link.
           assert.equal(
             operatorDescription(hostile, NO_OPERATOR),
-            `${NETWORK_PART_LEFT}\n\n${body}.`,
+            `${SECTIONS_PART_LEFT}\n\n${body}.`,
           );
         }),
       );
@@ -927,7 +983,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 
-  it('leave the Network section out without the operator’s texts, with the sentence pointing at it, and only the move’s bullet with them and no second origin (issue #386)', () => {
+  it('leave the Network section out without the operator’s texts, with the sentence pointing at it, and the move’s bullet alone of it with them and no second origin (issue #386)', () => {
     const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
     const section = networkParagraphs(source);
     const bullets = (text: string) =>
@@ -935,6 +991,12 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         .flatMap((paragraph) => paragraph.split('\n'))
         .filter((line) => line.startsWith('- **'));
     const move = bullets(source).find((line) => line.startsWith(MOVE_BULLET)) as string;
+    // What else a build with no second origin changes (#431): the relay
+    // section's bullet on the old name goes, and the address bullet names
+    // the site's host once.
+    const oldName = lineBeginning(source, OLD_NAME_BULLET);
+    const address = lineBeginning(source, ADDRESS_BULLET);
+    const oneHost = oneHostAddress('qa-tools.ru', 'hook.qa-tools.ru');
 
     // What the source says, which the backend's tests pin to docs/API.md (D204).
     assert.equal(section.length, 3);
@@ -949,7 +1011,10 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     for (const operator of [NO_OPERATOR, CONTACT_ONLY, OTHER_OPERATOR]) {
       const described = operatorDescription(source, operator);
 
-      assert.equal(operatorDescription(source, operator, false), described);
+      assert.equal(
+        operatorDescription(source, operator, false),
+        described.replace(`${lineBeginning(described, OLD_NAME_BULLET)}\n`, ''),
+      );
       for (const paragraph of section) {
         assert.ok(!described.includes(paragraph), paragraph.slice(0, 40));
       }
@@ -962,25 +1027,34 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     }
 
     // With the texts and no second origin: the section without the move's
-    // bullet, every other byte the source's; with a second origin, the
-    // source as it is.
-    const withoutMove = source.replace(`${move}\n`, '');
+    // bullet, and with #431's two edits, every other byte the source's; with
+    // a second origin, the source as it is.
+    const oneOrigin = (text: string) =>
+      text.replace(`${move}\n`, '').replace(`${oldName}\n`, '').replace(address, oneHost);
+    const withoutMove = oneOrigin(source);
 
     assert.equal(operatorDescription(source, PRODUCTION_OPERATOR, false), withoutMove);
     assert.deepEqual(
       bullets(withoutMove),
-      bullets(source).filter((line) => line !== move),
+      bullets(source)
+        .filter((line) => line !== move)
+        .map((line) => (line === address ? oneHost : line)),
     );
     assert.equal(operatorDescription(source, PRODUCTION_OPERATOR, true), source);
     assert.equal(operatorDescription(source, PRODUCTION_OPERATOR), source);
     assert.equal(
       operatorDescription(source, { ...OTHER_OPERATOR, texts: true }, false),
-      operatorDescription(source, { ...OTHER_OPERATOR, texts: true }).replace(`${move}\n`, ''),
+      oneOrigin(operatorDescription(source, { ...OTHER_OPERATOR, texts: true })),
     );
-    // And so in the file: the bullet's JSON text is gone, nothing else.
+    // And so in the file: the bullets' JSON text gone or edited, nothing else.
+    const json = (text: string) => JSON.stringify(text).slice(1, -1);
+
     assert.equal(
       operatorOpenApi(openapi, PRODUCTION_OPERATOR, false),
-      openapi.replace(JSON.stringify(`${move}\n`).slice(1, -1), ''),
+      openapi
+        .replace(json(`${move}\n`), '')
+        .replace(json(`${oldName}\n`), '')
+        .replace(json(address), json(oneHost)),
     );
     assert.equal(operatorOpenApi(openapi, PRODUCTION_OPERATOR, true), openapi);
   });
@@ -992,7 +1066,10 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       'By using the API or the MCP server, you agree to the Terms of Use.',
       'Subscribe with a feed reader.',
     ].join('\n\n');
-    const of = (...rest: string[]) => [head, ...rest].join('\n\n');
+    // Every description holds the relay section, which a build with no
+    // second origin keeps without its bullet on the old name (#431).
+    const of = (...rest: string[]) => [head, RELAY_PART, ...rest].join('\n\n');
+    const ofOneOrigin = (...rest: string[]) => [head, RELAY_HEADING, ...rest].join('\n\n');
 
     for (const [network, left] of [
       [`- a\n${MOVE_BULLET}x.** It\n  goes on\n  - and on\n- b`, '- a\n- b'],
@@ -1003,6 +1080,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         'Before.',
         NETWORK_HEADING,
         'Intro:',
+        ADDRESS_LINE,
         network,
         '### Inside',
         '## After',
@@ -1011,10 +1089,11 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
 
       assert.equal(
         operatorDescription(written, PRODUCTION_OPERATOR, false),
-        of(
+        ofOneOrigin(
           'Before.',
           NETWORK_HEADING,
           'Intro:',
+          ADDRESS_LINE_ONE_HOST,
           ...(left === null ? [] : [left]),
           '### Inside',
           '## After',
@@ -1024,7 +1103,10 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       );
       assert.equal(operatorDescription(written, PRODUCTION_OPERATOR, true), written);
       // Without the texts, a `###` heading is the section's own, and `##` ends it.
-      assert.equal(operatorDescription(written, NO_OPERATOR), 'Before.\n\n## After\n\nText.');
+      assert.equal(
+        operatorDescription(written, NO_OPERATOR),
+        `${RELAY_PART}\n\nBefore.\n\n## After\n\nText.`,
+      );
     }
 
     // A section that ends the description, or a `#` heading that ends it.
@@ -1033,14 +1115,14 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         of(`Text.${NETWORK_POINTER}`, NETWORK_HEADING, `${MOVE_BULLET}x.**`, '- **Last.**'),
         NO_OPERATOR,
       ),
-      'Text.',
+      `${RELAY_PART}\n\nText.`,
     );
     assert.equal(
       operatorDescription(
         of(NETWORK_HEADING, `${MOVE_BULLET}x.**`, '# Top', `Text.${NETWORK_POINTER}`),
         NO_OPERATOR,
       ),
-      '# Top\n\nText.',
+      `${RELAY_PART}\n\n# Top\n\nText.`,
     );
     // Words that only look like the section's name stay.
     assert.equal(
@@ -1053,7 +1135,32 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         ),
         NO_OPERATOR,
       ),
-      '## After\n\nNetworks, xNetworkx and a network.',
+      `${RELAY_PART}\n\n## After\n\nNetworks, xNetworkx and a network.`,
+    );
+    // An empty paragraph of the source, as two blank lines in a code block
+    // write one, stays in every build, in either section too (#431).
+    const blank = of(
+      '```text\na\n\n\n\nb\n```',
+      NETWORK_HEADING,
+      ADDRESS_LINE,
+      '',
+      `${MOVE_BULLET}x.**`,
+      '## After',
+      `Text.${NETWORK_POINTER}`,
+    ).replace(RELAY_PART, `${RELAY_PART}\n\n`);
+
+    assert.ok(blank.includes(`${OLD_NAME_BULLET} It was renamed.\n\n\n\n`));
+    assert.equal(operatorDescription(blank, PRODUCTION_OPERATOR), blank);
+    assert.equal(
+      operatorDescription(blank, PRODUCTION_OPERATOR, false),
+      blank
+        .replace(`\n\n${OLD_NAME_BULLET} It was renamed.`, '')
+        .replace(ADDRESS_LINE, ADDRESS_LINE_ONE_HOST)
+        .replace(`\n\n${MOVE_BULLET}x.**`, ''),
+    );
+    assert.equal(
+      operatorDescription(blank, NO_OPERATOR, false),
+      `${RELAY_HEADING}\n\n\n\n\`\`\`text\na\n\n\n\nb\n\`\`\`\n\n## After\n\nText.`,
     );
   });
 
@@ -1261,9 +1368,10 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       const inside = repeat('### Networ\n\n#\n\n#x\n\n', size);
       // Words like the section's name, and an address one digit short.
       const outside = repeat(' xNetworkx 80.87.198.16 Networks', size);
-      const bullets = `${lines}${MOVE_BULLET}x.** It moves.\n  on\n- kept`;
+      const bullets = `${ADDRESS_LINE}\n${lines}${MOVE_BULLET}x.** It moves.\n  on\n- kept`;
       const hostile = [
         head,
+        RELAY_PART,
         NETWORK_HEADING,
         bullets,
         `${inside}end`,
@@ -1273,10 +1381,294 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
 
       times.push(
         fastestRun(() => {
-          assert.equal(operatorDescription(hostile, NO_OPERATOR), `## Stability\n\n${outside}`);
+          assert.equal(
+            operatorDescription(hostile, NO_OPERATOR),
+            `${RELAY_PART}\n\n## Stability\n\n${outside}`,
+          );
+          // With no second origin the relay section's bullet goes and the
+          // address bullet names one host too (#431).
           assert.equal(
             operatorDescription(hostile, PRODUCTION_OPERATOR, false),
-            hostile.replace(`${MOVE_BULLET}x.** It moves.\n  on\n`, ''),
+            hostile
+              .replace(RELAY_PART, RELAY_HEADING)
+              .replace(`${MOVE_BULLET}x.** It moves.\n  on\n`, '')
+              .replace(ADDRESS_LINE, ADDRESS_LINE_ONE_HOST),
+          );
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time:
+    // linear with room for a busy runner, nowhere near a quadratic scan.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
+  });
+
+  it('leave the relay section’s bullet on the old name out with no second origin, with the operator’s texts or without, and name the site’s host once in the address bullet with them (#431)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const oldName = lineBeginning(source, OLD_NAME_BULLET);
+    const address = lineBeginning(source, ADDRESS_BULLET);
+
+    // What the source says: production's rename and move, and its two hosts.
+    assert.match(
+      oldName,
+      /^- \*\*Its old name\.\*\* Until 1\.16\.0 the script was `qa-tools-relay\.mjs`/,
+    );
+    assert.ok(oldName.includes('on both hosts'));
+    assert.equal(
+      address,
+      `- **One address: \`${WRITTEN_SERVER_ADDRESS}\`.** \`qa-tools.ru\` and \`webhook.qa-tools.ru\` — each the site, the API, the WebSocket and the MCP server, the same on both — and \`hook.qa-tools.ru\`, which receives webhooks, all answer on it.`,
+    );
+    assert.equal(relayBullets(source).length, 10);
+
+    for (const operator of [
+      NO_OPERATOR,
+      CONTACT_ONLY,
+      OTHER_OPERATOR,
+      PRODUCTION_OPERATOR,
+      { ...OTHER_OPERATOR, texts: true },
+    ]) {
+      const kept = operatorDescription(source, operator);
+      const one = operatorDescription(source, operator, false);
+
+      // The relay section loses that bullet alone, with or without the texts.
+      assert.ok(kept.includes(OLD_NAME_BULLET));
+      assert.ok(!one.includes(OLD_NAME_BULLET));
+      assert.ok(!one.includes('qa-tools-relay.mjs'));
+      assert.deepEqual(
+        relayBullets(one),
+        relayBullets(kept).filter((line) => !line.startsWith(OLD_NAME_BULLET)),
+      );
+      assert.ok(one.includes('mjs` is a script of one file that you run next to that service'));
+    }
+
+    // With the texts, named for a copy with no second origin as the build
+    // names it: the address bullet in the issue's words, its host once.
+    for (const operator of [PRODUCTION_OPERATOR, { ...OTHER_OPERATOR, texts: true }]) {
+      const copy = (
+        JSON.parse(openApiText(OTHER_ORIGINS, operator)) as { info: { description: string } }
+      ).info.description;
+      const line = lineBeginning(copy, ADDRESS_BULLET);
+
+      assert.equal(line, oneHostAddress('inspector.example', 'hook.inspector.example'));
+      assert.equal(line.split('`inspector.example`').length, 2);
+      assert.ok(!copy.includes(OLD_NAME_BULLET));
+      assert.ok(!copy.includes('the same on both'));
+    }
+  });
+
+  it('keep both bullets in a build with a second origin of its own, naming its own hosts (#431)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const origins = { ...OTHER_ORIGINS, alias: 'https://next.inspector.example' };
+    // The source's line as the rename writes it for these origins.
+    const renamed = (line: string) =>
+      line
+        .replaceAll('https://webhook.qa-tools.ru', origins.alias)
+        .replaceAll('https://qa-tools.ru', origins.app)
+        .replaceAll('`webhook.qa-tools.ru`', '`next.inspector.example`')
+        .replaceAll('`hook.qa-tools.ru`', '`hook.inspector.example`')
+        .replaceAll('`qa-tools.ru`', '`inspector.example`');
+
+    for (const operator of [PRODUCTION_OPERATOR, { ...OTHER_OPERATOR, texts: true }]) {
+      const copy = (JSON.parse(openApiText(origins, operator)) as { info: { description: string } })
+        .info.description;
+
+      assert.equal(
+        lineBeginning(copy, OLD_NAME_BULLET),
+        renamed(lineBeginning(source, OLD_NAME_BULLET)),
+      );
+      assert.equal(
+        lineBeginning(copy, ADDRESS_BULLET),
+        `- **One address: \`${WRITTEN_SERVER_ADDRESS}\`.** \`inspector.example\` and \`next.inspector.example\` — each the site, the API, the WebSocket and the MCP server, the same on both — and \`hook.inspector.example\`, which receives webhooks, all answer on it.`,
+      );
+      assert.ok(copy.includes(MOVE_BULLET));
+    }
+    // Without the texts the address bullet goes with its section, and the
+    // bullet on the old name stays, its link to the changelog left out.
+    const bare = (
+      JSON.parse(openApiText(origins, NO_OPERATOR)) as { info: { description: string } }
+    ).info.description;
+
+    assert.ok(!bare.includes(ADDRESS_BULLET));
+    assert.ok(
+      lineBeginning(bare, OLD_NAME_BULLET).endsWith(
+        `until the date its 1.16.0 entry gives, which says what happens to it then. Before 1.19.0 it served the script as it was, reading \`${origins.app}\` by default.`,
+      ),
+    );
+  });
+
+  it('refuse a description without one bullet on the old name in the relay section, or, with the texts, without one address bullet in the form the edit reads, naming the part (#431)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const address = lineBeginning(source, ADDRESS_BULLET);
+    const withTexts = [PRODUCTION_OPERATOR, { ...OTHER_OPERATOR, texts: true }];
+
+    // The relay section and its bullet, refused for every build.
+    for (const [broken, refusal] of [
+      [
+        source.replace(OLD_NAME_BULLET, '- **Its former name.**'),
+        /relay section \("## Forward to a local service"\) has 0 bullets beginning "- \*\*Its old name\.\*\*", not one/,
+      ],
+      [
+        source.replace(OLD_NAME_BULLET, `${OLD_NAME_BULLET} Twice.\n${OLD_NAME_BULLET}`),
+        /relay section \("## Forward to a local service"\) has 2 bullets beginning/,
+      ],
+      // The bullet outside the section is not the section's.
+      [
+        source
+          .replace(OLD_NAME_BULLET, '- **Its former name.**')
+          .replace('- `info.version`', `${OLD_NAME_BULLET} Elsewhere.\n- \`info.version\``),
+        /relay section \("## Forward to a local service"\) has 0 bullets/,
+      ],
+      // A heading of the section's own ends nothing; one of its level does.
+      [
+        source.replace(`\n${OLD_NAME_BULLET}`, `\n\n## Old names\n\n${OLD_NAME_BULLET}`),
+        /relay section \("## Forward to a local service"\) has 0 bullets/,
+      ],
+      [
+        source.replace(`\n\n${RELAY_HEADING}\n\n`, '\n\n## Forward to a local server\n\n'),
+        /0 paragraphs that are "## Forward to a local service", not one/,
+      ],
+      [
+        source.replace('\n\n## Errors\n\n', `\n\n${RELAY_HEADING}\n\n`),
+        /2 paragraphs that are "## Forward to a local service", not one/,
+      ],
+    ] as const) {
+      assert.notEqual(broken, source);
+      for (const operator of [NO_OPERATOR, CONTACT_ONLY, ...withTexts]) {
+        assert.throws(() => operatorDescription(broken, operator), refusal);
+        assert.throws(() => operatorDescription(broken, operator, false), refusal);
+      }
+    }
+    assert.doesNotThrow(() =>
+      operatorDescription(
+        source.replace(`\n${OLD_NAME_BULLET}`, `\n\n### Old names\n\n${OLD_NAME_BULLET}`),
+        NO_OPERATOR,
+        false,
+      ),
+    );
+
+    // The address bullet, refused with the texts; without them the section
+    // goes whole, and the build writes what it writes for the source.
+    const count = /Network section has (\d) bullets beginning "- \*\*One address", not one/;
+    const form =
+      /Network section has its bullet beginning "- \*\*One address" in a form the build cannot write for one host/;
+
+    for (const [broken, refusal] of [
+      [source.replace(address, address.replace('- **One address', '- **The address')), count],
+      [source.replace(address, `${address}\n${address}`), count],
+      [source.replace(address, address.replace(' — each the site,', ' — both the site,')), form],
+      [source.replace(address, address.replace(', the same on both —', ' —')), form],
+      [
+        source.replace(address, address.replace('` and `webhook.', '`, `a.example` and `webhook.')),
+        form,
+      ],
+      [source.replace(address, address.replace(' — and `hook.', ' —\n  and `hook.')), form],
+      [source.replace(address, `${address} Twice.`), form],
+      [source.replace(address, address.replace('`qa-tools.ru`', '``')), form],
+      [
+        source.replace(address, address.replace('One address: `80.87.198.166`.', 'One address.')),
+        form,
+      ],
+    ] as const) {
+      assert.notEqual(broken, source);
+      for (const operator of withTexts) {
+        assert.throws(() => operatorDescription(broken, operator), refusal);
+        assert.throws(() => operatorDescription(broken, operator, false), refusal);
+      }
+      for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+        for (const hasMove of [true, false]) {
+          assert.equal(
+            operatorDescription(broken, operator, hasMove),
+            operatorDescription(source, operator, hasMove),
+          );
+        }
+      }
+    }
+
+    // One outside the section is not the section's; without the texts that
+    // one is refused for naming the server's address outside the section.
+    const outside = source
+      .replace(address, address.replace('- **One address', '- **The address'))
+      .replace('- `info.version`', `${address}\n- \`info.version\``);
+
+    for (const operator of withTexts) {
+      assert.throws(
+        () => operatorDescription(outside, operator, false),
+        /has 0 bullets beginning "- \*\*One address"/,
+      );
+    }
+    assert.throws(
+      () => operatorDescription(outside, NO_OPERATOR, false),
+      /names the server's address or its Network section outside it/,
+    );
+  });
+
+  it('read hostile relay sections and address bullets at growing sizes in time linear in their length, refusing the ones the edit cannot read (#431)', () => {
+    const head = [
+      'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
+      "QA Tools is a tester's personal project.",
+      'By using the API or the MCP server, you agree to the Terms of Use.',
+      'Subscribe with a feed reader.',
+    ].join('\n\n');
+    const repeat = (sample: string, size: number) =>
+      sample.repeat(Math.ceil(size / 3 / sample.length));
+    const network = (bullet: string) => [
+      NETWORK_HEADING,
+      `${bullet}\n${MOVE_BULLET}x.**`,
+      '## Stability',
+      `Text.${NETWORK_POINTER}`,
+    ];
+    const times: number[] = [];
+
+    for (const size of [10_000, 100_000, 400_000]) {
+      // Lines that begin like the old name's bullet, or like a bullet, and are not.
+      const lines = repeat('- **Its old nam\n- **Its old\n- \n  \n#\n', size);
+      // Paragraphs inside the section that look like the headings that end it.
+      const inside = repeat('### Forward\n\n#\n\n#x\n\n', size);
+      // Hosts as long as the text, which the edit keeps or drops whole.
+      const host = repeat('a-b.', size);
+      const relay = `${lines}${OLD_NAME_BULLET} It was\n  renamed.\n- kept`;
+      const bullet = `- **One address: \`192.0.2.1\`.** \`${host}x\` and \`${host}x\` — each the site, the API, the WebSocket and the MCP server, the same on both — and \`hook.${host}x\`, which receives webhooks, all answer on it.`;
+      const hostile = [head, RELAY_HEADING, relay, `${inside}end`, ...network(bullet)].join('\n\n');
+      const expected = [
+        head,
+        RELAY_HEADING,
+        `${lines}- kept`,
+        `${inside}end`,
+        NETWORK_HEADING,
+        `- **One address: \`192.0.2.1\`.** \`${host}x\` — the site, the API, the WebSocket and the MCP server — and \`hook.${host}x\`, which receives webhooks, all answer on it.`,
+        '## Stability',
+        `Text.${NETWORK_POINTER}`,
+      ].join('\n\n');
+      // Address bullets the edit cannot read: a backtick never closed, the
+      // words that join the hosts over and over, the comparison cut short,
+      // and the receive host never closed.
+      const unread = [
+        `- **One address: \`${host}`,
+        `- **One address: \`a\`.** \`${repeat('x and `', size)}`,
+        `- **One address: \`a\`.** \`b\` and \`${repeat('c` — each the site, ', size)}`,
+        `- **One address: \`a\`.** \`b\` and \`c\` — each the site, the API, the WebSocket and the MCP server, the same on both — and \`${host}`,
+      ];
+
+      times.push(
+        fastestRun(() => {
+          assert.equal(operatorDescription(hostile, PRODUCTION_OPERATOR, false), expected);
+          assert.equal(operatorDescription(hostile, PRODUCTION_OPERATOR, true), hostile);
+          for (const line of unread) {
+            const broken = [head, RELAY_HEADING, relay, ...network(line)].join('\n\n');
+
+            assert.throws(
+              () => operatorDescription(broken, PRODUCTION_OPERATOR, false),
+              /its bullet beginning "- \*\*One address" in a form the build cannot write/,
+            );
+          }
+          // Bullets of the relay section that only look like the old name's.
+          assert.throws(
+            () =>
+              operatorDescription(
+                [head, RELAY_HEADING, `${lines}- kept`, ...network(ADDRESS_LINE)].join('\n\n'),
+                NO_OPERATOR,
+              ),
+            /relay section \("## Forward to a local service"\) has 0 bullets/,
           );
         }),
       );
@@ -1453,13 +1845,24 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       assert.deepEqual(check.changelogLinksIn(text), [], name);
       assert.doesNotMatch(text, /\/changelog|Subscribe with a feed reader/, name);
     }
-    // The parenthesis and the apposition left out with their links.
-    for (const left of [
-      'until the date its 1.16.0 entry gives, which says what happens to it then.',
-      'marked **Breaking** in its entry of the changelog. Entries',
-    ]) {
-      assert.ok(description.includes(left), left);
-    }
+    // The parenthesis left out with its links. The apposition is in the
+    // relay section's bullet on the old name, which only a build with a
+    // second origin keeps (#431): one at an IPv6 origin of its own leaves
+    // it out with its link too.
+    assert.ok(description.includes('marked **Breaking** in its entry of the changelog. Entries'));
+    assert.ok(!description.includes(OLD_NAME_BULLET));
+
+    const withSecond = described(
+      openApiText({ ...IPV6_ORIGINS, alias: 'http://[::1]:43977' }, NO_OPERATOR),
+    );
+
+    assert.ok(withSecond.includes(`${OLD_NAME_BULLET} Until 1.16.0`));
+    assert.ok(
+      withSecond.includes(
+        'until the date its 1.16.0 entry gives, which says what happens to it then.',
+      ),
+    );
+    assert.deepEqual(check.changelogLinksIn(withSecond), []);
 
     // A copy at host names on the same scheme and ports, whose files differ
     // from these only in the host: read back with its hosts, each file is
@@ -2065,7 +2468,7 @@ describe('the build check of production’s operator names (issue #369, criterio
       assert.deepEqual(check.changelogLinksIn(written), [`${origin}/changelog.xml`], host);
       assert.equal(
         operatorDescription(describedWith(written), NO_OPERATOR),
-        `${NETWORK_PART_LEFT}\n\nSee it, now.`,
+        `${SECTIONS_PART_LEFT}\n\nSee it, now.`,
         host,
       );
     }
@@ -2080,7 +2483,7 @@ describe('the build check of production’s operator names (issue #369, criterio
       assert.deepEqual(check.changelogLinksIn(written), [], host);
       assert.equal(
         operatorDescription(describedWith(written), NO_OPERATOR),
-        `${NETWORK_PART_LEFT}\n\n${written}`,
+        `${SECTIONS_PART_LEFT}\n\n${written}`,
         host,
       );
     }
@@ -2647,6 +3050,45 @@ describe('a build with example origins and no operator settings (issue #369, cri
       ),
       [],
     );
+  });
+
+  it('serves an API description with no bullet on the relay script’s old name, the relay section’s other bullets as written (#431)', () => {
+    const unhashed = (text: string) => text.replace(/\b[0-9a-f]{64}\b/g, '<sha-256>');
+    // What the build wrote before #431, named for these origins: the
+    // description as a build with a second origin writes it, which keeps
+    // the bullet, its link to the changelog left out.
+    const before = unhashed(
+      operatorDescription(
+        (
+          JSON.parse(nameSite(read('../../../../packages/shared/openapi.json'), OTHER_ORIGINS)) as {
+            info: { description: string };
+          }
+        ).info.description,
+        NO_OPERATOR,
+        true,
+      ),
+    );
+    const description = (JSON.parse(built('openapi.json')) as { info: { description: string } })
+      .info.description;
+
+    assert.equal(relayBullets(before).length, 10);
+    assert.ok(lineBeginning(before, OLD_NAME_BULLET).includes('`qa-tools-relay.mjs`'));
+    // /docs shows openapi.json as it is served; llms-full.txt carries it.
+    for (const [path, text] of [
+      ['openapi.json', description],
+      ['llms-full.txt', built('llms-full.txt')],
+    ] as const) {
+      assert.ok(!text.includes(OLD_NAME_BULLET), path);
+      assert.ok(!text.includes('that name serves the same file'), path);
+      assert.deepEqual(
+        relayBullets(unhashed(text)),
+        relayBullets(before).filter((line) => !line.startsWith(OLD_NAME_BULLET)),
+        path,
+      );
+    }
+    // The description names the old name nowhere; the agent guide, which
+    // llms-full.txt also carries, is its own text.
+    assert.ok(!description.includes('qa-tools-relay.mjs'));
   });
 
   it('fails the build check, naming the file, with the server’s address left in a file, split or escaped (issue #386, criterion 3)', () => {

@@ -31,7 +31,12 @@ import {
 } from '../../scripts/changelog.mjs';
 import { MOVE_DAY_SENTENCE, moveDay, moveSetting } from '../../scripts/move-setting.mjs';
 import { sha256Hex } from '../../scripts/relay-script.mjs';
-import { MOVE_BULLET } from '../../scripts/site-operator.mjs';
+import {
+  ADDRESS_BULLET,
+  MOVE_BULLET,
+  OLD_NAME_BULLET,
+  RELAY_HEADING,
+} from '../../scripts/site-operator.mjs';
 import {
   isProduction,
   nameSite,
@@ -831,7 +836,7 @@ describe('the files the build writes from public/ and the description', () => {
     }
   });
 
-  it('write the description’s Network section as before with a second origin, and without the bullet on production’s move with none (#386)', () => {
+  it('write the description’s Network section as before with a second origin, and without the bullet on production’s move with none (#386), nor the relay section’s bullet on the old name, the one host named once (#431)', () => {
     const source = read('../../../../packages/shared/openapi.json');
     // What the build wrote before #386 with production's operator settings,
     // which this suite's environment gives: named, with the built relay
@@ -854,20 +859,39 @@ describe('the files the build writes from public/ and the description', () => {
     );
 
     // No second origin: the bullet would move the site from its origin to
-    // the same one, and goes; every other byte is as before.
+    // the same one, and goes; so does the relay section's bullet on the old
+    // name, which tells only production's rename and move, and the address
+    // bullet names the one host once (#431); every other byte is as before.
     for (const origins of [OTHER, LOCAL, DAY_X, PORTED]) {
       const named = description(before(origins));
       const host = new URL(origins.app).host;
-      const line = named.split('\n').find((each) => each.startsWith(MOVE_BULLET)) as string;
+      const receive = new URL(origins.receive).host;
+      const lineOf = (start: string) =>
+        named.split('\n').find((each) => each.startsWith(start)) as string;
+      const line = lineOf(MOVE_BULLET);
+      const oldName = lineOf(OLD_NAME_BULLET);
+      const address = lineOf(ADDRESS_BULLET);
+      const json = (text: string) => JSON.stringify(text).slice(1, -1);
 
       assert.ok(line.startsWith(`${MOVE_BULLET}\`${host}\`.** Since 1.16.0`), host);
       assert.ok(line.includes(`The ones on \`${host}\` keep working`), host);
+      assert.ok(oldName.startsWith(`${OLD_NAME_BULLET} Until 1.16.0`), host);
+      assert.ok(address.includes(`\`${host}\` and \`${host}\` — each the site`), host);
       assert.equal(
         openApiText(origins),
-        before(origins).replace(JSON.stringify(`${line}\n`).slice(1, -1), ''),
+        before(origins)
+          .replace(json(`${line}\n`), '')
+          .replace(json(`${oldName}\n`), '')
+          .replace(
+            json(address),
+            json(
+              `- **One address: \`80.87.198.166\`.** \`${host}\` — the site, the API, the WebSocket and the MCP server — and \`${receive}\`, which receives webhooks, all answer on it.`,
+            ),
+          ),
         host,
       );
       assert.ok(!description(openApiText(origins)).includes('**Moving to '), host);
+      assert.ok(!description(openApiText(origins)).includes(OLD_NAME_BULLET), host);
       assert.ok(description(openApiText(origins)).includes('\n\n## Network\n\n'), host);
     }
   });
@@ -1624,6 +1648,65 @@ describe('a build for another address (issue #320, criterion 2)', () => {
     // The build check passed it: the operator's texts, which this build
     // shows, name the server's address.
     assert.ok(built('openapi.json').includes('80.87.198.166'));
+  });
+
+  it('serves the API description with no bullet on the relay script’s old name, and the address bullet naming its one host once (#431)', () => {
+    const description = (text: string) =>
+      (JSON.parse(text) as { info: { description: string } }).info.description;
+    // What the build wrote before #386 and #431: the source named, with the
+    // built relay script's SHA-256.
+    const before = description(
+      nameSite(read('../../../../packages/shared/openapi.json'), OTHER).replaceAll(
+        sha256Hex(productionRelayScriptText()),
+        sha256Hex(relayScriptText(OTHER)),
+      ),
+    );
+    // The bullets of the section headed `heading`, up to the next `##` heading.
+    const bullets = (text: string, heading: string) => {
+      const start = text.indexOf(`\n\n${heading}\n\n`);
+
+      assert.ok(start > 0, heading);
+
+      return text
+        .slice(start, text.indexOf('\n\n## ', start + 2))
+        .split('\n')
+        .filter((line) => line.startsWith('- **'));
+    };
+    const address = bullets(before, '## Network').find((line) =>
+      line.startsWith(ADDRESS_BULLET),
+    ) as string;
+    const oneHost =
+      '- **One address: `80.87.198.166`.** `inspector.example` — the site, the API, the WebSocket and the MCP server — and `hook.inspector.example`, which receives webhooks, all answer on it.';
+
+    assert.ok(address.includes('`inspector.example` and `inspector.example` — each the site'));
+    assert.equal(
+      bullets(before, RELAY_HEADING).filter((line) => line.startsWith(OLD_NAME_BULLET)).length,
+      1,
+    );
+    // /docs shows openapi.json as it is served; llms-full.txt carries it.
+    for (const [path, text] of [
+      ['openapi.json', description(built('openapi.json'))],
+      ['llms-full.txt', built('llms-full.txt')],
+    ] as const) {
+      const network = bullets(text, '## Network');
+      const line = network.find((each) => each.startsWith(ADDRESS_BULLET));
+
+      assert.ok(!text.includes(OLD_NAME_BULLET), path);
+      assert.deepEqual(
+        bullets(text, RELAY_HEADING),
+        bullets(before, RELAY_HEADING).filter((each) => !each.startsWith(OLD_NAME_BULLET)),
+        path,
+      );
+      assert.equal(line, oneHost, path);
+      assert.equal(line?.split('`inspector.example`').length, 2, path);
+      assert.deepEqual(
+        network,
+        bullets(before, '## Network')
+          .filter((each) => !each.startsWith(MOVE_BULLET))
+          .map((each) => (each === address ? oneHost : each)),
+        path,
+      );
+    }
   });
 });
 
