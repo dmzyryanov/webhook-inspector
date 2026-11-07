@@ -564,7 +564,7 @@ test('on made-up content at growing sizes: a name found after runs built for its
     // a name's start, escaped or not, and of the runner form's words, in
     // alternating case.
     const slashes = `${'\\'.repeat(size)}\\.claude\\/`;
-    const doubled = `${'docs\\\\\\'.repeat(size / 7)}docs\\/DECISIONS\\.md`;
+    const tripled = `${'docs\\\\\\'.repeat(size / 7)}docs\\/DECISIONS\\.md`;
     const alternating = `${'fIrStVd'.repeat(size / 7)}FiRsTvDs`;
     const escaped = `${'Hb\\.StAtUsEr\\.ClOu'.repeat(size / 19)}HB\\.STATUSER\\.CLOUD`;
     const runners = `${'RuNnEr-'.repeat(size / 7)}x`;
@@ -575,7 +575,7 @@ test('on made-up content at growing sizes: a name found after runs built for its
     const { problems } = check(
       [
         ['slashes.txt', slashes],
-        ['doubled.txt', doubled],
+        ['tripled.txt', tripled],
         ['alternating.txt', alternating],
         ['escaped.txt', escaped],
         ['runners.txt', runners],
@@ -586,7 +586,7 @@ test('on made-up content at growing sizes: a name found after runs built for its
     );
     assert.deepEqual(problems, [
       'slashes.txt:1: .claude/',
-      'doubled.txt:1: docs/DECISIONS.md',
+      'tripled.txt:1: docs/DECISIONS.md',
       'alternating.txt:1: FirstVDS',
       'escaped.txt:1: hb.statuser.cloud',
       `near.txt:${size / 100 + 1}: runner-<token>-project-`,
