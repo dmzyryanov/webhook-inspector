@@ -2234,9 +2234,11 @@ describe('scripts/measure-ordinary-load.mjs (D232)', () => {
       [[...common, '--ci', '20', ...file], /session creations/],
       [[...common], /needs --sessions-file/],
       [[...common, '--addresses', 'per-user', ...file], /no --addresses per-user/],
-      // An invalid profile is refused before the budget is weighed, which
-      // would let each of these pass: a value that is no whole number
-      // compares false with every limit.
+      // A profile that is not one is refused before anything runs: a figure
+      // that is not a whole number in its range (a string, even "5000", or
+      // a negative delay), a reload range whose end is below its start, or
+      // text that is no JSON object. No run could be counted or paced as
+      // planned from it.
       [
         [...common, ...profile('{"reloadMaxMs":-1000000000}'), ...file],
         /--profile: reloadMaxMs takes a whole number/,
