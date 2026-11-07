@@ -20,6 +20,10 @@ import {
   CERTIFICATE_WAIT,
   checkDeployment,
   checkedList,
+  CONNECTION_NOT_OPENED_CODES,
+  CONNECTION_RETRY,
+  connectionNotOpenedCode,
+  connectionRetries,
   LEGAL_PAGE_CHECKS,
   main as checkDeploymentMain,
   notCheckedLine,
@@ -2064,6 +2068,11 @@ function tlsFailure(code) {
   const cause = Object.assign(new Error(`certificate: ${code}`), { code });
   return new TypeError('fetch failed', { cause });
 }
+/** A fetch failure as undici gives it for a connection: `fetch failed`, the socket's error as its cause. */
+function connectFailure(code) {
+  const cause = Object.assign(new Error(`connect: ${code}`), { code });
+  return new TypeError('fetch failed', { cause });
+}
 
 test("smoke waits for the second host's certificate: a pending certificate is tried again 10 s apart, at most 30 times, and anything else ends the wait at once (#319, D275)", async () => {
   assert.deepEqual(CERTIFICATE_WAIT, { tries: 30, intervalMs: 10_000 });
@@ -2113,12 +2122,10 @@ test("smoke waits for the second host's certificate: a pending certificate is tr
   );
   assert.deepEqual(none, []);
 
-  // Any other failure is thrown at once, unwaited: a refused connection, a
+  // Any other failure is thrown at once, unwaited: a reset connection, a
   // timeout, an expired certificate, an error with no cause.
   for (const error of [
-    Object.assign(new TypeError('fetch failed'), {
-      cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
-    }),
+    connectFailure('ECONNRESET'),
     new DOMException('timed out', 'TimeoutError'),
     tlsFailure('CERT_HAS_EXPIRED'),
     new Error('plain'),
@@ -2137,6 +2144,37 @@ test("smoke waits for the second host's certificate: a pending certificate is tr
       (thrown) => thrown === error,
     );
     assert.deepEqual(slept, []);
+  }
+
+  // A connection that never opens is tried again below the wait, 15 s later,
+  // and is no certificate try of its own (#435): refused twice, then the
+  // proxy's certificate once, then an answer, in two certificate tries.
+  {
+    const slept = [];
+    const logged = [];
+    const failures = [
+      connectFailure('ECONNREFUSED'),
+      connectFailure('ECONNREFUSED'),
+      tlsFailure('DEPTH_ZERO_SELF_SIGNED_CERT'),
+    ];
+    const tries = await waitForCertificate(
+      ALIAS_SITE,
+      async () => {
+        const failure = failures.shift();
+        if (failure !== undefined) throw failure;
+        return html();
+      },
+      CERTIFICATE_WAIT,
+      async (ms) => slept.push(ms),
+      (line) => logged.push(line),
+    );
+    assert.equal(tries, 2);
+    assert.deepEqual(slept, [15_000, 15_000, 10_000]);
+    assert.deepEqual(logged, [
+      'No connection to webhook.qa-tools.ru opened for / (ECONNREFUSED); trying again in 15 s',
+      'No connection to webhook.qa-tools.ru opened for / (ECONNREFUSED); trying again in 15 s',
+      'webhook.qa-tools.ru has no valid certificate yet (DEPTH_ZERO_SELF_SIGNED_CERT); trying again in 10 s',
+    ]);
   }
 
   // The tries spent: 30 asks, 29 waits, and the last error named.
@@ -2278,6 +2316,455 @@ test("the smoke's command line checks the first host, then waits for the second'
     assert.equal(asked.length, EVERY_ANSWER.length);
   }
   await assert.rejects(checkDeploymentMain(['https://qa-tools.ru']), /^Error: Usage: /);
+});
+
+// --- Connections that never open (#435) ---------------------------------------
+//
+// On 2026-11-06 the first smoke of three main pipelines failed on a connection
+// that never opened, undici's connect timeout of 10 s, from GitLab's shared
+// runners to the proxy, while the same check passed by hand. The smoke tries
+// such a request again, 15 s later and 6 tries at most, 5 retries in a whole
+// run, and no other: nothing of the request was sent then.
+
+/** Where the first host's check asks the receive host first: its unknown session. */
+const RECEIVE_AT = EVERY_ANSWER.indexOf(receiveNotFound);
+/** The run's requests with stand-ins for its sleep and its log, which record into `slept` and `logged`. */
+const standInRetries = (slept, logged, retry = CONNECTION_RETRY) =>
+  connectionRetries(
+    retry,
+    async (ms) => slept.push(ms),
+    (line) => logged.push(line),
+  );
+/**
+ * A fetcher answering EVERY_ANSWER in turn, each URL and signal recorded,
+ * but throwing first `failing.get(n)` at the n-th ask, counted from 0.
+ */
+function failingAt(failing, seen = [], signals = []) {
+  let answered = 0;
+  return async (url, options) => {
+    seen.push(url);
+    signals.push(options.signal);
+    const failure = failing.get(seen.length - 1);
+    if (failure !== undefined) throw failure;
+    answered += 1;
+    return EVERY_ANSWER[answered - 1]();
+  };
+}
+
+test('smoke tries again, 15 s later, a request whose connection never opened, logging its host, its path and the code, and passes on its answer (#435)', async () => {
+  assert.deepEqual(CONNECTION_RETRY, { tries: 6, intervalMs: 15_000 });
+  assert.deepEqual(
+    [...CONNECTION_NOT_OPENED_CODES],
+    ['UND_ERR_CONNECT_TIMEOUT', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN'],
+  );
+  // The site's first request and the receive host's first, where a run
+  // opens its connection to each host.
+  for (const code of CONNECTION_NOT_OPENED_CODES) {
+    for (const [at, host] of [
+      [0, 'qa-tools.ru'],
+      [RECEIVE_AT, 'hook.qa-tools.ru'],
+    ]) {
+      const seen = [];
+      const signals = [];
+      const slept = [];
+      const logged = [];
+      await checkDeployment(
+        'https://qa-tools.ru',
+        failingAt(new Map([[at, connectFailure(code)]]), seen, signals),
+        NOW,
+        RECEIVE,
+        DEPLOYED,
+        standInRetries(slept, logged),
+      );
+      assert.equal(seen.length, EVERY_ANSWER.length + 1, code);
+      // The same request again, each try with a timeout of its own.
+      assert.equal(seen[at].host, host);
+      assert.equal(seen[at + 1].href, seen[at].href);
+      assert.equal(new Set(signals).size, seen.length);
+      assert.ok(signals.every((signal) => signal instanceof AbortSignal));
+      assert.deepEqual(slept, [15_000]);
+      assert.deepEqual(logged, [
+        `No connection to ${host} opened for ${seen[at].pathname} (${code}); trying again in 15 s`,
+      ]);
+    }
+  }
+  // Five failures, the answer at the sixth try: it passes, 5 waits later.
+  const slept = [];
+  const logged = [];
+  const failures = new Map(
+    [0, 1, 2, 3, 4].map((at) => [at, connectFailure('UND_ERR_CONNECT_TIMEOUT')]),
+  );
+  await checkDeployment(
+    'https://qa-tools.ru',
+    failingAt(failures),
+    NOW,
+    RECEIVE,
+    DEPLOYED,
+    standInRetries(slept, logged),
+  );
+  assert.deepEqual(slept, [15_000, 15_000, 15_000, 15_000, 15_000]);
+  assert.equal(logged.length, 5);
+});
+
+test('smoke fails at the last try of a connection that never opens, with the last error and a line naming the code and the tries: the third of 3, the sixth of 6 (#435)', async () => {
+  for (const retry of [{ tries: 3, intervalMs: 15_000 }, CONNECTION_RETRY]) {
+    const thrown = [];
+    const slept = [];
+    const logged = [];
+    await assert.rejects(
+      checkDeployment(
+        'https://qa-tools.ru',
+        async () => {
+          thrown.push(connectFailure('UND_ERR_CONNECT_TIMEOUT'));
+          throw thrown.at(-1);
+        },
+        NOW,
+        RECEIVE,
+        DEPLOYED,
+        standInRetries(slept, logged, retry),
+      ),
+      (error) => {
+        assert.equal(
+          error.message,
+          `No connection to qa-tools.ru opened for / after ${retry.tries} tries 15 s apart (UND_ERR_CONNECT_TIMEOUT)`,
+        );
+        assert.equal(error.cause, thrown.at(-1));
+        return true;
+      },
+    );
+    assert.equal(thrown.length, retry.tries);
+    assert.deepEqual(
+      slept,
+      Array.from({ length: retry.tries - 1 }, () => 15_000),
+    );
+    assert.equal(logged.length, retry.tries - 1);
+  }
+  // A host that never answers fails it 6 tries and 75 s of waits later:
+  // about 2 minutes with undici's 10 s connect timeout.
+  assert.equal((CONNECTION_RETRY.tries - 1) * CONNECTION_RETRY.intervalMs, 75_000);
+});
+
+test('smoke fails at once, sending its request once, on an error after the connection opened, its own timeout, a certificate or any other error (#435)', async () => {
+  for (const error of [
+    connectFailure('UND_ERR_SOCKET'),
+    connectFailure('ECONNRESET'),
+    new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    tlsFailure('DEPTH_ZERO_SELF_SIGNED_CERT'),
+    tlsFailure('CERT_HAS_EXPIRED'),
+    connectFailure('ENOTFOUND'),
+    // A connection's code, but not as undici gives it: on the error itself.
+    Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+    new Error('network unavailable'),
+  ]) {
+    for (const at of [0, RECEIVE_AT]) {
+      const seen = [];
+      const slept = [];
+      const logged = [];
+      await assert.rejects(
+        checkDeployment(
+          'https://qa-tools.ru',
+          failingAt(new Map([[at, error]]), seen),
+          NOW,
+          RECEIVE,
+          DEPLOYED,
+          standInRetries(slept, logged),
+        ),
+        (thrown) => thrown === error,
+      );
+      assert.equal(seen.length, at + 1);
+      assert.deepEqual(slept, []);
+      assert.deepEqual(logged, []);
+    }
+  }
+
+  // A POST whose connection opened is sent once, whatever came after; one
+  // whose connection never opened is sent as it was given, nothing of it
+  // having gone, each try with a timeout of its own.
+  const address = `${RECEIVE}/s/${'a'.repeat(43)}`;
+  const post = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
+  for (const error of [
+    connectFailure('UND_ERR_SOCKET'),
+    connectFailure('ECONNRESET'),
+    new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+  ]) {
+    const sent = [];
+    const slept = [];
+    await assert.rejects(
+      standInRetries(slept, [])(
+        async (url, options) => {
+          sent.push(options);
+          throw error;
+        },
+        address,
+        post,
+      ),
+      (thrown) => thrown === error,
+    );
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].method, 'POST');
+    assert.deepEqual(slept, []);
+  }
+  const sent = [];
+  const slept = [];
+  const logged = [];
+  const answer = await standInRetries(slept, logged)(
+    async (url, options) => {
+      sent.push({ url: url.href, ...options });
+      if (sent.length === 1) throw connectFailure('ECONNREFUSED');
+      return new Response(null, { status: 200 });
+    },
+    address,
+    post,
+  );
+  assert.equal(answer.status, 200);
+  assert.equal(sent.length, 2);
+  for (const options of sent) {
+    assert.equal(options.url, address);
+    assert.equal(options.method, 'POST');
+    assert.equal(options.body, '{}');
+    assert.ok(options.signal instanceof AbortSignal);
+  }
+  assert.notEqual(sent[0].signal, sent[1].signal);
+  assert.deepEqual(slept, [15_000]);
+  assert.deepEqual(logged, [
+    `No connection to hook.qa-tools.ru opened for /s/${'a'.repeat(43)} (ECONNREFUSED); trying again in 15 s`,
+  ]);
+});
+
+/**
+ * A fetcher for the smoke's whole command line with a second host (#319):
+ * the first host's answers, then the second host's certificate pending
+ * `pending` times, then its answer and the second host's own answers; but
+ * `fails(n, url)`, when it gives one, the error thrown at the n-th ask,
+ * counted from 0. Each ask adds to `clock.ms`: `notOpenedMs` for a
+ * connection that never opens, `answerMs` for anything else.
+ */
+function wholeRun({
+  pending = 0,
+  fails = () => undefined,
+  clock = { ms: 0 },
+  notOpenedMs = 0,
+  answerMs = 0,
+} = {}) {
+  let asked = 0;
+  let answered = 0;
+  let pendingLeft = pending;
+  return async (url) => {
+    const failure = fails(asked, url);
+    asked += 1;
+    if (failure !== undefined) {
+      clock.ms += connectionNotOpenedCode(failure) === undefined ? answerMs : notOpenedMs;
+      throw failure;
+    }
+    clock.ms += answerMs;
+    if (answered === EVERY_ANSWER.length && pendingLeft > 0) {
+      pendingLeft -= 1;
+      throw tlsFailure('DEPTH_ZERO_SELF_SIGNED_CERT');
+    }
+    const answer =
+      answered < EVERY_ANSWER.length
+        ? EVERY_ANSWER[answered]()
+        : answered === EVERY_ANSWER.length
+          ? html()
+          : EVERY_ANSWER[answered - EVERY_ANSWER.length - 1]();
+    answered += 1;
+    return url.origin === ALIAS_SITE ? onAliasSite(answer) : answer;
+  };
+}
+const WHOLE_RUN = ['https://qa-tools.ru', RECEIVE, ALIAS_SITE, ...OPERATOR_OPTIONS];
+
+test("a run of the smoke tries connections again 5 times at most in all, the certificate wait's included, and fails at the next that does not open (#435)", async () => {
+  // Two on the first host, whose check takes asks 0 to E + 1; two in the
+  // certificate wait, E + 2 to E + 5, pending once between them; one on the
+  // second host: the run passes, its five retries spent.
+  const E = EVERY_ANSWER.length;
+  const at = new Set([0, 10, E + 2, E + 4, E + 16]);
+  const failing = (n) => (at.has(n) ? connectFailure('UND_ERR_CONNECT_TIMEOUT') : undefined);
+  const slept = [];
+  const logged = [];
+  await checkDeploymentMain(
+    WHOLE_RUN,
+    wholeRun({ pending: 1, fails: failing }),
+    NOW,
+    async (ms) => slept.push(ms),
+    (line) => logged.push(line),
+  );
+  assert.deepEqual(slept, [15_000, 15_000, 15_000, 10_000, 15_000, 15_000]);
+  assert.deepEqual(
+    logged
+      .filter((line) => line.startsWith('No connection to '))
+      .map((line) => /^No connection to (\S+) opened for /.exec(line)[1]),
+    [
+      'qa-tools.ru',
+      'qa-tools.ru',
+      'webhook.qa-tools.ru',
+      'webhook.qa-tools.ru',
+      'webhook.qa-tools.ru',
+    ],
+  );
+  assert.match(logged.at(-1), /^Deployed frontend, .* passed on webhook\.qa-tools\.ru, /);
+
+  // A sixth connection that does not open fails the run at its first try,
+  // whichever request it is, naming the tries and the run's retries spent.
+  let sixth = false;
+  await assert.rejects(
+    checkDeploymentMain(
+      WHOLE_RUN,
+      wholeRun({
+        pending: 1,
+        fails: (n, url) => {
+          if (failing(n) !== undefined) return failing(n);
+          if (url.origin === ALIAS_SITE && url.pathname === '/robots.txt') {
+            sixth = true;
+            return connectFailure('EAI_AGAIN');
+          }
+          return undefined;
+        },
+      }),
+      NOW,
+      async () => {},
+      () => {},
+    ),
+    /^Error: No connection to webhook\.qa-tools\.ru opened for \/robots\.txt after 1 try, the run's 5 retries spent \(EAI_AGAIN\)$/,
+  );
+  assert.equal(sixth, true);
+});
+
+test("the whole smoke, the second host's certificate wait and every retry of a connection included, ends within the deployment-smoke job's timeout (#435)", async () => {
+  const ci = readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8');
+  const from = ci.indexOf('\ndeployment-smoke:\n');
+  assert.ok(from >= 0, 'no deployment-smoke job');
+  const next = ci.slice(from + 1).search(/\n[^\s#]/);
+  const job = next < 0 ? ci.slice(from) : ci.slice(from, from + 1 + next);
+  const jobMs = Number(/^ {2}timeout: (\d+)m$/m.exec(job)?.[1]) * 60_000;
+  assert.ok(jobMs > 0, 'deployment-smoke has no timeout in minutes');
+  // What the model gives each ask. A connection that never opens fails
+  // within undici's connect timeout, 10 s, which each failure of 2026-11-06
+  // named, a refused one and the others sooner. Any other ask, a pending
+  // certificate's included, 1 s, and the job's start, its image and its
+  // clone a minute: a passing job, both hosts' answers included, took 23 to
+  // 35 s in all on 2026-11-07. The operator's texts given as none ask two
+  // more of each host, 4 s more.
+  const NOT_OPENED_MS = 10_000;
+  const ANSWER_MS = 1_000;
+  const JOB_START_MS = 60_000;
+  const notOpened = () => connectFailure('UND_ERR_CONNECT_TIMEOUT');
+  // The certificate pending to the wait's last try, and the connections
+  // that do not open placed in turn: five at the start, the same and a
+  // sixth at the run's last ask, the receive host's robots.txt in the second
+  // host's check, every ask, and one ask in so many.
+  const lastAsk = (n, url) =>
+    n > 2 * EVERY_ANSWER.length + 5 && url.origin === RECEIVE && url.pathname === '/robots.txt';
+  const runs = [
+    ['five at the start', (n) => (n < 5 ? notOpened() : undefined)],
+    [
+      'five at the start and a sixth at the last ask',
+      (n, url) => (n < 5 || lastAsk(n, url) ? notOpened() : undefined),
+    ],
+    ['every ask', () => notOpened()],
+    ...[2, 3, 7, 13, 29].map((every) => [
+      `one ask in ${every}`,
+      (n) => ((n + 1) % every === 0 ? notOpened() : undefined),
+    ]),
+  ];
+  const lengths = [];
+  for (const [name, fails] of runs) {
+    const clock = { ms: 0 };
+    const waits = [];
+    let failed = 0;
+    await checkDeploymentMain(
+      WHOLE_RUN,
+      wholeRun({
+        pending: CERTIFICATE_WAIT.tries - 1,
+        fails: (n, url) => {
+          const failure = fails(n, url);
+          if (failure !== undefined) failed += 1;
+          return failure;
+        },
+        clock,
+        notOpenedMs: NOT_OPENED_MS,
+        answerMs: ANSWER_MS,
+      }),
+      NOW,
+      async (ms) => {
+        waits.push(ms);
+        clock.ms += ms;
+      },
+      () => {},
+    ).catch((error) => assert.match(error.message, /^No connection to /, name));
+    // At most 6 connections fail in a run, 5 of them waited for 15 s each,
+    // besides the certificate's 29 waits of 10 s.
+    assert.ok(failed <= CONNECTION_RETRY.tries, `${name}: ${failed} connections failed`);
+    assert.ok(
+      waits.filter((ms) => ms === CONNECTION_RETRY.intervalMs).length <= CONNECTION_RETRY.tries - 1,
+      name,
+    );
+    assert.ok(waits.reduce((sum, ms) => sum + ms, 0) <= 29 * 10_000 + 5 * 15_000, name);
+    assert.ok(clock.ms + JOB_START_MS <= jobMs, `${name}: ${clock.ms} ms`);
+    lengths.push(clock.ms);
+  }
+  // The longest: 365 s of waits, 6 failed connections of 10 s and 77
+  // answers, 502 s, and 562 s with the job's start, within its 600.
+  assert.equal(Math.max(...lengths), 502_000);
+});
+
+test('the connection code is read from the cause undici gives, and an error or a cause of any other shape, size or depth has none (#435)', () => {
+  for (const code of CONNECTION_NOT_OPENED_CODES) {
+    assert.equal(connectionNotOpenedCode(connectFailure(code)), code);
+  }
+  // Whatever the cause's class.
+  const aggregate = Object.assign(
+    new AggregateError([connectFailure('ECONNREFUSED').cause], 'connect'),
+    {
+      code: 'ECONNREFUSED',
+    },
+  );
+  assert.equal(
+    connectionNotOpenedCode(new TypeError('fetch failed', { cause: aggregate })),
+    'ECONNREFUSED',
+  );
+  assert.equal(connectionNotOpenedCode({ cause: { code: 'EAI_AGAIN' } }), 'EAI_AGAIN');
+  for (const shape of [
+    undefined,
+    null,
+    'ECONNREFUSED',
+    42,
+    () => {},
+    {},
+    { code: 'ECONNREFUSED' },
+    { cause: 'ECONNREFUSED' },
+    { cause: null },
+    { cause: 42 },
+    { cause: { code: 42 } },
+    { cause: { code: null } },
+    { cause: { code: 'econnrefused' } },
+    { cause: { code: ' ECONNREFUSED' } },
+    { cause: { code: 'ECONNREFUSED\n' } },
+    { cause: { code: { toString: () => 'ECONNREFUSED' } } },
+    { cause: { code: ['ECONNREFUSED'] } },
+    { cause: { cause: { code: 'ECONNREFUSED' } } },
+    connectFailure('ECONNRESET'),
+    connectFailure('UND_ERR_SOCKET'),
+    connectFailure('ENOTFOUND'),
+    connectFailure('UND_ERR_HEADERS_TIMEOUT'),
+    tlsFailure('DEPTH_ZERO_SELF_SIGNED_CERT'),
+    new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+  ]) {
+    assert.equal(connectionNotOpenedCode(shape), undefined, String(shape?.cause?.code ?? shape));
+  }
+  // A cycle, a long chain and a long code: one level read, at once.
+  const cyclic = new Error('a');
+  cyclic.cause = cyclic;
+  assert.equal(connectionNotOpenedCode(cyclic), undefined);
+  for (const size of [10, 1000, 100_000]) {
+    let chain = { code: 'ECONNREFUSED' };
+    for (let index = 0; index < size; index += 1) chain = { cause: chain };
+    const long = { cause: { code: 'ECONNREFUSED'.repeat(size) } };
+    const started = performance.now();
+    assert.equal(connectionNotOpenedCode(chain), undefined);
+    assert.equal(connectionNotOpenedCode(long), undefined);
+    assert.ok(performance.now() - started < 100, `size ${size}`);
+  }
 });
 
 // --- The operator's details the smoke checks (#381) --------------------------

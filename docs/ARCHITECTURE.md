@@ -689,7 +689,14 @@ the deploy job reads the variables themselves:
   minutes for that host's certificate, which cert-manager issues only once
   the deployment has created its Ingress, and checks the host as one closed
   to search whose pages name the first. It gives the check the operator's
-  details too (The operator's details, below).
+  details too (The operator's details, below). A request whose connection
+  never opens — undici's 10 s connect timeout, a refused connection, no
+  route to the host or its network, a name lookup to try again — is tried
+  again 15 s later, 6 tries at most and 5 retries in a whole run, so that a
+  host that never answers fails the smoke about 2 minutes later and the
+  run, the certificate wait included, stays within the job's 10 minutes;
+  any other error and any answer the checks refuse fail it as before, and
+  a request whose connection opened is never sent again (#435).
 
 The backend's names are not those of the project variables, which reach every
 job: the `test` job's backend suite expects both unset, and the e2e suite

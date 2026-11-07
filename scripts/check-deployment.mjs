@@ -297,6 +297,108 @@ function sessionShapedId() {
 }
 
 /**
+ * The codes undici gives a failed fetch, as its cause's, when the request's
+ * connection never opened (#435): its connect timeout, 10 s, which the TLS
+ * handshake counts against too; a refused connection; no route to the host
+ * or to its network; and a lookup of the name that could not be answered for
+ * now. Not one byte of the request has been sent then, so trying it again
+ * sends nothing twice. A reset (`ECONNRESET`), a closed socket
+ * (`UND_ERR_SOCKET`), the request's own timeout, a name that does not exist
+ * and a TLS error are not among them: each may come once the request was
+ * sent, or names a fault that trying again does not mend.
+ */
+export const CONNECTION_NOT_OPENED_CODES = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'ECONNREFUSED',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EAI_AGAIN',
+]);
+
+/**
+ * The code among `CONNECTION_NOT_OPENED_CODES` that a failed fetch carries,
+ * `fetch failed` with the connection's error as its cause, as undici gives
+ * it, or `undefined`. Only the cause's own code is read: a code on the error
+ * itself or deeper down is not undici's account of a connection.
+ */
+export function connectionNotOpenedCode(error) {
+  const cause = error !== null && typeof error === 'object' ? error.cause : undefined;
+  const code = cause !== null && typeof cause === 'object' ? cause.code : undefined;
+
+  return CONNECTION_NOT_OPENED_CODES.has(code) ? code : undefined;
+}
+
+/**
+ * How the smoke tries again a request whose connection never opened (#435):
+ * 6 tries in all, 15 s apart, about 2 minutes with undici's 10 s connect
+ * timeout, sized to a drop on the path from GitLab's shared runners that was
+ * gone when the same check ran by hand 90 s after its job. A run of the
+ * smoke tries again at most 5 times in all, whichever requests take them,
+ * so it waits for connections no longer than one request may: a host that
+ * never answers fails the smoke about 2 minutes later than it would at
+ * once, and the whole run, the certificate wait included, stays within its
+ * job's 10 minutes.
+ */
+export const CONNECTION_RETRY = Object.freeze({ tries: 6, intervalMs: 15_000 });
+
+/** `n` tries, `intervalMs` apart when there are several. */
+function triesTaken(n, intervalMs) {
+  return n === 1 ? '1 try' : `${n} tries ${intervalMs / 1000} s apart`;
+}
+
+/**
+ * The requests of one run of the smoke (#435): the function returned,
+ * `(fetcher, address, options)`, asks `fetcher` for `address` with
+ * `options`, each try with a timeout of 15 s of its own for the answer and
+ * its body, and tries again `intervalMs` later when the connection never
+ * opened (`connectionNotOpenedCode`), logging the host, the path and the
+ * code. Any other error is thrown at once, so a request whose connection
+ * opened is sent once. The run tries again `tries - 1` times at most, all
+ * its requests together: once they are spent, the next connection that does
+ * not open is thrown as an error naming how many tries its request took,
+ * the last failure as its cause.
+ */
+export function connectionRetries(
+  { tries, intervalMs } = CONNECTION_RETRY,
+  sleep = sleepFor,
+  log = console.log,
+) {
+  let retriesLeft = tries - 1;
+
+  return async (fetcher, address, options = {}) => {
+    const url = new URL(address);
+
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        // A timeout of each try's own: one the tries shared would have run
+        // out during the waits between them.
+        return await fetcher(url, { ...options, signal: globalThis.AbortSignal.timeout(15000) });
+      } catch (error) {
+        const code = connectionNotOpenedCode(error);
+
+        if (code === undefined) {
+          throw error;
+        }
+
+        if (retriesLeft <= 0) {
+          const spent = attempt < tries ? `, the run's ${tries - 1} retries spent` : '';
+          throw new Error(
+            `No connection to ${url.host} opened for ${url.pathname} after ${triesTaken(attempt, intervalMs)}${spent} (${code})`,
+            { cause: error },
+          );
+        }
+
+        retriesLeft -= 1;
+        log(
+          `No connection to ${url.host} opened for ${url.pathname} (${code}); trying again in ${intervalMs / 1000} s`,
+        );
+        await sleep(intervalMs);
+      }
+    }
+  };
+}
+
+/**
  * The errors Node's TLS gives for a certificate that is not yet the host's:
  * the proxy's own default, self-signed, which it presents for a name until
  * the name's certificate is issued, or one issued for another name. An
@@ -349,7 +451,10 @@ export const CERTIFICATE_WAIT = Object.freeze({ tries: 30, intervalMs: 10_000 })
  * the answer is one of the certificate errors above. Any answer ends the
  * wait, whatever its status, and so does any other error, thrown at once:
  * the check that follows judges the answers. The last certificate error is
- * thrown once the tries are spent. Returns how many tries it took.
+ * thrown once the tries are spent. Each ask goes through `connections`, the
+ * run's requests (`connectionRetries`), which try again one whose
+ * connection never opened before the wait sees it. Returns how many tries
+ * it took.
  */
 export async function waitForCertificate(
   base,
@@ -357,15 +462,13 @@ export async function waitForCertificate(
   { tries, intervalMs } = CERTIFICATE_WAIT,
   sleep = sleepFor,
   log = console.log,
+  connections = connectionRetries(CONNECTION_RETRY, sleep, log),
 ) {
   const root = new URL(base);
 
   for (let attempt = 1; ; attempt += 1) {
     try {
-      const response = await fetcher(new URL('/', root), {
-        redirect: 'error',
-        signal: globalThis.AbortSignal.timeout(15000),
-      });
+      const response = await connections(fetcher, new URL('/', root), { redirect: 'error' });
 
       // Read in full, so the answer holds no connection open.
       await response.text();
@@ -417,6 +520,10 @@ export function ogImage(html) {
  *   changelog's feeds are checked as served unless the operator's texts are
  *   given as none, and the changelog's four addresses are then checked as
  *   `Page not found` (#396).
+ *
+ * Every request goes through `connections`, the run's requests
+ * (`connectionRetries`), which try again one whose connection never opened
+ * (#435); by default a run of its own.
  */
 export async function checkDeployment(
   base,
@@ -424,6 +531,7 @@ export async function checkDeployment(
   now = new Date(),
   receiveBase = undefined,
   site = {},
+  connections = connectionRetries(),
 ) {
   const root = new URL(base);
   if (root.protocol !== 'https:') throw new Error('Deployment check requires HTTPS');
@@ -441,17 +549,14 @@ export async function checkDeployment(
   if (receiveRoot.username || receiveRoot.password) {
     throw new Error('Do not put credentials in the URL');
   }
-  // Every request is a GET that follows no redirect, with 15 s of its own for
-  // the answer and its body: a redirect is an error, but where the answer
-  // checked is a redirect, which is then the answer itself (`manual`). Every
-  // body is read in full, whether or not a check looks at it, so no answer
-  // is left holding its connection open.
+  // Every request is a GET that follows no redirect, each try with 15 s of
+  // its own for the answer and its body: a redirect is an error, but where
+  // the answer checked is a redirect, which is then the answer itself
+  // (`manual`). Every body is read in full, whether or not a check looks at
+  // it, so no answer is left holding its connection open.
   const get = async (address, redirect = 'error') => {
     const url = new URL(address, root);
-    const response = await fetcher(url, {
-      redirect,
-      signal: globalThis.AbortSignal.timeout(15000),
-    });
+    const response = await connections(fetcher, url, { redirect });
     const answer = {
       status: response.status,
       headers: response.headers,
@@ -916,7 +1021,10 @@ export async function main(
     log(notChecked);
   }
   const checked = checkedList(operator);
-  await checkDeployment(base, fetcher, now, receiveBase, { operator });
+  // One count of retries for the whole run, so that it waits for
+  // connections no longer than one request may (#435).
+  const connections = connectionRetries(CONNECTION_RETRY, sleep, log);
+  await checkDeployment(base, fetcher, now, receiveBase, { operator }, connections);
   log(`Deployed ${checked} passed on ${new URL(base).host} (read-only)`);
   if (aliasBase === '') {
     return;
@@ -924,12 +1032,15 @@ export async function main(
   const alias = new URL(aliasBase);
   if (alias.protocol !== 'https:') throw new Error('Deployment check requires HTTPS');
   if (alias.username || alias.password) throw new Error('Do not put credentials in the URL');
-  await waitForCertificate(alias.href, fetcher, CERTIFICATE_WAIT, sleep, log);
-  await checkDeployment(alias.href, fetcher, now, receiveBase, {
-    canonical: new URL(base).origin,
-    closedToSearch: true,
-    operator,
-  });
+  await waitForCertificate(alias.href, fetcher, CERTIFICATE_WAIT, sleep, log, connections);
+  await checkDeployment(
+    alias.href,
+    fetcher,
+    now,
+    receiveBase,
+    { canonical: new URL(base).origin, closedToSearch: true, operator },
+    connections,
+  );
   log(
     `Deployed ${checked} passed on ${alias.host}, every answer of its own with X-Robots-Tag: noindex (read-only)`,
   );
