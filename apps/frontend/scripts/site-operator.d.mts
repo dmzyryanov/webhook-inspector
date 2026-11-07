@@ -8,6 +8,9 @@ export const WRITTEN_SERVER_ADDRESS: string;
 export const NETWORK_HEADING: string;
 export const NETWORK_POINTER: string;
 export const MOVE_BULLET: string;
+export const ADDRESS_BULLET: string;
+export const RELAY_HEADING: string;
+export const OLD_NAME_BULLET: string;
 export const DESCRIPTION_PARAGRAPHS: Readonly<{
   status: string;
   about: string;

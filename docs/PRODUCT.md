@@ -99,6 +99,10 @@ server address, its port and its notice of a new address: such a copy's
 stability policy's sentence pointing at it. A copy built with the texts and
 no second address keeps the section but leaves out its bullet on the move to
 `webhook.qa-tools.ru`, which there would name one address on both sides.
+Since 1.19.36 (issue #431) such a copy names its one host once in the
+section's bullet on its address, where it named it twice, and every copy with
+no second address, with the texts or without, leaves out the relay section's
+bullet on the script's old name, which tells this site's rename and move.
 
 ## Footer
 

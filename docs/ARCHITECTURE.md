@@ -757,7 +757,14 @@ is no longer marked, and the breaking feed leaves it out (#343). For the same
 reason such a build leaves the bullet `**Moving to …**` out of the API
 description's Network section (#386, `operatorOpenApi()`, given whether the
 build has a second origin by `openApiText()`); without the operator's texts
-the whole section goes (The operator's details, below). Built for
+the whole section goes (The operator's details, below). Since #431 it also
+leaves out the relay section's bullet `**Its old name.**`, which tells only
+production's rename and move and dates them by changelog entries such a
+build may not publish, with the texts or without, and with the texts names
+its one host once in the Network section's bullet `**One address: …**`,
+`` `<site host>` — the site, the API, the WebSocket and the MCP server — and
+`<receive host>`, … ``, where the source names the site's host and the
+second host, the same host there. Built for
 production, every file is byte for byte what it was. The places that compose
 an address themselves — the feeds' links,
 `security.txt`'s `Canonical`, the about page's MCP address, the legal pages'
@@ -827,7 +834,12 @@ inspector's address, above); set empty, the image leaves it out.
   Network above.` (`operatorDescription()` of `scripts/site-operator.mjs`),
   refusing a description without the section, the sentence or the section's
   bullet on the move, and one that still names the address or the section
-  once they are left out.
+  once they are left out. Since #431 it also refuses one without the relay
+  section, `## Forward to a local service`, or without exactly one bullet of
+  it on the script's old name, and, with the texts, one without exactly one
+  bullet on the server's address in the Network section in the form the edit
+  for one host reads, so a rewording of the source cannot leave either
+  unedited in a build with no second origin.
 
 Since #381 `scripts/check-deployment.mjs` checks the three as the deployment's
 settings give them, rather than production's values written into it: options
