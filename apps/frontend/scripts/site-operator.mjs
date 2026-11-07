@@ -173,24 +173,22 @@ const CHANGELOG_APPOSITION = new RegExp(`, ${CHANGELOG_ADDRESS}${ADDRESS_END}`, 
 const CHANGELOG_LINK_LEFT = new RegExp(`${CHANGELOG_ADDRESS}(?![\\w-])`);
 
 /**
- * The paragraphs of the API description for a build that publishes no
- * changelog (issue #396): the sentence of the feeds left out, and every link
- * to the changelog with the words that only introduce it. Refused: a
- * paragraph still linking the changelog in a way none of these reads, so a
- * rewording cannot leave a link to a `Page not found` unnoticed.
+ * A paragraph of the API description as a build that publishes no changelog
+ * keeps it (issue #396): every link to the changelog left out with the words
+ * that only introduce it. Refused: a paragraph still linking the changelog
+ * in a way none of these reads, so a rewording cannot leave a link to a
+ * `Page not found` unnoticed.
  */
-function withoutChangelogLinks(paragraphs) {
-  return paragraphs.map((paragraph) => {
-    const left = paragraph.replace(CHANGELOG_PARENTHESIS, '').replace(CHANGELOG_APPOSITION, '');
+function withoutChangelogLinks(paragraph) {
+  const left = paragraph.replace(CHANGELOG_PARENTHESIS, '').replace(CHANGELOG_APPOSITION, '');
 
-    if (CHANGELOG_LINK_LEFT.test(left)) {
-      throw new Error(
-        `the API description links the changelog where the build cannot leave the link out: "${left.slice(0, 60)}…"`,
-      );
-    }
+  if (CHANGELOG_LINK_LEFT.test(left)) {
+    throw new Error(
+      `the API description links the changelog where the build cannot leave the link out: "${left.slice(0, 60)}…"`,
+    );
+  }
 
-    return left;
-  });
+  return left;
 }
 
 /** The one paragraph of `paragraphs` that begins with `start`, by its index. */
@@ -356,11 +354,16 @@ function withOneHost(paragraph) {
  * the old name; one with the texts without a single address bullet in the
  * form the edit reads; and one without the texts that still names the
  * server's address or the Network section once they are left out; so a
- * rewording cannot keep any of them. That last check reads what is kept of
- * the source before the operator's status page is written into its
- * sentence: the page's address is the operator's own setting, whose path
- * may hold the word `Network` or digits like the server's address, and
- * names nothing of this site's server (#430).
+ * rewording cannot keep any of them. That last check, and the one of the
+ * changelog's links, read what is kept of the source before the operator's
+ * status page is written into its sentence: the page's address is the
+ * operator's own setting, whose path may hold the word `Network`, digits
+ * like the server's address or `/changelog`, and names nothing of this
+ * site's server or changelog (#430, #446). The build check reads that
+ * address out of the built files too, before it looks in them for
+ * production's names and, where the page is on a host none of the site's
+ * origins name, for a link to the changelog (`check-build.mjs`), so such a
+ * copy builds.
  */
 export function operatorDescription(description, operator = OPERATOR, hasMove = true) {
   const paragraphs = description.split('\n\n');
@@ -476,18 +479,24 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
   }
 
   const url = operator.statusPageUrl;
+  const shown = changelogShown(operator);
   const kept = cut.flatMap((paragraph, index) => {
     if (paragraph === null) {
       return [];
     }
 
+    // The changelog's links are read in the source's paragraph, before the
+    // status page is written in, so a status page whose path is `/changelog`
+    // is not taken for a link to this site's changelog (#446).
+    const rest = shown ? paragraph : withoutChangelogLinks(paragraph);
+
     // The status sentence is kept only with a status page, so `url` is one here.
     return index === status
-      ? [paragraph.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))]
-      : [paragraph];
+      ? [rest.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))]
+      : [rest];
   });
 
-  return (changelogShown(operator) ? kept : withoutChangelogLinks(kept)).join('\n\n');
+  return kept.join('\n\n');
 }
 
 /** `info.contact` of the API description as its source writes it. */
