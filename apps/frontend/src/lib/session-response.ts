@@ -644,9 +644,9 @@ export function ownChangeState(
  * usually has its own event arrive first: with a queue of one step, a capture
  * can then take that step and show `Done` again before the failure is known,
  * and `Could not start the queue again. Try again.` beside it would be
- * untrue. A read
- * applied during the call that already holds the restart, with no event, is
- * not told apart, as `ownChangeState` does not tell it apart.
+ * untrue. A read applied during the call that already holds the restart,
+ * with no event, is not told apart, as `ownChangeState` does not tell it
+ * apart.
  */
 export function queueStartedSince(held: HeldResponseState, startedAt: number): boolean {
   return held.queueStartedAt !== null && held.queueStartedAt > startedAt;

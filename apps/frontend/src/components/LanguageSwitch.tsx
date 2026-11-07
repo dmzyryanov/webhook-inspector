@@ -17,7 +17,7 @@ const NAMES: Record<Language, { code: string; name: string }> = {
 /**
  * Whether an event happened on the switch: a non-modal surface - the quick
  * switch, `Check signature…` - does not take it for a click or focus away from
- * itself, so it stays open while its words change (acceptance 2).
+ * itself, so it stays open while its words change.
  */
 export function isLanguageSwitch(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-testid="language-switch"]') !== null;

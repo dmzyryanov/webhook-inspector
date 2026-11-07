@@ -125,6 +125,14 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.35
+
+2026-11-07
+
+**Nothing changes on this site; a few more comments in the web page's source
+code now say what they protect in words of their own, and two read more
+plainly.** Every page looks and works exactly as before. (#445)
+
 ## 1.19.34
 
 2026-11-07
