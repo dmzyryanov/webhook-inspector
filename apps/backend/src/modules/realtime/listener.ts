@@ -124,8 +124,8 @@ const TICK_MS = 1_000;
 /**
  * How long a poke waits before its read, and a wake-up before it is sent,
  * for the commits after it to join them: the commits inside one window cause
- * one read and one wake-up (#260). The window is at most 20 ms, well under
- * what a person sees in the request list.
+ * one read and one wake-up (#260). A window of 20 ms stays well under what
+ * a person sees in the request list.
  */
 export const COALESCE_MS = 20;
 /** How long any statement on the connection may take before the channel counts as lost. */

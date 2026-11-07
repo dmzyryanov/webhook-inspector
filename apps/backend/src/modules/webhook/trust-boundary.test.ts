@@ -474,9 +474,9 @@ describe('the receive listener with PROXY protocol v2 (D111, D187)', () => {
   });
 
   it('stores the headers exactly as the client wrote them: names, case, order, duplicates, and nothing added (D187)', async () => {
-    // The request #90 was accepted with, as curl writes it on the wire: `Host`
-    // first, then the headers in the order given, `Content-Length` for the
-    // body. No `Accept-Encoding`, so none may be stored.
+    // A webhook as curl writes it on the wire (#90): `Host` first, then the
+    // headers in the order given, `Content-Length` for the body. No
+    // `Accept-Encoding`, so none may be stored.
     const body = '{"event":"test.completed"}';
     const headers: [string, string][] = [
       ['Host', 'hook.qa-tools.ru'],
