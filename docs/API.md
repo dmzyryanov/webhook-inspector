@@ -174,9 +174,12 @@ and one with another operator's names that operator's address and status page
 in their place. The changelog is the operator's too (#396): a build without
 `OPERATOR_TEXTS` publishes none, and its description leaves out every link to
 it — the addresses of the changelog and its text in Conventions and the
-relay's and Network's dates, each with the words that only introduce it — and
-the feeds' `Subscribe with a feed reader …` sentence whole, keeping the words
-that name the changelog without a link. The settings are the frontend image's build arguments in the
+relay's date, each with the words that only introduce it — and the feeds'
+`Subscribe with a feed reader …` sentence whole, keeping the words that name
+the changelog without a link. The description's Network section, this site's
+server ([Network](#network)), is the operator's as well (#386): a build
+without `OPERATOR_TEXTS` leaves it out whole, its links to the changelog with
+it, and the Stability sentence that points at it. The settings are the frontend image's build arguments in the
 table of [README.md](../README.md#installing-on-k3s-with-the-chart),
 Installing on k3s with the chart.
 
