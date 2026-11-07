@@ -125,6 +125,19 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.34
+
+2026-11-07
+
+**Nothing changes on this site; the inspector's own checks now notice if a
+session's page stops following what its live updates say about responses, a
+clear or a changed response, stops reading the session every 10 minutes while
+it shows it, or applies a load that answers after the page was left.** They
+also check that a private session keeps the key it opened with when another
+tab removes it, and a comment in the page's source code now names the part of
+the page that changes its status. Every page looks and works exactly as
+before. (#444)
+
 ## 1.19.33
 
 2026-11-07
