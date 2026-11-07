@@ -511,7 +511,7 @@ describe('the Russian home page head', () => {
   });
 });
 
-/** Acceptance 3 of issue #109: each home page names both, and itself as it names itself. */
+/** Issue #109: each home page names both, and itself by its own canonical address. */
 describe('the hreflang links of the two home pages', () => {
   const pages = {
     [HOME_TEMPLATE]: 'https://qa-tools.ru/',
@@ -718,7 +718,7 @@ function noscriptBlocks(html: string): { tag: string; inner: string }[] {
   }));
 }
 
-/** Acceptance 4 of issue #109: the Russian landing's own words, as the English one has its own. */
+/** Issue #109: the Russian landing has words of its own, as the English one has its own. */
 describe('the Russian <noscript> copy', () => {
   const html = read(RUSSIAN_TEMPLATE);
   const noscript = /<noscript>([\s\S]*?)<\/noscript>/.exec(html)?.[1] ?? '';

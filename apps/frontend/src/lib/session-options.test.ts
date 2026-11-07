@@ -61,7 +61,7 @@ describe('the windows', () => {
 });
 
 describe('createSessionInit', () => {
-  /** Acceptance 1: no body and no `Content-Type` at all, as before (D104). */
+  /** The defaults send no body and no `Content-Type` at all, as before (D104). */
   it('sends exactly { method: "POST" } with the defaults, given or not', () => {
     assert.deepEqual(createSessionInit(), { method: 'POST' });
     assert.deepEqual(createSessionInit(DEFAULT_SESSION_OPTIONS), { method: 'POST' });
@@ -69,7 +69,7 @@ describe('createSessionInit', () => {
     assert.deepEqual(Object.keys(createSessionInit()), ['method']);
   });
 
-  /** Acceptance 2: only the keys that differ, as JSON. */
+  /** Any other choice sends only the keys that differ from the default, as JSON. */
   it('sends only the keys that differ from the default, with Content-Type: application/json', () => {
     const cases: [NewSessionOptions, string][] = [
       [options(HOUR, true), '{"expiresAfterIdleSeconds":3600}'],

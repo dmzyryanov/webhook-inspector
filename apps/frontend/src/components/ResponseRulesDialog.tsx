@@ -91,8 +91,8 @@ interface ResponseRulesDialogProps {
  * in another tab show; from the first edit on it keeps the viewer's rules
  * (D152). While a save or a removal is in flight nothing closes it, so a
  * failure is shown with every rule still in place, and nothing in it can be
- * edited - no field, no rule added, duplicated, removed or moved - so what it
- * shows is what was sent, which a saved list closes it on.
+ * edited - no field, no rule added, duplicated, removed or moved - so it
+ * shows exactly the list that was sent until a successful save closes it.
  *
  * On a tablet it keeps its two columns at 704 px, the list 236 px (RT2). On a
  * phone it is a full-screen sheet: the list, whose rows open a rule as a

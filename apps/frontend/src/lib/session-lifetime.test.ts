@@ -297,7 +297,7 @@ function fixed(end: unknown): Record<string, unknown> {
 }
 
 describe('sessionExpiryLine', () => {
-  /** Acceptance 6, and E2E-01 unchanged: a default session's card is today's. */
+  /** A default session's card keeps today's line unchanged, the one E2E-01 checks. */
   it('gives today’s line, byte for byte, for a session that slides by 7 days', () => {
     assert.equal(sessionExpiryLine(sliding(604_800)), TODAY_EN);
     assert.equal(sessionExpiryLine(sliding(604_800), ru), TODAY_RU);
@@ -632,7 +632,7 @@ describe('readSessionPeriodically', () => {
     assert.equal(reads, 3);
   });
 
-  /** Acceptance 5: a `410` to that read takes the page over, as a reconnect's does. */
+  /** A `410` to that read takes the page over, as a reconnect's does. */
   it('takes the page to Session not found when the read answers 410 or 404', async (t) => {
     t.mock.timers.enable({ apis: ['setInterval'] });
 

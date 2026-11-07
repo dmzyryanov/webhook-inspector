@@ -146,11 +146,11 @@ export function EndpointCard({
       </div>
       {/*
         The field, Copy and the response button share one 36 px height, as the
-        design draws them (issue #36, acceptance 1). Each states its height and
-        a line height that fits inside it, rather than inheriting the page's 1.5
-        and padding up to it: that is how Copy came to 39.5 px and the field to
-        41.5 px. The fix is local on purpose - the shared Button keeps its
-        height everywhere else, where no frame asked for a change (D150).
+        design draws them (issue #36). Each states its height and a line height
+        that fits inside it, rather than inheriting the page's 1.5 and padding
+        up to it: that is how Copy came to 39.5 px and the field to 41.5 px. The
+        fix is local on purpose - the shared Button keeps its height everywhere
+        else, where no frame asked for a change (D150).
       */}
       <div className="mt-2 flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
         {/* The browser smoke suite reads the URL from here. The field is a bare

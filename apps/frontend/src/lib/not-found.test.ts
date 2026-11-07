@@ -328,7 +328,7 @@ describe('fixedLanguage', () => {
 });
 
 describe('switchAddress', () => {
-  /** Acceptance 7: `RU` on `/` leads to `/ru/`, `EN` on `/ru/` to `/`. */
+  /** The language switch: `RU` on `/` leads to `/ru/`, `EN` on `/ru/` to `/`. */
   it('leads from either home page to the home page of the language chosen', () => {
     assert.equal(switchAddress('/', 'ru'), '/ru/');
     assert.equal(switchAddress('/ru/', 'en'), '/');
@@ -493,7 +493,7 @@ describe('pageNotFoundView', () => {
     });
   });
 
-  /** Acceptance 7: in Russian the way home is the Russian home page (D226). */
+  /** In Russian the way home is the Russian home page (D226). */
   it('leads home to the home page of the language shown', () => {
     const address = { pathname: '/pricing', search: '', host: HOST };
 
