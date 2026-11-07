@@ -557,10 +557,11 @@ describe('createListLoads', () => {
 });
 
 /**
- * The page's own steps put together the way `SessionPage` does - `onRequest`,
- * `onResponse`, `onDeleted`, the load on mount and the reload on `ready` - so
- * the orders #174 names are followed from the event to the row. The page's
- * wiring itself was checked once in a browser during delivery.
+ * The page's own steps put together the way `hooks/useSessionSocket.ts` and
+ * `hooks/useSessionData.ts` do - `onRequest`, `onResponse`, `onDeleted` and
+ * the reload on `ready` in the first, the load on mount (`useFirstLoad`) in
+ * the second - so the orders #174 names are followed from the event to the
+ * row. The page's wiring itself was checked once in a browser during delivery.
  */
 function sessionPage() {
   const loads = createListLoads();

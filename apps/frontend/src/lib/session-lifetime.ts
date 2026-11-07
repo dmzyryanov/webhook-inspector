@@ -230,7 +230,8 @@ export type SessionPageStatus = 'loading' | 'ready' | 'unavailable' | 'error';
  * socket is not reopened after a refusal, so nothing would correct a page
  * that went back to the session. Every other change is taken as asked.
  *
- * `SessionPage` changes its status through this and nothing else.
+ * `hooks/useSessionData.ts` changes the page's status through this and
+ * nothing else.
  */
 export function settlePageStatus(
   current: SessionPageStatus,

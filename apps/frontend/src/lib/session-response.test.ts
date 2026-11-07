@@ -1095,7 +1095,7 @@ describe('a state without rules, through every path the page takes it by (D246)'
     queue: null,
   } as unknown as SessionResponseState;
 
-  /** What `takeResponseEvent` in `SessionPage.tsx` does with an event: the held state, then the session shown. */
+  /** What `takeResponseEvent` in `hooks/useSessionData.ts` does with an event: the held state, then the session shown. */
   function pageTakes(
     held: HeldResponseState,
     session: SessionDetails,

@@ -1,10 +1,11 @@
 /**
  * What the session page's hook tests hold around the hook they render
  * (issue #443): the session they show, a browser's `localStorage` in memory,
- * a request as the list and the detail panel receive it, the API's answers,
- * and a `fetch` that holds each call until the test answers it. Every
- * `hooks/use*.test.ts` that needs one imports it from here, so a change to
- * what the API answers is made once and a new hook test copies none of it.
+ * a request as the list and the detail panel receive it, a response state as
+ * `session.updated` carries it, the API's answers, and a `fetch` that holds
+ * each call until the test answers it. Every `hooks/use*.test.ts` that needs
+ * one imports it from here, so a change to what the API answers is made once
+ * and a new hook test copies none of it.
  *
  * Like the rest of `src/testing/`, this module is imported by tests alone,
  * never by the bundle, and its name keeps it out of the runner's discovery
@@ -15,7 +16,12 @@
 import type { TestContext } from 'node:test';
 import { setImmediate } from 'node:timers';
 import { act } from 'react';
-import type { QueueStep, RequestDetails, RequestListItem } from '@webhook-inspector/shared';
+import type {
+  QueueStep,
+  RequestDetails,
+  RequestListItem,
+  SessionResponseState,
+} from '@webhook-inspector/shared';
 import type { ReadStateStorage } from '../lib/read-state.ts';
 
 /** The session the hook tests' pages show, a well-formed id (D161). */
@@ -68,6 +74,13 @@ export function detail(id: string, body = '{"type":"charge"}'): RequestDetails {
     httpVersion: '1.1',
     response: null,
   };
+}
+
+/** The session's response changed to answer `status`, as `session.updated` carries it. */
+export function answering(status: number): SessionResponseState {
+  const response = { status, headers: [], body: null, delayMs: 0, template: false };
+
+  return { response, customResponse: response, queue: null, rules: [] };
 }
 
 /** The address `getRequestDetails` asks for request `id` of `SESSION`. */
