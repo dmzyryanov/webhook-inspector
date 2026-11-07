@@ -48,6 +48,22 @@ const PAGES_PLUGIN = 'webhook-inspector-api-reference-pages';
 /** The name of `docsPagePlugin()` of `scripts/site-operator.mjs`. */
 const DOCS_PLUGIN = 'webhook-inspector-docs-operator';
 
+/**
+ * The most the child may print, in bytes. Its one line carries the
+ * changelog's text and both feeds, which grow with every release: about
+ * 0.5 MB at 1.19.29, near half of `spawnSync`'s default of 1 MiB, past which
+ * the child is killed and its answer lost.
+ */
+const CHILD_OUTPUT_BYTES = 256 * 1024 * 1024;
+
+/**
+ * How long the child may run, in milliseconds; it ends in about a second.
+ * `spawnSync` blocks the test's event loop until the child ends, so neither
+ * the runner's `--test-timeout` nor the exit guard can end a child that
+ * hangs: it is killed at this time instead, and the test fails.
+ */
+const CHILD_TIMEOUT_MS = 30_000;
+
 /** The dev server of a build given `env` as its whole environment, asked `requests`. */
 export function devServer(
   env: Readonly<Record<string, string | undefined>>,
@@ -56,8 +72,34 @@ export function devServer(
   const run = spawnSync(
     process.execPath,
     [fileURLToPath(import.meta.url), JSON.stringify(requests)],
-    { cwd: FRONTEND, env, encoding: 'utf8' },
+    {
+      cwd: FRONTEND,
+      env,
+      encoding: 'utf8',
+      maxBuffer: CHILD_OUTPUT_BYTES,
+      timeout: CHILD_TIMEOUT_MS,
+      // A signal the child cannot catch, so the kill ends it.
+      killSignal: 'SIGKILL',
+    },
   );
+
+  // A child killed for its output or its time has no status: its own cause is
+  // named, rather than a configuration that failed to load.
+  if (run.error !== undefined) {
+    const { code } = run.error as NodeJS.ErrnoException;
+    const cause =
+      code === 'ENOBUFS'
+        ? `it printed more than ${CHILD_OUTPUT_BYTES} bytes, its maxBuffer`
+        : code === 'ETIMEDOUT'
+          ? `it ran longer than ${CHILD_TIMEOUT_MS} ms`
+          : run.error.message;
+
+    throw new Error(`the dev server's child process was stopped: ${cause}`, { cause: run.error });
+  }
+
+  if (run.signal !== null) {
+    throw new Error(`the dev server's child process was killed by ${run.signal}:\n${run.stderr}`);
+  }
 
   if (run.status !== 0) {
     throw new Error(`the dev server's configuration did not load:\n${run.stderr}`);
