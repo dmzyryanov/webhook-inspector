@@ -227,6 +227,15 @@ const MADE_UP_LIB = [
   'notes.md',
 ];
 
+/**
+ * `map` with `from` replaced by `to`; fails when `map` does not hold `from`,
+ * so a fixture that no longer matches the made-up map is not read unchanged.
+ */
+function edited(map: string, from: string, to: string): string {
+  assert.ok(map.includes(from), `the made-up map holds ${JSON.stringify(from)}`);
+  return map.replace(from, to);
+}
+
 describe('the module map check, on made-up maps', () => {
   it('passes a map that names each module once, needing no line for tests or other files', () => {
     assert.deepEqual(moduleMapProblems(MADE_UP_MAP, MADE_UP_BACKEND, MADE_UP_LIB), []);
@@ -353,13 +362,49 @@ describe('the module map check, on made-up maps', () => {
   });
 
   it('reads no bullet after the next heading as part of the map', () => {
-    const map = MADE_UP_MAP.replace('## Limiter glossary', '### Another section');
-    assert.deepEqual(moduleMapProblems(map, MADE_UP_BACKEND, MADE_UP_LIB), []);
+    // No blank line separates the frontend list, the heading and the bullet
+    // below it, so only the section's end keeps that bullet out of the list.
+    for (const heading of ['## Limiter glossary', '### Another section']) {
+      const map = edited(MADE_UP_MAP, '\n\n## Limiter glossary\n\n', `\n${heading}\n`);
+      assert.deepEqual(moduleMapProblems(map, MADE_UP_BACKEND, MADE_UP_LIB), [], heading);
+      assert.deepEqual(
+        moduleMapProblems(map, [...MADE_UP_BACKEND, 'gamma'], [...MADE_UP_LIB, 'five.ts']),
+        [
+          'backend module `gamma` (apps/backend/src/modules/gamma/) has no bullet in the module map',
+          'frontend module `five.ts` (apps/frontend/src/lib/five.ts) is named in no group of the module map',
+        ],
+        heading,
+      );
+    }
+
+    // A paragraph naming the frontend directory, and its list, after the next
+    // heading belong to another section, so the map still has no frontend list.
+    const elsewhere = edited(
+      edited(MADE_UP_MAP, "The frontend's `apps/frontend/src/lib/`,", "The frontend's library,"),
+      '- `gamma` — a bullet after the map, not part of it; `five.ts`.',
+      'Another list of `apps/frontend/src/lib/`, not the map:\n- **Group three** — `five.ts`.',
+    );
+    assert.deepEqual(moduleMapProblems(elsewhere, MADE_UP_BACKEND, MADE_UP_LIB), [
+      'the module map has no frontend list: no "- " bullets follow a paragraph naming `apps/frontend/src/lib/`',
+    ]);
+  });
+
+  it("reads a list's paragraph wrapped onto further lines before its bullets as one", () => {
+    const wrapped = edited(
+      edited(
+        MADE_UP_MAP,
+        "The backend's modules, `apps/backend/src/modules/`, which",
+        "The backend's modules, `apps/backend/src/modules/`,\nwhich",
+      ),
+      "The frontend's `apps/frontend/src/lib/`, one flat directory, from",
+      "The frontend's `apps/frontend/src/lib/`,\none flat directory,\nfrom",
+    );
+    assert.deepEqual(moduleMapProblems(wrapped, MADE_UP_BACKEND, MADE_UP_LIB), []);
     assert.deepEqual(
-      moduleMapProblems(map, [...MADE_UP_BACKEND, 'gamma'], [...MADE_UP_LIB, 'five.ts']),
+      moduleMapProblems(wrapped, [...MADE_UP_BACKEND, 'gamma'], [...MADE_UP_LIB, 'x-made-up.ts']),
       [
         'backend module `gamma` (apps/backend/src/modules/gamma/) has no bullet in the module map',
-        'frontend module `five.ts` (apps/frontend/src/lib/five.ts) is named in no group of the module map',
+        'frontend module `x-made-up.ts` (apps/frontend/src/lib/x-made-up.ts) is named in no group of the module map',
       ],
     );
   });
