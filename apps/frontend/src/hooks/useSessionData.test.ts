@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { act, createElement, useCallback } from 'react';
+import { act, createElement, useCallback, useState } from 'react';
 import { ErrorCode, type RequestListItem, type SessionDetails } from '@webhook-inspector/shared';
 import {
   ACCESS_KEYS_KEY,
@@ -68,8 +68,11 @@ interface Page {
 /**
  * The hooks rendered as the page holds them: `useSessionData`, and, with
  * `withFirstLoad`, `useFirstLoad` after it, whose `onLoaded` notes what it was
- * handed and puts the page on `ready`, as the page's does, and whose status
- * setter notes each status the load sets before the page takes it.
+ * handed and which version of it was called, and puts the page on `ready`, as
+ * the page's does, and whose status setter notes each status the load sets
+ * before the page takes it. A new version of `onLoaded`, as the page makes one
+ * when what it reads changes, starts the first load again with the page still
+ * there (`restartFirstLoad`).
  */
 async function renderData({
   withFirstLoad,
@@ -79,8 +82,9 @@ async function renderData({
   storage?: ReadStateStorage;
 }) {
   const seen: { current: Page | null } = { current: null };
-  const loaded: { session: SessionDetails; requests: string[] }[] = [];
+  const loaded: { session: SessionDetails; requests: string[]; onLoaded: number }[] = [];
   const loadStatuses: SessionPageStatus[] = [];
+  const nextOnLoaded: { current: (() => void) | null } = { current: null };
   const container = browser.document.createElement('div');
 
   browser.document.body.appendChild(container);
@@ -94,12 +98,16 @@ async function renderData({
   function PageProbe(): null {
     const data = useSessionData({ sessionId: SESSION });
     const { setStatus } = data;
+    const [version, setVersion] = useState(1);
+
+    nextOnLoaded.current = () => setVersion((current) => current + 1);
+
     const onLoaded = useCallback(
       (session: SessionDetails, requests: RequestListItem[]): void => {
-        loaded.push({ session, requests: requests.map((item) => item.id) });
+        loaded.push({ session, requests: requests.map((item) => item.id), onLoaded: version });
         setStatus('ready');
       },
-      [setStatus],
+      [setStatus, version],
     );
     const setLoadStatus = useCallback(
       (next: SessionPageStatus): void => {
@@ -156,6 +164,12 @@ async function renderData({
 
       return result;
     },
+    /** Hands the first load a new version of `onLoaded`, which starts it again, the page still there. */
+    restartFirstLoad: () =>
+      act(async () => {
+        assert.ok(nextOnLoaded.current, 'the first load was not rendered');
+        nextOnLoaded.current();
+      }),
     unmount: () => act(async () => root.unmount()),
   };
 }
@@ -402,5 +416,74 @@ describe('useFirstLoad', () => {
 
     assert.deepEqual(page.loadStatuses, []);
     assert.equal(accessKeyFor(SESSION, null), KEY);
+  });
+
+  /**
+   * The first load starts again whenever one of its options changes - here a
+   * new version of `onLoaded` - and the page stays. The load it replaced
+   * answers first and applies nothing: not its session, not its list, not
+   * its `onLoaded`. The load that replaced it is applied as a first load, with
+   * what the socket brought after the replaced one answered on top, and an
+   * event after it is shown at once. What the replaced load lets go of as it
+   * answers, its list load (`listLoad.abandon()`) and its session read
+   * (`dropSessionRead`), is not on screen: a list load or a session read left
+   * in flight only keeps what the socket brings, for an answer of its own
+   * that never comes. So this pins what the page shows across the restart,
+   * not those two calls.
+   */
+  it('applies nothing of a first load started again in flight, and the load that replaced it with what the socket brought on top (D133, D152, #39)', async (t) => {
+    const calls = holdFetch(t);
+    const page = await renderData({ withFirstLoad: true });
+
+    await page.restartFirstLoad();
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [SESSION_URL, LIST_URL, SESSION_URL, LIST_URL],
+    );
+
+    // The replaced load answers first, while the one that replaced it is in flight.
+    await calls[0]!.answer(200, sessionRead({ requestsCount: 1 }));
+    await calls[1]!.answer(200, [row('req-stale')]);
+
+    // Through `length` and `map`, which an assertion does not narrow for the checks below.
+    assert.equal(page.loaded.length, 0, 'the replaced load was handed to the page');
+    assert.equal(page.session(), null, 'the replaced load put its session on screen');
+    assert.deepEqual(
+      page.current.data.requests.map((item) => item.id),
+      [],
+      'the replaced load put its list on screen',
+    );
+    assert.equal(page.status(), 'loading');
+    assert.deepEqual(page.loadStatuses, []);
+
+    // The socket delivers a request, as `onRequest` does, and another viewer
+    // changes the response, before the load that replaced it answers.
+    await page.run((data) => {
+      data.listLoads.received('req-new');
+      data.setRequests((current) => mergeRequests(current, [row('req-new')]));
+    });
+    await page.run((data) => data.takeResponseEvent({ type: 'updated', state: answering(201) }));
+
+    await calls[2]!.answer(200, sessionRead({ requestsCount: 2 }));
+    await calls[3]!.answer(200, [row('req-a')]);
+
+    assert.deepEqual(
+      page.loaded.map((done) => [done.session.requestsCount, done.requests, done.onLoaded]),
+      [[2, ['req-a'], 2]],
+    );
+    assert.deepEqual(page.current.data.requests.map((item) => item.id).sort(), [
+      'req-a',
+      'req-new',
+    ]);
+    assert.equal(page.session()?.requestsCount, 2);
+    assert.equal(page.session()?.response?.status, 201);
+    assert.equal(page.status(), 'ready');
+    assert.deepEqual(page.loadStatuses, []);
+
+    // What the socket brings afterwards is shown at once.
+    await page.run((data) => data.takeResponseEvent({ type: 'updated', state: answering(202) }));
+    assert.equal(page.session()?.response?.status, 202);
+
+    await page.unmount();
   });
 });

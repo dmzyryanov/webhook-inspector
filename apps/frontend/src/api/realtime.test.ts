@@ -398,7 +398,7 @@ describe('openSessionSocket', () => {
    * answers arrive only after the deletion has closed the socket with `4404`.
    * The socket is not reopened after a refusal, so nothing would correct a
    * page that went back to the session then. Both change the page's status as
-   * `SessionPage` changes it, through `settlePageStatus`.
+   * `hooks/useSessionData.ts` changes it, through `settlePageStatus`.
    */
   it('leaves a page refused by a 4404 close on Session not found when its load on mount answers afterwards', async () => {
     FakeSocket.instances = [];
