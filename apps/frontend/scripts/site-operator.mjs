@@ -134,10 +134,15 @@ export const DESCRIPTION_PARAGRAPHS = Object.freeze({
 /**
  * An address of the changelog's (D184, D212) on any origin, as the API
  * description writes one: `/changelog`, `/changelog.md`, `/changelog.xml` or
- * `/changelog-breaking.xml`. Each part is a run of one class, so a scan is
+ * `/changelog-breaking.xml`. The origin's host is a host name or an IPv6
+ * address in brackets, such as `http://[::1]:43979`: the hex digits and
+ * colons `site-origin.mjs` accepts there (`SITE_IPV6_HOST`), their letters
+ * in either case as a host name's are, so the removal is no narrower than
+ * the origins a build may name. Each part is a run of one class or fixed
+ * text, and no character begins both of the host's two runs, so a scan is
  * linear in the text's length.
  */
-const CHANGELOG_ADDRESS = String.raw`https?:\/\/[A-Za-z0-9.-]+(?::\d+)?\/changelog(?:\.md|\.xml|-breaking\.xml)?`;
+const CHANGELOG_ADDRESS = String.raw`https?:\/\/(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(?::\d+)?\/changelog(?:\.md|\.xml|-breaking\.xml)?`;
 
 /** Where such an address ends in a sentence: before a comma, a parenthesis, a space, or a full stop that ends it. */
 const ADDRESS_END = String.raw`(?=[,;)\s]|\.(?![\w-])|$)`;

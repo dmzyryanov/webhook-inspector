@@ -87,7 +87,8 @@ const { aboutEnglish, aboutParagraphText } = await import('./about-copy.ts');
 const { legalPages } = await import('./legal-copy.ts');
 // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
 const buildCheck = await import('../../scripts/check-build.mjs');
-const { PRODUCTION_ORIGINS, SITE_ORIGINS } = await import('../../scripts/site-origin.mjs');
+const { parseSiteOrigin, PRODUCTION_ORIGINS, SITE_ORIGINS } =
+  await import('../../scripts/site-origin.mjs');
 
 const { MemoryRouter } = await import('react-router-dom');
 const { LanguageProvider } = await import('../i18n/LanguageProvider.tsx');
@@ -146,6 +147,16 @@ const OTHER_ORIGINS = {
 };
 
 /**
+ * A copy's addresses at IPv6 hosts, as `site-origin.mjs` accepts them, with
+ * no second origin, as `OTHER_ORIGINS` has none (#426).
+ */
+const IPV6_ORIGINS = {
+  app: 'http://[::1]:43979',
+  receive: 'http://[::1]:43978',
+  alias: null,
+};
+
+/**
  * The names of production's operator a build without its settings carries
  * nowhere: the four issue #369 lists, and the server's address, which the
  * API description's Network section publishes (issue #386).
@@ -183,6 +194,23 @@ const NETWORK_PART = [
   `Addresses.${NETWORK_POINTER}`,
 ].join('\n\n');
 const NETWORK_PART_LEFT = '## Stability\n\nAddresses.';
+
+/**
+ * A made-up API description that `operatorDescription` reads: the
+ * operator's four paragraphs, `NETWORK_PART` and the paragraphs `rest`. A
+ * build without the operator's texts keeps `NETWORK_PART_LEFT` of it and
+ * `rest` less the changelog's links.
+ */
+function describedWith(...rest: string[]): string {
+  return [
+    'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
+    "QA Tools is a tester's personal project.",
+    'By using the API or the MCP server, you agree to the Terms of Use.',
+    'Subscribe with a feed reader: https://x.example/changelog.xml.',
+    NETWORK_PART,
+    ...rest,
+  ].join('\n\n');
+}
 
 /** What a page's markup reads as, its tags left out. */
 const text = (markup: string) => markup.replace(/<[^>]*>/g, '');
@@ -722,15 +750,7 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
   });
 
   it('leave a changelog link out on any origin, and refuse one they cannot read, never letting it through (issue #396)', () => {
-    const paragraphs = (...rest: string[]) =>
-      [
-        'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
-        "QA Tools is a tester's personal project.",
-        'By using the API or the MCP server, you agree to the Terms of Use.',
-        'Subscribe with a feed reader: https://x.example/changelog.xml.',
-        NETWORK_PART,
-        ...rest,
-      ].join('\n\n');
+    const paragraphs = describedWith;
 
     for (const [written, left] of [
       ['See it, http://inspector.example:8080/changelog, now.', 'See it, now.'],
@@ -777,6 +797,57 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     );
   });
 
+  it('leave a changelog link out after an IPv6 origin as after a host name, and refuse one they cannot read (#426)', () => {
+    // Origins a build may name, each as `site-origin.mjs` gives it back, and
+    // one in capitals, which `URL` would lower but the removal reads anyway.
+    for (const origin of [
+      IPV6_ORIGINS.app,
+      'https://[2001:db8::8a2e:370:7334]',
+      'http://[::ffff:102:304]:8080',
+      'https://[::]:1',
+      'http://[1:2:3:4:5:6:7:8]:65535',
+      'http://[FE80::1]:8080',
+    ]) {
+      assert.equal(parseSiteOrigin('APP_ORIGIN', origin, ''), origin.toLowerCase(), origin);
+
+      for (const [written, left] of [
+        [`See it, ${origin}/changelog, now.`, 'See it, now.'],
+        [`Read the changelog, ${origin}/changelog.md.`, 'Read the changelog.'],
+        [`Feeds, ${origin}/changelog-breaking.xml; and more.`, 'Feeds; and more.'],
+        [`End, ${origin}/changelog`, 'End'],
+        [`Both (text: ${origin}/changelog.xml) here.`, 'Both here.'],
+        [
+          `Kept: ${origin}/changelogs and ${origin}/x/changelog.`,
+          `Kept: ${origin}/changelogs and ${origin}/x/changelog.`,
+        ],
+      ] as const) {
+        assert.equal(
+          operatorDescription(describedWith(written), NO_OPERATOR),
+          `${NETWORK_PART_LEFT}\n\n${left}`,
+          written,
+        );
+        assert.ok(
+          operatorDescription(describedWith(written), PRODUCTION_OPERATOR).endsWith(
+            `\n\n${written}`,
+          ),
+          written,
+        );
+      }
+      for (const written of [
+        `See ${origin}/changelog for it.`,
+        `At ${origin}/changelog.md.`,
+        `The page ${origin}/changelog#v1.0.0, once.`,
+        `Linked, ${origin}/changelog/ here.`,
+      ]) {
+        assert.throws(
+          () => operatorDescription(describedWith(written), NO_OPERATOR),
+          /links the changelog where the build cannot leave the link out/,
+          written,
+        );
+      }
+    }
+  });
+
   it('read hostile descriptions at growing sizes in time linear in their length (issue #396)', () => {
     const head = [
       'To check whether Webhook Inspector is up, open https://status.qa-tools.ru.',
@@ -800,6 +871,44 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
         .map((sample) => sample.repeat(Math.ceil(size / samples.length / sample.length)))
         .join('');
       const hostile = `${head}\n\n${body}, https://x.example/changelog.`;
+
+      times.push(
+        fastestRun(() => {
+          // The one link, at the end, is left out; nothing else is a link.
+          assert.equal(
+            operatorDescription(hostile, NO_OPERATOR),
+            `${NETWORK_PART_LEFT}\n\n${body}.`,
+          );
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time:
+    // linear with room for a busy runner, nowhere near a quadratic scan.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
+  });
+
+  it('read hostile IPv6 hosts at growing sizes in time linear in their length (#426)', () => {
+    // Brackets never closed, closed with no path, a port with no digits, a
+    // path one letter short, and a parenthesis left open after an address.
+    const samples = [
+      ', http://[',
+      ', https://[::::::::::::',
+      ', http://[0:0:0:0:0:0:0:0',
+      ', http://[a:http://[a:',
+      ', http://[::1]',
+      ', http://[::1]:',
+      ', http://[::1]:43979/changelo',
+      ' (aaaa: http://[::1]:8080',
+      ' (a: http://[',
+    ];
+    const times: number[] = [];
+
+    for (const size of [10_000, 100_000, 400_000]) {
+      const body = samples
+        .map((sample) => sample.repeat(Math.ceil(size / samples.length / sample.length)))
+        .join('');
+      const hostile = describedWith(`${body}, ${IPV6_ORIGINS.app}/changelog.`);
 
       times.push(
         fastestRun(() => {
@@ -1192,6 +1301,64 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
     assert.equal(
       check.changelogLinksIn(buildLlmsFiles(OTHER_ORIGINS, PRODUCTION_OPERATOR)['llms.txt']).length,
       1,
+    );
+  });
+
+  it('are what the build writes at IPv6 origins: no changelog link, and the description a host name copy’s (#426)', () => {
+    const files = siteFiles(IPV6_ORIGINS, NO_OPERATOR);
+    const llmsFiles = buildLlmsFiles(IPV6_ORIGINS, NO_OPERATOR);
+    const described = (text: string) =>
+      (JSON.parse(text) as { info: { description: string } }).info.description;
+    const description = described(files['openapi.json'] as string);
+
+    // Named for the IPv6 origins, so the links below were there to leave out.
+    assert.ok(description.includes(`${IPV6_ORIGINS.app}/`));
+    assert.equal(described(openapi).match(/https:\/\/qa-tools\.ru\/changelog\b/g)?.length, 7);
+    // No link to the changelog in the files that carry the description, nor
+    // in the others the build writes from the same sources; `/docs`'s head
+    // links its feeds relative to any origin.
+    for (const [name, text] of [
+      ['openapi.json', files['openapi.json'] as string],
+      ['llms-full.txt', llmsFiles['llms-full.txt']],
+      ['llms.txt', llmsFiles['llms.txt']],
+      ['sitemap.xml', files['sitemap.xml'] as string],
+      ['docs/index.html', operatorDocsPage(read('../../docs/index.html'), NO_OPERATOR)],
+    ] as const) {
+      assert.deepEqual(check.changelogLinksIn(text), [], name);
+      assert.doesNotMatch(text, /\/changelog|Subscribe with a feed reader/, name);
+    }
+    // The parenthesis and the apposition left out with their links.
+    for (const left of [
+      'until the date its 1.16.0 entry gives, which says what happens to it then.',
+      'marked **Breaking** in its entry of the changelog. Entries',
+    ]) {
+      assert.ok(description.includes(left), left);
+    }
+
+    // A copy at host names on the same scheme and ports, whose files differ
+    // from these only in the host: read back with its hosts, each file is
+    // that copy's, so the build left out at an IPv6 origin what it leaves
+    // out at a host name. The relay script's SHA-256 differs, the script
+    // naming its own origin.
+    const named = {
+      app: 'http://inspector.example:43979',
+      receive: 'http://hook.inspector.example:43978',
+      alias: null,
+    };
+    const asHostNames = (text: string) =>
+      text
+        .replaceAll('[::1]:43979', 'inspector.example:43979')
+        .replaceAll('[::1]:43978', 'hook.inspector.example:43978');
+    const unhashed = (text: string) => text.replace(/\b[0-9a-f]{64}\b/g, '<sha-256>');
+
+    assert.ok(!openapi.includes('[::1]') && !openapi.includes('inspector.example'));
+    assert.equal(
+      unhashed(asHostNames(description)),
+      unhashed(described(openApiText(named, NO_OPERATOR))),
+    );
+    assert.equal(
+      unhashed(asHostNames(llmsFiles['llms-full.txt'])),
+      unhashed(buildLlmsFiles(named, NO_OPERATOR)['llms-full.txt']),
     );
   });
 });
@@ -1716,6 +1883,18 @@ describe('the build check of production’s operator names (issue #369, criterio
       ['the changelog, https://a.example/changelog. The', ['https://a.example/changelog']],
       ['(https://a.example/changelog)', ['https://a.example/changelog']],
       ['/changelog /changelog', ['/changelog']],
+      // After an IPv6 origin, with a port or without (#426).
+      ['<loc>http://[::1]:43979/changelog</loc>', ['http://[::1]:43979/changelog']],
+      [
+        '- [changelog.md](http://[::1]:43979/changelog.md): what',
+        ['http://[::1]:43979/changelog.md'],
+      ],
+      [
+        '"all changes, http://[2001:db8::1]:8080/changelog.xml · "',
+        ['http://[2001:db8::1]:8080/changelog.xml'],
+      ],
+      ['feeds: https://[::1]/changelog-breaking.xml.', ['https://[::1]/changelog-breaking.xml']],
+      ['(http://[FE80::1]:1/changelog#v1.0.0)', ['http://[FE80::1]:1/changelog']],
     ] as const) {
       assert.deepEqual(check.changelogLinksIn(textOf), found, textOf);
     }
@@ -1735,9 +1914,117 @@ describe('the build check of production’s operator names (issue #369, criterio
       '//changelog',
       '%2Fchangelog',
       'ftp://a.example/changelog',
+      'http://[::1]:43979/changelogs',
+      'http://[::1]:43979/x/changelog',
+      'http://[::1]:43979/changelog.mdx',
     ]) {
       assert.deepEqual(check.changelogLinksIn(textOf), [], textOf);
     }
+  });
+
+  it('reads a bracketed IPv6 host where site-origin.mjs accepts one, in the check and the removal alike, and nothing it refuses (#426)', () => {
+    // Origins a build may name, as `parseSiteOrigin` gives them back.
+    for (const host of [
+      '[::1]',
+      '[::]',
+      '[2001:db8::8a2e:370:7334]',
+      '[::ffff:102:304]',
+      '[1:2:3:4:5:6:7:8]',
+      '[fe80::1]',
+    ]) {
+      const origin = `http://${host}:8080`;
+      const written = `See it, ${origin}/changelog.xml, now.`;
+
+      assert.equal(parseSiteOrigin('APP_ORIGIN', origin, ''), origin);
+      assert.deepEqual(check.changelogLinksIn(written), [`${origin}/changelog.xml`], host);
+      assert.equal(
+        operatorDescription(describedWith(written), NO_OPERATOR),
+        `${NETWORK_PART_LEFT}\n\nSee it, now.`,
+        host,
+      );
+    }
+
+    // Hosts it refuses, which no build names and no browser opens: not read
+    // as an origin, so neither found nor left out.
+    for (const host of ['[::1', '[]', '[::g]', '[1.2.3.4]', '[::1%25eth0]', '[ ::1]', '[[::1]]']) {
+      const origin = `http://${host}:8080`;
+      const written = `See it, ${origin}/changelog.xml, now.`;
+
+      assert.throws(() => parseSiteOrigin('APP_ORIGIN', origin, ''), host);
+      assert.deepEqual(check.changelogLinksIn(written), [], host);
+      assert.equal(
+        operatorDescription(describedWith(written), NO_OPERATOR),
+        `${NETWORK_PART_LEFT}\n\n${written}`,
+        host,
+      );
+    }
+  });
+
+  it('refuses a link to each of the changelog’s addresses after an IPv6 origin in a build without the operator’s texts, naming the file and the link (#426)', () => {
+    const [page, text, feed, breaking] = [
+      '/changelog',
+      '/changelog.md',
+      '/changelog.xml',
+      '/changelog-breaking.xml',
+    ].map((path) => `${IPV6_ORIGINS.app}${path}`);
+    const dist = treeOf({
+      'llms.txt': `- [changelog.md](${text}): what changed`,
+      'llms-full.txt': `the changelog, ${page}, which says it`,
+      'about/index.html': `<a class="header-link" href="${feed}">Feed</a>`,
+      'sitemap.xml': `<urlset><url><loc>${breaking}</loc></url></urlset>`,
+    });
+    const links = (problems: string[]) =>
+      problems.filter((problem) => /^\S+ links /.test(problem)).sort();
+    const refusal = (file: string, link: string | undefined) =>
+      `${file} links ${link}, though OPERATOR_TEXTS does not show the operator's texts and the build has no changelog`;
+
+    try {
+      assert.deepEqual(links(check.checkBuild(dist, new Date(), [], IPV6_ORIGINS, NO_OPERATOR)), [
+        refusal('about/index.html', feed),
+        refusal('llms-full.txt', page),
+        refusal('llms.txt', text),
+        refusal('sitemap.xml', breaking),
+      ]);
+      // With the operator's texts the build links its changelog.
+      for (const operator of [PRODUCTION_OPERATOR, { ...OTHER_OPERATOR, texts: true }]) {
+        assert.deepEqual(links(check.checkBuild(dist, new Date(), [], IPV6_ORIGINS, operator)), []);
+      }
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
+  });
+
+  it('scans hostile IPv6 hosts for changelog links at growing sizes in time linear in its length (#426)', () => {
+    // Brackets never closed, closed with no path, a port with no digits, and
+    // paths one letter short or one letter long.
+    const samples = [
+      'http://[',
+      'https://[::::::::',
+      'http://[0:0:0:0:0:0:0:',
+      'http://[a:http://[a:',
+      'http://[::1]',
+      'http://[::1]:',
+      'https://[::1]:43979/changelog-breaking.xm',
+      'http://[::1]/changelo',
+      '[::1]/changelog.m',
+    ];
+    const times: number[] = [];
+
+    for (const size of [100_000, 1_000_000, 4_000_000]) {
+      const textOf = samples
+        .map((sample) => sample.repeat(Math.ceil(size / samples.length / sample.length)))
+        .join(' ');
+      const link = `${IPV6_ORIGINS.app}/changelog.xml`;
+
+      times.push(
+        fastestRun(() => {
+          assert.deepEqual(check.changelogLinksIn(textOf), []);
+          assert.deepEqual(check.changelogLinksIn(`${textOf} ${link}`), [link]);
+        }),
+      );
+    }
+
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 
   it('scans hostile text for changelog links at growing sizes in time linear in its length (issue #396)', () => {

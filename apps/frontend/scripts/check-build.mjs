@@ -796,13 +796,18 @@ const TEXT_FILE = /\.(?:html|txt|xml|md|json|mjs|js|css|svg|webmanifest)$/;
  * path under it, `/changelog.md`, `/changelog.xml` or
  * `/changelog-breaking.xml`, written relative or after an http or https
  * origin, as a page's `href`, a sitemap's `<loc>`, a Markdown link or the
- * API description's prose writes one. A path that only ends in
- * `/changelog`, such as `apps/frontend/changelog/`, is no address of the
- * site's, nor are `/changelogs` and `/changelog.mdx`. Each part is a run of
- * one class or fixed text, so a scan is linear in the text's length.
+ * API description's prose writes one. The origin's host is a host name or
+ * an IPv6 address in brackets, such as `http://[::1]:43979`: the hex digits
+ * and colons `site-origin.mjs` accepts there (`SITE_IPV6_HOST`), their
+ * letters in either case, so no origin a build may name hides a link from
+ * the check. A path that only ends in `/changelog`, such as
+ * `apps/frontend/changelog/`, is no address of the site's, nor are
+ * `/changelogs` and `/changelog.mdx`. Each part is a run of one class or
+ * fixed text, and no character begins both of the host's two runs, so a
+ * scan is linear in the text's length.
  */
 export const CHANGELOG_LINK_PATTERN =
-  /(?:https?:\/\/[A-Za-z0-9.-]+(?::\d+)?|(?<![\w.~%/-]))\/changelog(?:-breaking\.xml|\.md|\.xml)?(?![\w-]|\.\w)/g;
+  /(?:https?:\/\/(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(?::\d+)?|(?<![\w.~%/-]))\/changelog(?:-breaking\.xml|\.md|\.xml)?(?![\w-]|\.\w)/g;
 
 /**
  * The files whose links the changelog check reads: every text file but a
