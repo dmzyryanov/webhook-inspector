@@ -1,17 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { act, createElement, useCallback } from 'react';
+import { ErrorCode, type RequestListItem, type SessionDetails } from '@webhook-inspector/shared';
 import {
-  ErrorCode,
-  type RequestListItem,
-  type SessionDetails,
-  type SessionResponseState,
-} from '@webhook-inspector/shared';
-import { ACCESS_KEYS_KEY } from '../lib/access-keys.ts';
-import type { ReadStateStorage } from '../lib/read-state.ts';
+  ACCESS_KEYS_KEY,
+  accessKeyFor,
+  holdAccessKey,
+  releaseAllAccessKeys,
+} from '../lib/access-keys.ts';
+import { readStateKey, recordRead, type ReadStateStorage } from '../lib/read-state.ts';
 import { mergeRequests } from '../lib/requests.ts';
-import type { SessionPageStatus } from '../lib/session-lifetime.ts';
-import { holdFetch, memoryStorage, row, SESSION } from '../testing/hook-helpers.ts';
+import { SESSION_READ_INTERVAL_MS, type SessionPageStatus } from '../lib/session-lifetime.ts';
+import {
+  answering,
+  holdFetch,
+  memoryStorage,
+  row,
+  SESSION,
+  settle,
+} from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { FirstLoad, SessionData } from './useSessionData.ts';
 
@@ -49,13 +56,6 @@ function sessionRead(overrides: Partial<SessionDetails> = {}): SessionDetails {
   };
 }
 
-/** The session's response changed to answer `status`, as `session.updated` carries it. */
-function answering(status: number): SessionResponseState {
-  const response = { status, headers: [], body: null, delayMs: 0, template: false };
-
-  return { response, customResponse: response, queue: null, rules: [] };
-}
-
 const SESSION_URL = `/api/sessions/${SESSION}`;
 const LIST_URL = `/api/sessions/${SESSION}/requests`;
 
@@ -68,7 +68,8 @@ interface Page {
 /**
  * The hooks rendered as the page holds them: `useSessionData`, and, with
  * `withFirstLoad`, `useFirstLoad` after it, whose `onLoaded` notes what it was
- * handed and puts the page on `ready`, as the page's does.
+ * handed and puts the page on `ready`, as the page's does, and whose status
+ * setter notes each status the load sets before the page takes it.
  */
 async function renderData({
   withFirstLoad,
@@ -79,6 +80,7 @@ async function renderData({
 }) {
   const seen: { current: Page | null } = { current: null };
   const loaded: { session: SessionDetails; requests: string[] }[] = [];
+  const loadStatuses: SessionPageStatus[] = [];
   const container = browser.document.createElement('div');
 
   browser.document.body.appendChild(container);
@@ -99,12 +101,19 @@ async function renderData({
       },
       [setStatus],
     );
+    const setLoadStatus = useCallback(
+      (next: SessionPageStatus): void => {
+        loadStatuses.push(next);
+        setStatus(next);
+      },
+      [setStatus],
+    );
     const firstLoad = useFirstLoad({
       sessionId: SESSION,
       storage,
       listLoads: data.listLoads,
       setRequests: data.setRequests,
-      setStatus,
+      setStatus: setLoadStatus,
       startSessionRead: data.startSessionRead,
       dropSessionRead: data.dropSessionRead,
       takeSessionRead: data.takeSessionRead,
@@ -135,6 +144,8 @@ async function renderData({
     /** The session as the page shows it now. */
     session: (): SessionDetails | null => current().data.session,
     loaded,
+    /** Each status the first load set, in order. */
+    loadStatuses,
     /** Runs `call` as an event handler or a socket callback of the page would, its updates applied. */
     async run<T>(call: (data: SessionData) => T): Promise<[T]> {
       let result!: [T];
@@ -216,6 +227,72 @@ describe('useSessionData', () => {
 
     await page.unmount();
   });
+
+  it('reads the session every 10 minutes only while the page shows it (D249, #216)', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+
+    const calls = holdFetch(t);
+    const page = await renderData({ withFirstLoad: false });
+
+    // Still loading: no read starts.
+    t.mock.timers.tick(SESSION_READ_INTERVAL_MS);
+    await settle();
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [],
+    );
+
+    // Showing the session: the read starts 10 minutes on.
+    await page.run((data) => data.setStatus('ready'));
+    t.mock.timers.tick(SESSION_READ_INTERVAL_MS - 1);
+    await settle();
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [],
+    );
+
+    t.mock.timers.tick(1);
+    await settle();
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [SESSION_URL],
+    );
+    await calls[0]!.answer(200, sessionRead());
+
+    // Showing an error: no read starts.
+    await page.run((data) => data.setStatus('error'));
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      t.mock.timers.tick(SESSION_READ_INTERVAL_MS);
+      await settle();
+    }
+
+    assert.equal(calls.length, 1);
+
+    await page.unmount();
+  });
+
+  it('stops the 10-minute read with the page (D249)', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+
+    const calls = holdFetch(t);
+    const page = await renderData({ withFirstLoad: false });
+
+    await page.run((data) => data.setStatus('ready'));
+    t.mock.timers.tick(SESSION_READ_INTERVAL_MS);
+    await settle();
+    assert.equal(calls.length, 1);
+    await calls[0]!.answer(200, sessionRead());
+
+    await page.unmount();
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      t.mock.timers.tick(SESSION_READ_INTERVAL_MS);
+      await settle();
+    }
+
+    assert.equal(calls.length, 1);
+  });
 });
 
 describe('useFirstLoad', () => {
@@ -265,6 +342,10 @@ describe('useFirstLoad', () => {
 
     assert.equal(page.current.firstLoad?.openedKey, null);
 
+    // Another tab removes the key while the load's calls are held: the page
+    // keeps the one the load was sent with.
+    storage.removeItem(ACCESS_KEYS_KEY);
+
     await calls[0]!.answer(200, sessionRead({ private: true }));
     await calls[1]!.answer(200, []);
     assert.equal(page.current.firstLoad?.openedKey, KEY);
@@ -282,7 +363,44 @@ describe('useFirstLoad', () => {
     assert.equal(page.status(), 'unavailable');
     assert.equal(page.session(), null);
     assert.deepEqual(page.loaded, []);
+    assert.deepEqual(page.loadStatuses, ['unavailable']);
 
     await page.unmount();
+  });
+
+  it('applies nothing of a load that answers once the page has gone (D133, D156)', async (t) => {
+    const calls = holdFetch(t);
+    const storage = memoryStorage();
+
+    // A request opened here before the load, which a list without it drops.
+    recordRead(storage, SESSION, 'req-old', Date.now() - 60_000);
+
+    const readState = storage.getItem(readStateKey(SESSION));
+    const page = await renderData({ withFirstLoad: true, storage });
+
+    await page.unmount();
+    await calls[0]!.answer(200, sessionRead());
+    await calls[1]!.answer(200, [row('req-a')]);
+
+    assert.deepEqual(page.loaded, [], 'the page was handed the answer');
+    assert.equal(storage.getItem(readStateKey(SESSION)), readState, 'the read state was pruned');
+  });
+
+  it('sets no status and lets go of no key for a load that fails once the page has gone (D133, D259)', async (t) => {
+    t.after(releaseAllAccessKeys);
+
+    const calls = holdFetch(t);
+
+    // A link's key, held in this tab and not stored: a refused load lets it go.
+    holdAccessKey(SESSION, KEY);
+
+    const page = await renderData({ withFirstLoad: true });
+
+    await page.unmount();
+    await calls[1]!.answer(200, []);
+    await calls[0]!.answer(404, { errorCode: ErrorCode.SESSION_NOT_FOUND, message: 'Not found' });
+
+    assert.deepEqual(page.loadStatuses, []);
+    assert.equal(accessKeyFor(SESSION, null), KEY);
   });
 });
