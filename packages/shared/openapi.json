@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Webhook Inspector API",
-    "version": "1.19.28",
+    "version": "1.19.29",
     "contact": {
       "name": "QA Tools",
       "email": "contact@qa-tools.ru"

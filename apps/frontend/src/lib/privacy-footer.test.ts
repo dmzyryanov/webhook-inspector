@@ -45,6 +45,9 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 
 const NBSP = '\u00a0';
 
+/** The footer's line as `AppFooter.tsx` draws it: the build's operator's (issue #396). */
+const FOOTER_LINE_ELEMENT = '<span>{footerLine(m, operator)}</span>';
+
 describe('the privacy footer', () => {
   it('says what the owner approved, byte for byte', () => {
     // The line itself, D177's, its words amended on 2026-10-25
@@ -154,9 +157,7 @@ describe('the privacy footer', () => {
     assert.equal(lineOf(siteFooter(ABOUT_RU.path, 'ru')), ru.footer.line);
     // The application's band draws the build's line, read from its source
     // here and rendered for both operators in operator.test.ts.
-    assert.ok(
-      read('../components/AppFooter.tsx').includes('<span>{footerLine(m, operator)}</span>'),
-    );
+    assert.ok(read('../components/AppFooter.tsx').includes(FOOTER_LINE_ELEMENT));
   });
 
   it('links About, Terms and Privacy to their pages, in that order, before Contact: (D211, D217)', () => {
@@ -262,7 +263,7 @@ describe('the privacy footer', () => {
     // The words are the interface's language's, `m.footer` (D222), whose
     // English the constants hold: the line the build's operator draws (issue
     // #396).
-    assert.ok(footer.includes('<span>{footerLine(m, operator)}</span>'));
+    assert.ok(footer.includes(FOOTER_LINE_ELEMENT));
     assert.ok(footer.includes('{m.footer.contact}'));
     assert.equal(PRIVACY_FOOTER.line, en.footer.line);
     assert.equal(PRIVACY_FOOTER.contactLabel, en.footer.contact);
@@ -290,11 +291,40 @@ describe('the privacy footer', () => {
     // Amended by D255: the links are the language's, `footerLinks(m)`, and by
     // issue #369 the build's operator's.
     assert.ok(footer.includes('const links = footerLinks(m, operator);'));
-    const about = footer.indexOf('{links.map(');
-    const contact = footer.indexOf('{m.footer.contact}');
+    // The line the component draws, then the links, then the contact; each
+    // searched as written, so a part the search cannot find fails here
+    // rather than passing as -1.
+    const assertOrder = (source: string) => {
+      const line = source.indexOf(FOOTER_LINE_ELEMENT);
+      const about = source.indexOf('{links.map(');
+      const contact = source.indexOf('{m.footer.contact}');
 
-    assert.ok(about > footer.indexOf('<span>{m.footer.line}</span>'));
-    assert.ok(about > 0 && about < contact, 'About is not before Contact:');
+      assert.ok(line > 0, 'the line is not drawn');
+      assert.ok(about > line, 'About is not after the line');
+      assert.ok(contact > about, 'About is not before Contact:');
+    };
+
+    assertOrder(footer);
+    // A copy with the links before the line, and one with them after the
+    // contact, are refused.
+    const linksStart = footer.indexOf('{links.map(');
+    const linksEnd = footer.indexOf('))}', linksStart) + '))}'.length;
+    const linksBlock = footer.slice(linksStart, linksEnd);
+    const withoutLinks = footer.slice(0, linksStart) + footer.slice(linksEnd);
+    const linksFirst = withoutLinks.replace(
+      FOOTER_LINE_ELEMENT,
+      `${linksBlock}${FOOTER_LINE_ELEMENT}`,
+    );
+    const contactFirst = withoutLinks.replace(
+      '        </span>\n      </p>',
+      `${linksBlock}\n        </span>\n      </p>`,
+    );
+
+    assert.notEqual(linksFirst, withoutLinks);
+    assert.notEqual(contactFirst, withoutLinks);
+    assert.throws(() => assertOrder(linksFirst), /About is not after the line/);
+    assert.throws(() => assertOrder(contactFirst), /About is not before Contact:/);
+    assert.throws(() => assertOrder(footer.replace(FOOTER_LINE_ELEMENT, '')), /line is not drawn/);
     // A plain link: /about is not a route of the application.
     assert.match(
       footer,

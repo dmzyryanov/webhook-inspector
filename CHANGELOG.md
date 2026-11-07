@@ -125,6 +125,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.29
+
+2026-11-07
+
+**Nothing changes on this site; the inspector's own checks now notice a
+change to the order of its footer or to which addresses its development
+server publishes without this site's texts.** Every page and every address
+answers exactly as before. (#427)
+
 ## 1.19.28
 
 2026-11-07

@@ -9,7 +9,13 @@ import type { SiteOrigins } from '../../scripts/site-origin.mjs';
 import { CHANGELOG_LINK } from './changelog-link.ts';
 import type { LegalPage, LegalPart } from './legal-copy.ts';
 import { PRIVACY_LINK, TERMS_LINK } from './legal-links.ts';
-import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
+import { type DevRequest, devServer } from '../testing/dev-server.ts';
+import {
+  operatorEnv,
+  PRODUCTION_OPERATOR,
+  PRODUCTION_OPERATOR_ENV,
+  withoutOperator,
+} from '../testing/production-operator.ts';
 
 /**
  * Production's origins, whatever the shell running the tests holds (#354):
@@ -473,6 +479,40 @@ describe('the dev server and the build', () => {
     }
 
     assert.match(config, /plugins: \[[^\]]*legalPagesPlugin\(\)/);
+  });
+
+  it("serve both only with the operator's texts, and leave them to the application's Page not found otherwise (issue #369)", () => {
+    const asked = LEGAL_PAGES.flatMap((page) =>
+      [page.path, `${page.path}/`].flatMap((path) =>
+        (['GET', 'HEAD'] as const).map((method) => ({
+          page,
+          request: [method, path] as DevRequest,
+        })),
+      ),
+    );
+    const requests = asked.map(({ request }) => request);
+    const passedOn = (url: string, headers: Record<string, string> = {}) => ({
+      passedOn: true,
+      answered: false,
+      url,
+      headers,
+      body: null,
+    });
+
+    for (const env of [
+      withoutOperator(process.env),
+      { ...process.env, ...operatorEnv({ ...PRODUCTION_OPERATOR, texts: false }) },
+    ]) {
+      assert.deepEqual(
+        devServer(env, requests).answers,
+        requests.map(([, path]) => passedOn(path)),
+      );
+    }
+
+    assert.deepEqual(
+      devServer({ ...process.env, ...PRODUCTION_OPERATOR_ENV }, requests).answers,
+      asked.map(({ page }) => passedOn(`/${legalTemplate(page)}`, { 'cache-control': 'no-cache' })),
+    );
   });
 
   it('builds both pages in npm run build, as one build of their own, before the build check', () => {
