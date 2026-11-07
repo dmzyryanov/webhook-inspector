@@ -125,6 +125,17 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.28
+
+2026-11-07
+
+**Nothing changes on this site; a copy of the inspector built from its source
+at an IPv6 address no longer links a changelog it does not publish.** A copy
+built without this site's texts at an address such as `http://[::1]:8080`
+leaves the changelog's links out of its API reference and `llms-full.txt`, as
+a copy at a host name does, and its build refuses one left in. This site's
+`/docs`, `/openapi.json` and `llms-full.txt` are exactly as before. (#426)
+
 ## 1.19.27
 
 2026-11-07
