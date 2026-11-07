@@ -402,9 +402,9 @@ function largestTcpBuffer(name: 'tcp_wmem' | 'tcp_rmem'): number | undefined {
  * which Linux grows the receiver's send buffer up to that largest size: the
  * reordering Linux keeps for `127.0.0.1` in its TCP metrics. That earlier
  * connections raise it, so that what the kernel takes changes from run to
- * run, is inferred, not traced (F-28). On the agents' server 39 answers at
- * Linux's own 3, 63 at the 29 its metrics held, and with sizes of 16 MiB 119
- * at 29 and every one of 200, 252 of 576, at 300 (F-28).
+ * run, is inferred, not traced (F-28). On the server the measurement ran on,
+ * 39 answers at Linux's own 3, 63 at the 29 its metrics held, and with sizes
+ * of 16 MiB 119 at 29 and every one of 200, 252 of 576, at 300 (F-28).
  */
 function unreadAnswerCount(): { count: number; sizes: string } {
   const wmem = largestTcpBuffer('tcp_wmem');

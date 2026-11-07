@@ -494,9 +494,9 @@ describe('capturing requests', () => {
    *
    * Sent over a socket, so that the header on the wire - the empty value
    * included - is exactly the line written here, and the capture is compared
-   * with what a sender really produced. The first four are the shapes the
-   * issue measured; the rest show that the rule is Fastify's whole set rather
-   * than those four examples.
+   * with what a sender really produced. The first four are the shapes measured
+   * answering 415 (#19); the rest show that the rule is Fastify's whole set
+   * rather than those four examples.
    */
   for (const [description, headerLine, value] of [
     ['a Content-Type with no slash in it', 'Content-Type: json', 'json'],

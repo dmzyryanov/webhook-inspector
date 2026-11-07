@@ -1819,10 +1819,10 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
   /**
    * Samples a node of the hostile profiles below: two. At ten, as until
    * #393, the million samples of 100,000 nodes were most of the summary's
-   * time - 1.0 to 1.4 s at best of five alone on the agents' server, up to
-   * 3.4 s under the load below - while the cheapest summary quadratic in the
-   * nodes measured took 7.0 s alone: too near for a bound to leave room on
-   * both sides (`docs/testing/flakes.md`, F-30).
+   * time - 1.0 to 1.4 s at best of five alone on the server the measurement
+   * ran on, up to 3.4 s under the load below - while the cheapest summary
+   * quadratic in the nodes measured took 7.0 s alone: too near for a bound to
+   * leave room on both sides (`docs/testing/flakes.md`, F-30).
    */
   const PROFILE_SAMPLES_PER_NODE = 2;
 
@@ -1836,11 +1836,11 @@ describe('measure-ordinary-load: the probe and the CPU profile (#188)', () => {
    * under load with nothing wrong.
    *
    * At 100,000 nodes the summary takes 0.25 to 0.41 s at best of five alone
-   * on the agents' server, and beside the full backend suite and eight busy
-   * loops up to 2.6 s a run and 1.3 s at best of five: 2.3 times under the
-   * bound. Each node's id looked for among those kept with V8's own
-   * `includes`, the cheapest summary quadratic in the nodes measured, takes
-   * 5.3 s at best of five alone, 1.8 times over it; each sample's node
+   * on the server the measurement ran on, and beside the full backend suite
+   * and eight busy loops up to 2.6 s a run and 1.3 s at best of five: 2.3
+   * times under the bound. Each node's id looked for among those kept with
+   * V8's own `includes`, the cheapest summary quadratic in the nodes measured,
+   * takes 5.3 s at best of five alone, 1.8 times over it; each sample's node
    * searched for in the nodes, 26.6 s. A summary that totals each sample's
    * function in a list searched by name passes: these profiles name at most
    * 915 functions, so it is not quadratic in their nodes (F-30).
@@ -2234,7 +2234,11 @@ describe('scripts/measure-ordinary-load.mjs (D232)', () => {
       [[...common, '--ci', '20', ...file], /session creations/],
       [[...common], /needs --sessions-file/],
       [[...common, '--addresses', 'per-user', ...file], /no --addresses per-user/],
-      // Profiles each of which the budget once let pass.
+      // A profile that is not one is refused before anything runs: a figure
+      // that is not a whole number in its range (a string, even "5000", or
+      // a negative delay), a reload range whose end is below its start, or
+      // text that is no JSON object. No run could be counted or paced as
+      // planned from it.
       [
         [...common, ...profile('{"reloadMaxMs":-1000000000}'), ...file],
         /--profile: reloadMaxMs takes a whole number/,

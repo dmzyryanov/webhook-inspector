@@ -402,10 +402,10 @@ describe('a capture takes the next step, then the session response (D205)', () =
   });
 
   /**
-   * The steps are taken under the session row's lock (D065), so twenty requests
-   * at once take steps 1 to 10 one each, in the order they took the lock -
-   * which is their receipt order (D196) - and the other ten get the session
-   * response.
+   * The steps are taken under the session row's lock (#106, D065), so twenty
+   * requests at once take steps 1 to 10 one each, in the order they took the
+   * lock - which is their receipt order (D196) - and the other ten get the
+   * session response.
    */
   it('gives each of 10 steps to exactly one of 20 concurrent requests, in capture order', async () => {
     const steps = Array.from({ length: MAX_QUEUE_STEPS }, (_unused, index) => ({

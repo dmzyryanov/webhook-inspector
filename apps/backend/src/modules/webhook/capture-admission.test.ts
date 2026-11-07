@@ -1696,8 +1696,9 @@ describe('a connection that dies gives back what its pipelined webhooks hold (D2
   // (`state.outgoing`). Their holds are given back on their replies'
   // `close`, which Node 24 emits for those too when the connection closes:
   // `socketOnClose` destroys them (`abortOutgoing`, `node:_http_server`).
-  // Node was once read as destroying only the requests, not their answers;
-  // these tests held at 70fccd6 all the same.
+  // The holds come back by that `close` alone: were Node to destroy the
+  // requests and leave their answers in the line, the holds would stay
+  // taken, and these tests would fail.
   for (const [name, source] of [
     ['directly', undefined],
     ['behind the PROXY protocol', '203.0.113.91'],

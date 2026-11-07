@@ -67,13 +67,13 @@ const collectGarbage = vm.runInNewContext('gc') as () => void;
 /** Waits pending at once, for each shape. */
 const WAITS = 16;
 
-/** What a pending wait may add to the process, at most: the issue's bound. */
+/** What a pending wait may add to the process, at most (#139, D213). */
 const PER_WAIT_BYTES = 64 * 1024;
 
 /** Changes waiting for their rows at once: every place of large bodies. */
 const CHANGES = MAX_CONCURRENT_LARGE_BODIES;
 
-/** What a change waiting for its row may add to the process, at most: the issue's bound. */
+/** What a change waiting for its row may add to the process, at most (#139, D213). */
 const PER_CHANGE_BYTES = 200 * 1024;
 
 /** The size of each change's body: under the listener's 1 MiB. */

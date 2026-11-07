@@ -10,9 +10,10 @@
  *
  * Each bound is near its checks' own cost, so that a reading of them worse
  * than linear is over it on every run, with room for the load of the full
- * backend suite beside eight busy processes on the agents' server. The
- * measurements, alone and under that load, and the quadratic readings each
- * bound catches and those it gives up, are in `docs/testing/flakes.md`, F-24.
+ * backend suite beside eight busy processes on the server the bounds were
+ * measured on. The measurements, alone and under that load, and the
+ * quadratic readings each bound catches and those it gives up, are in
+ * `docs/testing/flakes.md`, F-24.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

@@ -286,9 +286,9 @@ describe('what the status read answers (D199)', () => {
   });
 
   /**
-   * A fixed lifetime (D220): no use moves the expiry of a session created
-   * with a lifetime, so its expiry minus 7 days says nothing about its last
-   * use. Its `lastUsedAt` is the later of its creation and its newest
+   * A fixed lifetime (#129, D220): no use moves the expiry of a session
+   * created with a lifetime, so its expiry minus 7 days says nothing about its
+   * last use. Its `lastUsedAt` is the later of its creation and its newest
    * request; a read or a response change, which this read cannot see, does
    * not count.
    */

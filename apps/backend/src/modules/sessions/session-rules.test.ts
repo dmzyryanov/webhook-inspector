@@ -919,11 +919,11 @@ describe('what a rule answers (criterion 4)', () => {
 });
 
 /**
- * The request id under both its names (D279): every kind of stored answer -
- * the default, a custom response, a rule's and a queue step's, a `HEAD`
- * among them - carries the request id under its new name and its old one,
- * the same value, after the configured pairs, the new name first; and the id
- * is the stored request's.
+ * The request id under both its names (#334, D279): every kind of stored
+ * answer - the default, a custom response, a rule's and a queue step's, a
+ * `HEAD` among them - carries the request id under its new name and its old
+ * one, the same value, after the configured pairs, the new name first; and the
+ * id is the stored request's.
  */
 describe('the request id under both names on every kind of answer (#334, D279)', () => {
   const ID_LINE = /^x-(?:webhook-inspector|qa-tools)-request-id: /;
