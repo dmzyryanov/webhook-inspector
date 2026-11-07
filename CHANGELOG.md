@@ -125,6 +125,19 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.36
+
+2026-11-07
+
+**Nothing changes on this site; a copy of the inspector built from its source
+with no second address no longer tells this site's rename and move in its API
+reference.** Such a copy leaves out the relay section's note on the
+script's old name, which dated this site's rename by changelog entries a copy
+may not publish, and a copy built with this site's texts names its one host
+once in the Network section, where it named it twice as if it had two. This
+site's `/docs`, `/openapi.json` and `llms-full.txt` are exactly as before.
+(#431)
+
 ## 1.19.35
 
 2026-11-07
