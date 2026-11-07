@@ -1440,7 +1440,7 @@ ANY https://hook.qa-tools.ru/s/:sessionId/
 ANY https://hook.qa-tools.ru/s/:sessionId/*
 ```
 
-**On the receive host only** (0.36.0, D187). `hook.qa-tools.ru` reaches the backend's receive listener through a TCP route: TLS ends at the proxy, and the request's bytes pass to the backend unchanged, behind a PROXY protocol v2 header carrying the sender's address. The host serves these three routes and `GET /robots.txt` (`User-agent: *`, `Disallow: /`); any other path answers `404` / `1000`. Its TLS offers HTTP/1.1 alone, so an HTTP/2 client falls back to it. `https://qa-tools.ru/s/…` no longer receives ([The old address](#the-old-address-answers-410--1009)).
+**On the receive host only** (0.36.0, D187). `hook.qa-tools.ru` reaches the backend's receive listener through a TCP route: TLS ends at the proxy, and the request's bytes pass to the backend unchanged, behind a PROXY protocol v2 header carrying the sender's address. The host serves these three routes and `GET /robots.txt` (`User-agent: *`, `Disallow: /`); any other path answers `404` / `1000`. Its TLS offers HTTP/1.1 alone, so an HTTP/2 client falls back to it. `https://qa-tools.ru/s/…` no longer receives ([The old address](#the-old-address-answers-410-1009)).
 
 Accepts every method in Node's `http.METHODS` except `CONNECT`: 34 names, listed in `docs/PRODUCT.md` and pinned by the backend suite for each of the three routes (D139). The three are one endpoint (D173): `/s/<session-id>`, `/s/<session-id>/` and any path under it — `/s/<session-id>/stripe/events`, a WebDAV client's `PROPFIND /s/<session-id>/folder/` — are captured and answered exactly the same way, unless the session's [response rules](#response-rules) answer the method and the path (1.3.0, D246). The session's configured response, its delay and the limits apply unchanged, the request is announced over realtime and listed like any other, and nothing in the list shows the path.
 
@@ -1524,7 +1524,7 @@ Capturing a request is a use of the session and moves its expiry a full idle win
 Unknown session: `404` / `1001 SESSION_NOT_FOUND`.
 Expired session: `410` / `1002 SESSION_EXPIRED`.
 
-### The old address answers `410` / `1009`
+### The old address answers `410`, `1009`
 
 ```text
 ANY https://qa-tools.ru/s/*
