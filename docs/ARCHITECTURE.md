@@ -1271,8 +1271,8 @@ or production's CI runners, hosting provider, backup bucket and directory or
 heartbeat host, a runner's build directory `runner-<token>-project-…`
 included (#397), naming the file, the line and the name; it finds each name
 in any case and, the build directory aside, regex-escaped, with one
-backslash or none before each of its characters that is not a letter or
-digit (#410); its allow-list holds `.gitignore`'s entries, the check's own
+backslash or two, or none, before each of its characters that is not a
+letter or digit (#410, #438); its allow-list holds `.gitignore`'s entries, the check's own
 list, the changelog check's test of a private path it refuses, the chart
 test's render check that refuses the hosting provider by name and, until #330
 moves them out of this repository, the operator's own texts with their test

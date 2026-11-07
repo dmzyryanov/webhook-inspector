@@ -10,13 +10,14 @@
 //
 // The check reads every path `git ls-files` lists, and the file at it in the
 // working tree, byte for byte. A name is found in any case of its letters,
-// and regex-escaped as a test's pattern writes it, one backslash or none
-// before each of its other characters: `HB.STATUSER.CLOUD`, `FirstVds`,
-// `hb\.statuser\.cloud` and `\.claude\/` are all found (#410). A runner's
-// build directory is a form, not one string, and FORMS matches it, in any
-// case. Still not caught: a name split across lines; two backslashes or more
-// before any of its characters but the first, as a string handed to
-// `new RegExp` holds them; a backslash before a letter or digit; a character
+// and regex-escaped, with no backslash, one or two before each of its other
+// characters: one as a test's pattern writes it, two as a JavaScript string
+// handed to `new RegExp` holds it. `HB.STATUSER.CLOUD`, `FirstVds`,
+// `hb\.statuser\.cloud`, `hb\\.statuser\\.cloud`, `docs\\/DECISIONS\.md` and
+// `\.claude\/` are all found (#410, #438). A runner's build directory is a
+// form, not one string, and FORMS matches it, in any case. Still not caught:
+// a name split across lines; three backslashes or more before any of its
+// characters but the first; a backslash before a letter or digit; a character
 // written as a class (`[.]`), a code (`\x2e`), an HTML entity, percent-encoded
 // or as a lookalike from another alphabet; and a runner's build directory
 // regex-escaped.
@@ -62,19 +63,23 @@ const NAMES = Object.freeze([
 ]);
 
 /**
- * Each name as a pattern (#410): its letters in any case, and before each of
- * its other characters one backslash or none, as a regular expression escapes
- * them. The first character goes without: a search finds a name wherever it
- * starts, a backslash before it or not. No part repeats, and a backslash
- * matches only where the name allows one, so a run of them, or of a name's
- * start in alternating case, costs the search a few steps a character.
+ * Each name as a pattern (#410, #438): its letters in any case, and before
+ * each of its other characters none, one or two backslashes, `\\{0,2}`: one
+ * as a regular expression escapes them, two as a JavaScript string handed to
+ * `new RegExp` holds that escape. Three or more have no such reading and stay
+ * unmatched. The first character goes without: a search finds a name wherever
+ * it starts, backslashes before it or not. The backslashes are a bounded part,
+ * never `\\*` or `\\+`, and match only where the name allows them, so a run
+ * of them, or of a name's start in alternating case, costs the search a few
+ * steps a character; a part that repeated without bound at a name's start
+ * would make a long run of backslashes cost it quadratic time.
  */
 const PATTERNS = Object.freeze(
   NAMES.map((name) => ({
     name,
     pattern: new RegExp(
       [...name]
-        .map((char, at) => (/[A-Za-z0-9]/.test(char) ? char : `${at ? '\\\\?' : ''}\\${char}`))
+        .map((char, at) => (/[A-Za-z0-9]/.test(char) ? char : `${at ? '\\\\{0,2}' : ''}\\${char}`))
         .join(''),
       'i',
     ),
@@ -95,9 +100,9 @@ const PATTERNS = Object.freeze(
  * position costs more than those few hundred steps, however many `runner-` or
  * `-project-` a text holds, so the search stays linear. V8 also, before that,
  * glances at the next few characters and tries the lookbehind only where they
- * could begin `-project-`: on ten million letters the pattern takes under
- * 20 ms, where the lookbehind alone, tried at every position, takes about
- * 2.7 s (#410). The bound does not rest on that.
+ * could begin `-project-`: on ten million letters, measured on Node v24.22.2,
+ * the pattern takes under 20 ms, where the lookbehind alone, tried at every
+ * position, takes about 2.7 s (#410). The bound does not rest on that.
  */
 const FORMS = Object.freeze([
   { name: 'runner-<token>-project-', pattern: /(?<=runner-[\w-]{8,40})-project-\d/i },
@@ -246,14 +251,16 @@ test('on made-up files: each name, its file and line, and nothing but the names'
       // Another case and escaped, near misses until #410.
       ['d.md', 'firstvds FIRSTVDS\ndocs/decisions.md\ndocs\\/DECISIONS.md'],
       // Near misses: no slash, cut short, split, changed, an HTML entity,
-      // percent-encoded, two backslashes, a backslash before a letter, a
+      // percent-encoded, three backslashes or four before a character, even
+      // after two before another, a backslash or two before a letter, a
       // character class, a code; or another file.
       [
         'e.md',
         [
           '.claude .claudex/ qa-tools-c First',
           'VDS docs/DECISIONS-old.md First&#86;DS docs%2FDECISIONS.md .claude%2F',
-          'hb\\\\.statuser.cloud docs\\\\/DECISIONS.md .claude\\\\/ F\\irstVDS docs/\\runbooks/',
+          'hb\\\\\\.statuser.cloud docs\\\\\\\\/DECISIONS.md .claude\\\\\\/ qa\\\\-tools\\\\\\-ci',
+          'F\\irstVDS F\\\\irstVDS docs/\\runbooks/ docs/\\\\runbooks/ hb\\\\.statuser\\.c\\\\loud',
           'hb[.]statuser[.]cloud hb\\x2estatuser\\x2ecloud docs\\u002fDECISIONS.md',
         ].join('\n'),
       ],
@@ -288,15 +295,24 @@ test('on made-up files: each name, its file and line, and nothing but the names'
   ]);
 });
 
-test('on made-up files: each name in upper case, in mixed case and regex-escaped, each with its file and line (#410)', () => {
-  // Every letter one way, then every other letter each way; a backslash
-  // before every character a pattern would escape, the first one included,
-  // in the name's own case and in another.
+test('on made-up files: each name in upper case, in mixed case and escaped with one backslash or two, each with its file and line (#410, #438)', () => {
+  // Every letter one way, then every other letter each way; one backslash,
+  // or two, before every character a pattern would escape, the first one
+  // included, in the name's own case and in another; and one and two in turn,
+  // starting with either.
   const alternating = (name, first) =>
     [...name]
       .map((char, at) => (at % 2 === first ? char.toUpperCase() : char.toLowerCase()))
       .join('');
   const escaped = (name) => name.replace(/[^A-Za-z0-9]/g, '\\$&');
+  const doubled = (name) => name.replace(/[^A-Za-z0-9]/g, '\\\\$&');
+  const mixed = (name, first) => {
+    let at = 0;
+    return name.replace(/[^A-Za-z0-9]/g, (char) => {
+      at += 1;
+      return `${at % 2 === first ? '\\' : '\\\\'}${char}`;
+    });
+  };
   const spellings = NAMES.flatMap((name) =>
     [
       name.toUpperCase(),
@@ -305,6 +321,10 @@ test('on made-up files: each name in upper case, in mixed case and regex-escaped
       alternating(name, 1),
       escaped(name),
       escaped(alternating(name, 1)),
+      doubled(name),
+      doubled(alternating(name, 0)),
+      mixed(name, 0),
+      mixed(alternating(name, 1), 1),
     ].map((spelling) => [spelling, name]),
   );
   const { problems } = check(
@@ -320,6 +340,11 @@ test('on made-up files: each name in upper case, in mixed case and regex-escaped
           "const tag = 'Qa\\-Tools\\-CI';",
           'const dir = /\\/var\\/backups\\/qa-tools\\//;',
           'Under docs\\/runbooks/ and docs/DELIVERY\\.md.',
+          "assert.match(log, new RegExp('hb\\\\.statuser\\\\.cloud'));",
+          "const refused = new RegExp('DOCS\\\\/decisions\\\\.md|\\\\.Claude\\\\/');",
+          'const tag = new RegExp(`qa\\-tools\\\\-ci`);',
+          "const bucket = new RegExp('\\\\/var\\/backups\\\\/qa\\-tools');",
+          '// See docs\\\\/RESOURCES\\.md and docs\\/runbooks\\\\/.',
         ].join('\n'),
       ],
     ],
@@ -336,6 +361,13 @@ test('on made-up files: each name in upper case, in mixed case and regex-escaped
     'examples.mjs:6: /var/backups/qa-tools',
     'examples.mjs:7: docs/DELIVERY.md',
     'examples.mjs:7: docs/runbooks/',
+    'examples.mjs:8: hb.statuser.cloud',
+    'examples.mjs:9: .claude/',
+    'examples.mjs:9: docs/DECISIONS.md',
+    'examples.mjs:10: qa-tools-ci',
+    'examples.mjs:11: /var/backups/qa-tools',
+    'examples.mjs:12: docs/RESOURCES.md',
+    'examples.mjs:12: docs/runbooks/',
   ]);
 });
 
@@ -346,6 +378,7 @@ test("on made-up files: production's CI runner's tag in any tracked file, in any
       ['.gitlab/ci/validate.yml', "variables:\n  QA_TOOLS_RUNNER_TAG: 'QA-Tools-CI'\n"],
       ['deploy/helm/x/values.yaml', '# Was run on qa-tools-ci-2.\n'],
       ['scripts/x.test.mjs', 'assert.doesNotMatch(log, /qa-tools\\-ci/);\n'],
+      ['scripts/y.test.mjs', "assert.doesNotMatch(log, new RegExp('QA\\\\-tools\\\\-ci'));\n"],
       // Near misses: the variable's name, the tag cut short or changed.
       ['README.md', 'QA_TOOLS_RUNNER_TAG names it: not qa-tools-c, qa_tools_ci or qa-tools-cl.\n'],
       ['CHANGELOG.md', 'Runs on qa-tools-ci.\n'],
@@ -357,6 +390,7 @@ test("on made-up files: production's CI runner's tag in any tracked file, in any
     '.gitlab/ci/validate.yml:2: qa-tools-ci',
     'deploy/helm/x/values.yaml:1: qa-tools-ci',
     'scripts/x.test.mjs:1: qa-tools-ci',
+    'scripts/y.test.mjs:1: qa-tools-ci',
   ]);
   assert.match(report(problems), /^ {2}\.gitlab-ci\.yml:3: qa-tools-ci$/m);
 });
@@ -380,6 +414,7 @@ test('on made-up files: an allowed line only as it is, a whole file anywhere, an
     '.claude/settings.local.json .claude/x',
     '.Claude/worktrees/',
     '\\.claude\\/worktrees/',
+    '\\\\.claude\\\\/worktrees/',
   ].join('\n');
   const { problems, unused } = check(
     [
@@ -400,6 +435,7 @@ test('on made-up files: an allowed line only as it is, a whole file anywhere, an
     '.gitignore:9: .claude/',
     '.gitignore:10: .claude/',
     '.gitignore:11: .claude/',
+    '.gitignore:12: .claude/',
     'apps/.gitignore:1: .claude/',
     'kept.ts:2: FirstVDS',
     'kept.ts:3: FirstVDS',
@@ -528,13 +564,13 @@ test('on made-up content at growing sizes: a name found after runs built for its
     // a name's start, escaped or not, and of the runner form's words, in
     // alternating case.
     const slashes = `${'\\'.repeat(size)}\\.claude\\/`;
-    const doubled = `${'docs\\\\'.repeat(size / 6)}docs\\/DECISIONS\\.md`;
+    const doubled = `${'docs\\\\\\'.repeat(size / 7)}docs\\/DECISIONS\\.md`;
     const alternating = `${'fIrStVd'.repeat(size / 7)}FiRsTvDs`;
     const escaped = `${'Hb\\.StAtUsEr\\.ClOu'.repeat(size / 19)}HB\\.STATUSER\\.CLOUD`;
     const runners = `${'RuNnEr-'.repeat(size / 7)}x`;
     const projects = `x${'-PrOjEcT-1'.repeat(size / 10)}`;
     const near = Array.from({ length: size / 100 }, (_, i) =>
-      i % 2 ? 'Hb\\.StAtUsEr\\\\.ClOuD' : '\\/VaR\\/bAcKuPs\\/Qa\\-ToOl',
+      i % 2 ? 'Hb\\.StAtUsEr\\\\\\.ClOuD' : '\\/VaR\\/bAcKuPs\\/Qa\\-ToOl',
     ).join('\n');
     const { problems } = check(
       [
@@ -554,6 +590,45 @@ test('on made-up content at growing sizes: a name found after runs built for its
       'alternating.txt:1: FirstVDS',
       'escaped.txt:1: hb.statuser.cloud',
       `near.txt:${size / 100 + 1}: runner-<token>-project-`,
+    ]);
+    assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
+  }
+});
+
+test('on made-up content at growing sizes: a name escaped with two backslashes found after runs built for them, and none in the runs, quickly (#438)', () => {
+  for (const size of [1_000, 100_000, 10_000_000]) {
+    const started = performance.now();
+    // A long run of backslashes before a name and inside one; runs of a
+    // name's start, in alternating case, with two backslashes before each
+    // character a pattern escapes, or one and two in turn; a run with three,
+    // one more than a name allows; and many lines, each a name cut short or
+    // with three backslashes or four.
+    const before = `${'\\'.repeat(size)}\\\\.claude\\\\/`;
+    const inside = `docs${'\\'.repeat(size)}/DECISIONS.md\nDOCS\\\\/decisions\\\\.MD`;
+    const doubled = `${'Hb\\\\.StAtUsEr\\\\.ClOu'.repeat(size / 20)}HB\\\\.STATUSER\\\\.CLOUD`;
+    const mixed = `${'\\\\/vAr\\/bAcKuPs\\\\/qA\\-tOoL'.repeat(size / 26)}\\/VaR\\\\/bAcKuPs\\/Qa\\\\-ToOlS`;
+    const tripled = `${'qA\\\\\\-tOoLs\\\\\\-'.repeat(size / 15)}Qa\\\\-ToOlS\\\\-cI`;
+    const near = Array.from({ length: size / 100 }, (_, i) =>
+      i % 2 ? 'DoCs\\\\/DeLiVeRy\\\\\\.Md' : '\\\\.ClAuDe\\\\\\\\/ dOcS\\\\/rUnBoOkS',
+    ).join('\n');
+    const { problems } = check(
+      [
+        ['before.txt', before],
+        ['inside.txt', inside],
+        ['doubled.txt', doubled],
+        ['mixed.txt', mixed],
+        ['tripled.txt', tripled],
+        ['near.txt', `${near}\nDoCs\\/ReSoUrCeS\\\\.mD`],
+      ],
+      [],
+    );
+    assert.deepEqual(problems, [
+      'before.txt:1: .claude/',
+      'inside.txt:2: docs/DECISIONS.md',
+      'doubled.txt:1: hb.statuser.cloud',
+      'mixed.txt:1: /var/backups/qa-tools',
+      'tripled.txt:1: qa-tools-ci',
+      `near.txt:${size / 100 + 1}: docs/RESOURCES.md`,
     ]);
     assert.ok(performance.now() - started < 5000, `${size}: ${performance.now() - started} ms`);
   }
