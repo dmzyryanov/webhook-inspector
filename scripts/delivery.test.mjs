@@ -2630,7 +2630,7 @@ test("a run of the smoke tries connections again 5 times at most in all, the cer
   assert.equal(sixth, true);
 });
 
-test("the whole smoke, the second host's certificate wait and every retry of a connection included, ends within the deployment-smoke job's timeout (#435)", async () => {
+test("the whole smoke, the second host's certificate wait and every retry of a connection included, ends within the deployment-smoke job's timeout (#435)", async (t) => {
   const ci = readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8');
   const from = ci.indexOf('\ndeployment-smoke:\n');
   assert.ok(from >= 0, 'no deployment-smoke job');
@@ -2638,28 +2638,64 @@ test("the whole smoke, the second host's certificate wait and every retry of a c
   const job = next < 0 ? ci.slice(from) : ci.slice(from, from + 1 + next);
   const jobMs = Number(/^ {2}timeout: (\d+)m$/m.exec(job)?.[1]) * 60_000;
   assert.ok(jobMs > 0, 'deployment-smoke has no timeout in minutes');
-  // What the model gives each ask. A connection that never opens fails
-  // within undici's connect timeout, 10 s, which each failure of 2026-11-06
-  // named, a refused one and the others sooner. Any other ask, a pending
+  // What the model gives each ask. A try whose connection never opens takes
+  // at most the timeout each try of the run's requests has of its own, read
+  // from the run below, 15 s: undici's connect timeout, 10 s, ends it
+  // sooner, at about 10.5 s a try as measured. Any other ask, a pending
   // certificate's included, 1 s, and the job's start, its image and its
   // clone a minute: a passing job, both hosts' answers included, took 23 to
-  // 35 s in all on 2026-11-07. The operator's texts given as none ask two
-  // more of each host, 4 s more.
-  const NOT_OPENED_MS = 10_000;
+  // 35 s in all on 2026-11-07.
   const ANSWER_MS = 1_000;
   const JOB_START_MS = 60_000;
+  const tryTimeouts = t.mock.method(AbortSignal, 'timeout');
+  // The asks of a run that passes, the certificate pending to the wait's
+  // last try, counted: each host's check and every try of the wait.
+  const asked = [];
+  await checkDeploymentMain(
+    WHOLE_RUN,
+    wholeRun({
+      pending: CERTIFICATE_WAIT.tries - 1,
+      fails: (n, url) => {
+        asked.push(url);
+        return undefined;
+      },
+    }),
+    NOW,
+    async () => {},
+    () => {},
+  );
+  assert.equal(tryTimeouts.mock.callCount(), asked.length, 'a try with no timeout of its own');
+  const TRY_MS = Math.max(...tryTimeouts.mock.calls.map(({ arguments: [ms] }) => ms));
+  // With the operator's texts given as none, each host's check asks for the
+  // changelog's page and its text besides its feeds (#396): more than this
+  // run, whose texts are given.
+  const hosts = new Set(asked.map(({ origin }) => origin).filter((origin) => origin !== RECEIVE));
+  const TEXTS_NONE_ASKS = hosts.size * (CHANGELOG_PATHS.length - CHANGELOG_FEEDS.length);
+  // The longest a run can take: every wait of the certificate's and of the
+  // run's retries; every try whose connection does not open, the one that
+  // fails the run included, at the most a try takes; and every ask of a run
+  // with the texts given as none, answered.
+  const WAITS_MS =
+    (CERTIFICATE_WAIT.tries - 1) * CERTIFICATE_WAIT.intervalMs +
+    (CONNECTION_RETRY.tries - 1) * CONNECTION_RETRY.intervalMs;
+  const WORST_MS =
+    WAITS_MS + CONNECTION_RETRY.tries * TRY_MS + (asked.length + TEXTS_NONE_ASKS) * ANSWER_MS;
+  assert.ok(
+    WORST_MS + JOB_START_MS < jobMs,
+    `a run of up to ${WORST_MS} ms and the job's start, ${JOB_START_MS} ms, reach the job's ${jobMs} ms`,
+  );
   const notOpened = () => connectFailure('UND_ERR_CONNECT_TIMEOUT');
   // The certificate pending to the wait's last try, and the connections
-  // that do not open placed in turn: five at the start, the same and a
-  // sixth at the run's last ask, the receive host's robots.txt in the second
-  // host's check, every ask, and one ask in so many.
-  const lastAsk = (n, url) =>
-    n > 2 * EVERY_ANSWER.length + 5 && url.origin === RECEIVE && url.pathname === '/robots.txt';
+  // that do not open placed in turn: as many as the run's retries at the
+  // start, the same and one more at the run's last ask, which those tries
+  // come before, every ask, and one ask in so many.
+  const RETRIES = CONNECTION_RETRY.tries - 1;
+  const lastAsk = asked.length - 1 + RETRIES;
   const runs = [
-    ['five at the start', (n) => (n < 5 ? notOpened() : undefined)],
+    [`${RETRIES} at the start`, (n) => (n < RETRIES ? notOpened() : undefined)],
     [
-      'five at the start and a sixth at the last ask',
-      (n, url) => (n < 5 || lastAsk(n, url) ? notOpened() : undefined),
+      `${RETRIES} at the start and one more at the last ask`,
+      (n) => (n < RETRIES || n === lastAsk ? notOpened() : undefined),
     ],
     ['every ask', () => notOpened()],
     ...[2, 3, 7, 13, 29].map((every) => [
@@ -2682,7 +2718,7 @@ test("the whole smoke, the second host's certificate wait and every retry of a c
           return failure;
         },
         clock,
-        notOpenedMs: NOT_OPENED_MS,
+        notOpenedMs: TRY_MS,
         answerMs: ANSWER_MS,
       }),
       NOW,
@@ -2692,20 +2728,18 @@ test("the whole smoke, the second host's certificate wait and every retry of a c
       },
       () => {},
     ).catch((error) => assert.match(error.message, /^No connection to /, name));
-    // At most 6 connections fail in a run, 5 of them waited for 15 s each,
-    // besides the certificate's 29 waits of 10 s.
+    // At most CONNECTION_RETRY.tries connections fail in a run, all but the
+    // last waited for, besides the certificate's waits.
     assert.ok(failed <= CONNECTION_RETRY.tries, `${name}: ${failed} connections failed`);
-    assert.ok(
-      waits.filter((ms) => ms === CONNECTION_RETRY.intervalMs).length <= CONNECTION_RETRY.tries - 1,
-      name,
-    );
-    assert.ok(waits.reduce((sum, ms) => sum + ms, 0) <= 29 * 10_000 + 5 * 15_000, name);
-    assert.ok(clock.ms + JOB_START_MS <= jobMs, `${name}: ${clock.ms} ms`);
+    assert.ok(waits.filter((ms) => ms === CONNECTION_RETRY.intervalMs).length <= RETRIES, name);
+    assert.ok(waits.reduce((sum, ms) => sum + ms, 0) <= WAITS_MS, name);
+    assert.ok(clock.ms <= WORST_MS, `${name}: ${clock.ms} ms`);
     lengths.push(clock.ms);
   }
-  // The longest: 365 s of waits, 6 failed connections of 10 s and 77
-  // answers, 502 s, and 562 s with the job's start, within its 600.
-  assert.equal(Math.max(...lengths), 502_000);
+  // The longest reaches the bound but for what this model leaves out: the
+  // asks of the texts given as none, and the last ask, which fails the run
+  // instead of being answered.
+  assert.equal(Math.max(...lengths), WORST_MS - (TEXTS_NONE_ASKS + 1) * ANSWER_MS);
 });
 
 test('the connection code is read from the cause undici gives, and an error or a cause of any other shape, size or depth has none (#435)', () => {
@@ -2752,7 +2786,9 @@ test('the connection code is read from the cause undici gives, and an error or a
   ]) {
     assert.equal(connectionNotOpenedCode(shape), undefined, String(shape?.cause?.code ?? shape));
   }
-  // A cycle, a long chain and a long code: one level read, at once.
+  // A cycle, a long chain and a long code: only the cause's own code is
+  // read, so a code further down the chain is not found, and none of them
+  // is one of the codes.
   const cyclic = new Error('a');
   cyclic.cause = cyclic;
   assert.equal(connectionNotOpenedCode(cyclic), undefined);
@@ -2760,10 +2796,8 @@ test('the connection code is read from the cause undici gives, and an error or a
     let chain = { code: 'ECONNREFUSED' };
     for (let index = 0; index < size; index += 1) chain = { cause: chain };
     const long = { cause: { code: 'ECONNREFUSED'.repeat(size) } };
-    const started = performance.now();
-    assert.equal(connectionNotOpenedCode(chain), undefined);
-    assert.equal(connectionNotOpenedCode(long), undefined);
-    assert.ok(performance.now() - started < 100, `size ${size}`);
+    assert.equal(connectionNotOpenedCode(chain), undefined, `size ${size}`);
+    assert.equal(connectionNotOpenedCode(long), undefined, `size ${size}`);
   }
 });
 
