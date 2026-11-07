@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
-import { describe, it, type TestContext } from 'node:test';
-import { setImmediate } from 'node:timers';
+import { describe, it } from 'node:test';
 import { act, createElement, useRef, useState } from 'react';
-import {
-  WsCloseCode,
-  type QueueStep,
-  type RequestListItem,
-  type ServerEvent,
-} from '@webhook-inspector/shared';
+import { WsCloseCode, type RequestListItem, type ServerEvent } from '@webhook-inspector/shared';
 import type { RawSearch } from '../lib/raw-search.ts';
-import type { ReadStateStorage } from '../lib/read-state.ts';
 import { createListLoads } from '../lib/requests.ts';
 import type { SessionPageStatus } from '../lib/session-lifetime.ts';
 import type { ResponseEvent } from '../lib/session-response.ts';
+import { holdFetch, memoryStorage, row, SESSION } from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 
 /**
@@ -22,8 +16,6 @@ import { installFakeBrowser } from '../testing/render-in-node.ts';
  * with a socket the test drives by hand and `fetch` held until a test answers
  * each reload of the list as the server would.
  */
-
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 
 const browser = installFakeBrowser(`https://qa-tools.ru/v/${SESSION}`);
 
@@ -66,82 +58,6 @@ Object.assign(globalThis, { WebSocket: FakeSocket });
 // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
 const { createRoot } = await import('react-dom/client');
 const { useSessionSocket } = await import('./useSessionSocket.ts');
-
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(): ReadStateStorage {
-  const items = new Map<string, string>();
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
-function row(id: string, queueStep: QueueStep | null = null): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep, rule: null },
-  };
-}
-
-/** An answer of the API, as much of one as `api/client.ts` reads. */
-function answer(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(),
-    json: async () => body,
-  } as unknown as Response;
-}
-
-/** Lets an answer, a chain of promises, reach the page. */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-}
-
-/** One call `fetch` was asked for, held until the test answers it. */
-interface HeldCall {
-  url: string;
-  answer: (status: number, body: unknown) => Promise<void>;
-}
-
-/** `fetch`, holding every call until the test answers it. */
-function holdFetch(t: TestContext): HeldCall[] {
-  const calls: HeldCall[] = [];
-
-  t.mock.method(
-    globalThis,
-    'fetch',
-    (url: string) =>
-      new Promise<Response>((resolve) => {
-        calls.push({
-          url,
-          answer: async (status, body) => {
-            resolve(answer(status, body));
-            await settle();
-          },
-        });
-      }),
-  );
-
-  return calls;
-}
 
 /** What the page around the hook did, as the test reads it. */
 interface Seen {

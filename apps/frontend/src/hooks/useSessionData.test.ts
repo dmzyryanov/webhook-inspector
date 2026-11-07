@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it, type TestContext } from 'node:test';
-import { setImmediate } from 'node:timers';
+import { describe, it } from 'node:test';
 import { act, createElement, useCallback } from 'react';
 import {
   ErrorCode,
@@ -12,6 +11,7 @@ import { ACCESS_KEYS_KEY } from '../lib/access-keys.ts';
 import type { ReadStateStorage } from '../lib/read-state.ts';
 import { mergeRequests } from '../lib/requests.ts';
 import type { SessionPageStatus } from '../lib/session-lifetime.ts';
+import { holdFetch, memoryStorage, row, SESSION } from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { FirstLoad, SessionData } from './useSessionData.ts';
 
@@ -22,7 +22,6 @@ import type { FirstLoad, SessionData } from './useSessionData.ts';
  * test answers each call as the server would.
  */
 
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 const KEY = 'Kq7vN2xLm9Pz4Rt8Wy3Bc6Hd1Fg5Js0Ua-Ve_Xi2Ok7';
 
 const browser = installFakeBrowser(`https://qa-tools.ru/v/${SESSION}`);
@@ -30,37 +29,6 @@ const browser = installFakeBrowser(`https://qa-tools.ru/v/${SESSION}`);
 // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
 const { createRoot } = await import('react-dom/client');
 const { useFirstLoad, useSessionData } = await import('./useSessionData.ts');
-
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(): ReadStateStorage {
-  const items = new Map<string, string>();
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
-function row(id: string): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep: null, rule: null },
-  };
-}
 
 /** The session as `GET /api/sessions/:sessionId` answers it, with the default response. */
 function sessionRead(overrides: Partial<SessionDetails> = {}): SessionDetails {
@@ -86,51 +54,6 @@ function answering(status: number): SessionResponseState {
   const response = { status, headers: [], body: null, delayMs: 0, template: false };
 
   return { response, customResponse: response, queue: null, rules: [] };
-}
-
-/** An answer of the API, as much of one as `api/client.ts` reads. */
-function answer(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(),
-    json: async () => body,
-  } as unknown as Response;
-}
-
-/** Lets an answer, a chain of promises, reach the page. */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-}
-
-/** One call `fetch` was asked for, held until the test answers it. */
-interface HeldCall {
-  url: string;
-  answer: (status: number, body: unknown) => Promise<void>;
-}
-
-/** `fetch`, holding every call until the test answers it, in whatever order it chooses. */
-function holdFetch(t: TestContext): HeldCall[] {
-  const calls: HeldCall[] = [];
-
-  t.mock.method(
-    globalThis,
-    'fetch',
-    (url: string) =>
-      new Promise<Response>((resolve) => {
-        calls.push({
-          url,
-          answer: async (status, body) => {
-            resolve(answer(status, body));
-            await settle();
-          },
-        });
-      }),
-  );
-
-  return calls;
 }
 
 const SESSION_URL = `/api/sessions/${SESSION}`;

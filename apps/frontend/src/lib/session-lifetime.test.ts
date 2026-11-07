@@ -13,6 +13,7 @@ import { en } from '../i18n/en.ts';
 import { ru } from '../i18n/ru.ts';
 import {
   classifySessionError,
+  classifySessionFailure,
   keepsNoAddress,
   readSessionPeriodically,
   reloadSessionOnConnection,
@@ -95,6 +96,54 @@ describe('classifySessionError', () => {
 
     for (const error of others) {
       assert.equal(classifySessionError(error), 'error', `misread ${String(error)}`);
+    }
+  });
+});
+
+describe('classifySessionFailure', () => {
+  /**
+   * What opening a request or loading the one chosen to compare with does
+   * when its call fails: a closed session takes the page over, and anything
+   * else is said in place, the requests staying on screen.
+   */
+  it('hands an expired or unknown session to the page and reports nothing in place (D133)', () => {
+    for (const error of [
+      new ApiError(410, ErrorCode.SESSION_EXPIRED, 'Session expired'),
+      new ApiError(404, ErrorCode.SESSION_NOT_FOUND, 'Session not found'),
+    ]) {
+      let reports = 0;
+
+      assert.equal(
+        classifySessionFailure(error, () => {
+          reports += 1;
+        }),
+        'unavailable',
+        `misread ${error.status}`,
+      );
+      assert.equal(reports, 0, `reported in place after ${error.status}`);
+    }
+  });
+
+  it('reports any other failure in place, once, and keeps the page on its requests', () => {
+    const others = [
+      new ApiError(404, ErrorCode.REQUEST_NOT_FOUND, 'Request not found'),
+      new ApiError(500, ErrorCode.INTERNAL_ERROR, 'Internal error'),
+      new ApiError(429, ErrorCode.RATE_LIMIT_EXCEEDED, 'Too many requests'),
+      new TypeError('Failed to fetch'),
+      'not an error at all',
+    ];
+
+    for (const error of others) {
+      let reports = 0;
+
+      assert.equal(
+        classifySessionFailure(error, () => {
+          reports += 1;
+        }),
+        'ready',
+        `misread ${String(error)}`,
+      );
+      assert.equal(reports, 1, `reported ${reports} times after ${String(error)}`);
     }
   });
 });

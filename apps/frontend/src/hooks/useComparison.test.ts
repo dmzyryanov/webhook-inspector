@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
-import { describe, it, type TestContext } from 'node:test';
-import { setImmediate } from 'node:timers';
+import { describe, it } from 'node:test';
 import { act, createElement, useRef, useState } from 'react';
-import { ErrorCode, type RequestDetails, type RequestListItem } from '@webhook-inspector/shared';
-import { loadReadIds, type ReadStateStorage } from '../lib/read-state.ts';
+import { ErrorCode } from '@webhook-inspector/shared';
+import { loadReadIds } from '../lib/read-state.ts';
 import type { SessionPageStatus } from '../lib/session-lifetime.ts';
+import {
+  detail,
+  detailUrl,
+  holdFetch,
+  memoryStorage,
+  row,
+  SESSION,
+} from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { ComparisonPicking } from './useComparison.ts';
 
@@ -17,8 +24,6 @@ import type { ComparisonPicking } from './useComparison.ts';
  * dispatches no event, so this file's document keeps the `keydown` listeners
  * it is given, and a test calls them as a browser does when a key is pressed.
  */
-
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 
 /** The fake window, with the scroll position picking notes as a row is chosen. */
 const browser: ReturnType<typeof installFakeBrowser> & { scrollY: number } = Object.assign(
@@ -44,103 +49,6 @@ Object.assign(browser.document, {
 // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
 const { createRoot } = await import('react-dom/client');
 const { useComparison, useEscapeLeavesPicking } = await import('./useComparison.ts');
-
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(): ReadStateStorage {
-  const items = new Map<string, string>();
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
-function row(id: string): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep: null, rule: null },
-  };
-}
-
-/** A request's details as the API answers them, with no response recorded. */
-function detail(id: string): RequestDetails {
-  return {
-    ...row(id),
-    queryString: '',
-    headers: [['Content-Type', 'application/json']],
-    body: '{"type":"charge"}',
-    bodyBase64: null,
-    isBinary: false,
-    raw: null,
-    rawBase64: null,
-    isRawBinary: false,
-    httpVersion: '1.1',
-    response: null,
-  };
-}
-
-/** An answer of the API, as much of one as `api/client.ts` reads. */
-function answer(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(),
-    json: async () => body,
-  } as unknown as Response;
-}
-
-/** Lets an answer, a chain of promises, reach the page. */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-}
-
-/** One detail call `fetch` was asked for, held until the test answers it. */
-interface HeldCall {
-  url: string;
-  answer: (status: number, body: unknown) => Promise<void>;
-}
-
-/** `fetch`, holding every call until the test answers it, in whatever order it chooses. */
-function holdFetch(t: TestContext): HeldCall[] {
-  const calls: HeldCall[] = [];
-
-  t.mock.method(
-    globalThis,
-    'fetch',
-    (url: string) =>
-      new Promise<Response>((resolve) => {
-        calls.push({
-          url,
-          answer: async (status, body) => {
-            resolve(answer(status, body));
-            await settle();
-          },
-        });
-      }),
-  );
-
-  return calls;
-}
-
-function detailUrl(id: string): string {
-  return `/api/sessions/${SESSION}/requests/${id}`;
-}
 
 /** Presses a key on the page: the document's `keydown` listeners are called, as the browser does. */
 async function pressKey(key: string, defaultPrevented = false): Promise<void> {

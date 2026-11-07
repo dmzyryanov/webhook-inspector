@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { act, createElement } from 'react';
-import type { RequestListItem } from '@webhook-inspector/shared';
 import { en } from '../i18n/en.ts';
-import { readStateKey, recordRead, type ReadStateStorage } from '../lib/read-state.ts';
+import { readStateKey, recordRead } from '../lib/read-state.ts';
+import { memoryStorage, row, SESSION } from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { ReadState } from './useReadState.ts';
 
@@ -15,7 +15,6 @@ import type { ReadState } from './useReadState.ts';
  * browser does when another tab writes.
  */
 
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 const OTHER_SESSION = 'x'.repeat(43);
 const OPENED_AT = Date.UTC(2026, 10, 6, 8, 0, 0);
 
@@ -41,25 +40,6 @@ const { useReadState } = await import('./useReadState.ts');
 
 type ReadStateOptions = Parameters<typeof useReadState>[0];
 
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(): ReadStateStorage {
-  const items = new Map<string, string>();
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
 /** A `storage` event as the browser hands it to every other tab of the origin. */
 function storageEvent(storageArea: unknown, key: string, newValue: string | null) {
   return { key, newValue, oldValue: null, storageArea };
@@ -72,18 +52,6 @@ async function dispatchStorage(event: unknown): Promise<void> {
       listener(event);
     }
   });
-}
-
-function row(id: string): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep: null, rule: null },
-  };
 }
 
 /** The hook rendered as a page would hold it: what it returned last, its next render and its end. */
