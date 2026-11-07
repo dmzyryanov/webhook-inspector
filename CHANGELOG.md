@@ -125,6 +125,18 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.30
+
+2026-11-07
+
+**Nothing changes on this site; a copy of the inspector built without this
+site's texts no longer fails to build when its status page's address contains
+the word "Network".** Its build took that address for a mention of this
+site's server, which such a copy leaves out of its API reference; it now reads
+only the reference's own text, and still refuses it when that names this
+site's server. This site's `/docs`, `/openapi.json` and `llms-full.txt` are
+exactly as before. (#430)
+
 ## 1.19.29
 
 2026-11-07

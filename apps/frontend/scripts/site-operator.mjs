@@ -282,7 +282,11 @@ function withoutMoveBullet(paragraph) {
  * leaves out the Network section's bullet on production's move (#386).
  * Refused: a description without the section, the sentence or the bullet,
  * and one without the texts that still names the server's address or the
- * section once they are left out, so a rewording cannot keep either.
+ * section once they are left out, so a rewording cannot keep either. That
+ * check reads what is kept of the source before the operator's status page
+ * is written into its sentence: the page's address is the operator's own
+ * setting, whose path may hold the word `Network` or digits like the
+ * server's address, and names nothing of this site's server (#430).
  */
 export function operatorDescription(description, operator = OPERATOR, hasMove = true) {
   const paragraphs = description.split('\n\n');
@@ -323,32 +327,37 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
       ? []
       : Array.from({ length: network.end - network.start }, (_, offset) => network.start + offset)),
   ]);
-  const url = operator.statusPageUrl;
-  const kept = paragraphs.flatMap((paragraph, index) => {
+  // What the build keeps of each source paragraph, by its index, `null` for
+  // one it leaves out; the status sentence is still the source's here.
+  const cut = paragraphs.map((paragraph, index) => {
     if (left.has(index)) {
-      return [];
+      return null;
     }
 
-    if (index === status && url !== null) {
-      return [paragraph.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))];
+    if (index === status) {
+      return paragraph;
     }
 
     if (!operator.texts) {
-      return [paragraph.replace(NETWORK_POINTER, '')];
+      return paragraph.replace(NETWORK_POINTER, '');
     }
 
     if (!hasMove && inNetwork(index)) {
       const rest = withoutMoveBullet(paragraph);
 
-      return rest === '' ? [] : [rest];
+      return rest === '' ? null : rest;
     }
 
-    return [paragraph];
+    return paragraph;
   });
 
   if (!operator.texts) {
-    const named = kept.find(
-      (paragraph) => paragraph.includes(WRITTEN_SERVER_ADDRESS) || NETWORK_NAMED.test(paragraph),
+    // The source alone is read, so a status page whose address holds the
+    // word `Network` is not taken for this site's server (#430).
+    const named = cut.find(
+      (paragraph) =>
+        paragraph !== null &&
+        (paragraph.includes(WRITTEN_SERVER_ADDRESS) || NETWORK_NAMED.test(paragraph)),
     );
 
     if (named !== undefined) {
@@ -357,6 +366,18 @@ export function operatorDescription(description, operator = OPERATOR, hasMove = 
       );
     }
   }
+
+  const url = operator.statusPageUrl;
+  const kept = cut.flatMap((paragraph, index) => {
+    if (paragraph === null) {
+      return [];
+    }
+
+    // The status sentence is kept only with a status page, so `url` is one here.
+    return index === status
+      ? [paragraph.replaceAll(WRITTEN_STATUS_PAGE_IN_PROSE, () => statusPageInProse(url))]
+      : [paragraph];
+  });
 
   return (changelogShown(operator) ? kept : withoutChangelogLinks(kept)).join('\n\n');
 }

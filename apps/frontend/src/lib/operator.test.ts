@@ -36,6 +36,7 @@ import {
   operatorOpenApi,
   operatorSitemap,
   WRITTEN_SERVER_ADDRESS,
+  WRITTEN_STATUS_PAGE_IN_PROSE,
 } from '../../scripts/site-operator.mjs';
 import {
   FakeElement,
@@ -1115,6 +1116,131 @@ describe('the files a build writes for its operator (scripts/site-operator.mjs)'
       );
       assert.doesNotThrow(() => operatorDescription(named, PRODUCTION_OPERATOR, false));
     }
+  });
+
+  it('write a status page whose address names Network or the server’s address without the operator’s texts, the Network section left out and the source still refused for naming either (#430)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const section = networkParagraphs(source);
+    const isStatus = (paragraph: string) => paragraph.startsWith(DESCRIPTION_PARAGRAPHS.status);
+    const names = (paragraph: string) =>
+      /\bNetwork\b/.test(paragraph) || paragraph.includes(WRITTEN_SERVER_ADDRESS);
+    // What a build with no status page keeps: the paragraphs besides its sentence.
+    const withoutPage = operatorDescription(source, NO_OPERATOR).split('\n\n');
+
+    for (const raw of [
+      'https://status.example.com/Network',
+      'https://status.example.com/Network/',
+      'https://status.example.com/see/Network.html',
+      `https://status.example.com/${WRITTEN_SERVER_ADDRESS}`,
+      `https://status.example.com/Network/${WRITTEN_SERVER_ADDRESS}/Network`,
+    ]) {
+      const page = parseStatusPageUrl(raw) as string;
+
+      for (const operator of [
+        parseOperator({ STATUS_PAGE_URL: raw }),
+        parseOperator({ STATUS_PAGE_URL: raw, CONTACT_EMAIL: 'hello@inspector.example' }),
+      ]) {
+        assert.equal(operator.texts, false);
+
+        const described = operatorDescription(source, operator);
+        const paragraphs = described.split('\n\n');
+
+        // No Network section and no sentence pointing at it.
+        for (const paragraph of section) {
+          assert.ok(!described.includes(paragraph), paragraph.slice(0, 40));
+        }
+        assert.ok(!described.includes(NETWORK_POINTER.trim()));
+        // The status sentence names the operator's page, and only it names
+        // the word or the address; every other paragraph is what a build
+        // with no status page keeps.
+        assert.deepEqual(paragraphs.filter(isStatus), [
+          `To check whether Webhook Inspector is up — say, when a test that uses it fails — open ${statusPageInProse(page)}: the site, the API and webhook receiving, each checked every minute from outside, with its uptime history and reports of outages.`,
+        ]);
+        assert.deepEqual(paragraphs.filter(names), paragraphs.filter(isStatus));
+        assert.deepEqual(
+          paragraphs.filter((paragraph) => !isStatus(paragraph)),
+          withoutPage,
+        );
+        // And so in the file the build serves.
+        assert.equal(
+          (JSON.parse(operatorOpenApi(openapi, operator)) as { info: { description: string } }).info
+            .description,
+          described,
+        );
+      }
+    }
+
+    // A source that names the address or the section outside it is refused
+    // still, whatever the status page.
+    const network = parseOperator({ STATUS_PAGE_URL: 'https://status.example.com/Network' });
+    const refusal = /names the server's address or its Network section outside it/;
+
+    for (const named of [
+      source.replace(
+        '**No accounts.**',
+        `**No accounts.** The server is ${WRITTEN_SERVER_ADDRESS}.`,
+      ),
+      source.replace('**No accounts.**', '**No accounts.** See Network above.'),
+      source.replace('the mark was the notice.', 'the mark was the notice (Network).'),
+    ]) {
+      assert.notEqual(named, source);
+      for (const operator of [network, OTHER_OPERATOR, NO_OPERATOR]) {
+        assert.throws(() => operatorDescription(named, operator), refusal);
+      }
+    }
+
+    // So is a status sentence of the source that names either, read before
+    // the page is written in; with no status page the sentence is left out.
+    for (const named of [
+      source.replace(
+        `open ${WRITTEN_STATUS_PAGE_IN_PROSE}:`,
+        `open ${WRITTEN_STATUS_PAGE_IN_PROSE}, or see Network:`,
+      ),
+      source.replace(
+        DESCRIPTION_PARAGRAPHS.status,
+        `${DESCRIPTION_PARAGRAPHS.status} on ${WRITTEN_SERVER_ADDRESS}`,
+      ),
+    ]) {
+      assert.notEqual(named, source);
+      for (const operator of [network, OTHER_OPERATOR]) {
+        assert.throws(() => operatorDescription(named, operator), refusal);
+      }
+      assert.equal(operatorDescription(named, NO_OPERATOR), withoutPage.join('\n\n'));
+    }
+  });
+
+  it('write a hostile status page that names Network and the server’s address at growing sizes in time linear in its length (#430)', () => {
+    const source = (JSON.parse(openapi) as { info: { description: string } }).info.description;
+    const withoutPage = operatorDescription(source, NO_OPERATOR);
+    const times: number[] = [];
+
+    for (const size of [10_000, 100_000, 400_000]) {
+      const sample = `/Network/${WRITTEN_SERVER_ADDRESS}/xNetworkx/Network.`;
+      const raw = `https://status.example.com${sample.repeat(Math.ceil(size / sample.length))}`;
+      const operator = parseOperator({ STATUS_PAGE_URL: raw });
+      const page = statusPageInProse(operator.statusPageUrl as string);
+
+      assert.ok(page.length >= size);
+      times.push(
+        fastestRun(() => {
+          const paragraphs = operatorDescription(source, operator).split('\n\n');
+          const status = paragraphs.filter((paragraph) =>
+            paragraph.startsWith(DESCRIPTION_PARAGRAPHS.status),
+          );
+
+          assert.equal(status.length, 1);
+          assert.ok((status[0] as string).includes(` open ${page}: the site`));
+          assert.equal(
+            paragraphs.filter((paragraph) => paragraph !== status[0]).join('\n\n'),
+            withoutPage,
+          );
+        }),
+      );
+    }
+
+    // Forty times the text in at most about two hundred times the time:
+    // linear with room for a busy runner, nowhere near a quadratic scan.
+    assert.ok((times[2] as number) < Math.max(200 * (times[0] as number), 3_000), times.join(', '));
   });
 
   it('read hostile Network sections at growing sizes in time linear in their length (issue #386)', () => {
