@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
-import { setImmediate } from 'node:timers';
 import { act, createElement } from 'react';
-import { ErrorCode, type RequestListItem } from '@webhook-inspector/shared';
+import { ErrorCode } from '@webhook-inspector/shared';
 import { en } from '../i18n/en.ts';
 import { TYPING_PAUSE_MS } from '../lib/raw-search.ts';
 import { filterKey, type ReadStateStorage } from '../lib/read-state.ts';
 import type { SessionPageStatus } from '../lib/session-lifetime.ts';
+import { answer, memoryStorage, row, SESSION, settle } from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { RequestFilter } from './useRequestFilter.ts';
 
@@ -16,7 +16,6 @@ import type { RequestFilter } from './useRequestFilter.ts';
  * calls the hook, with `fetch` answering the search as the server would.
  */
 
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 /** A word of no row's list fields, which only a search of Raw can find. */
 const WORD = 'needle42';
 /** A day long past, when a stored filter was last used. */
@@ -30,52 +29,11 @@ const { useRequestFilter } = await import('./useRequestFilter.ts');
 
 type FilterOptions = Parameters<typeof useRequestFilter>[0];
 
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(initial: Record<string, string> = {}): ReadStateStorage {
-  const items = new Map(Object.entries(initial));
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
 /** The filter as this browser keeps it for the session. */
 function storedFilter(storage: ReadStateStorage): { usedAt: number; query: string } | null {
   const raw = storage.getItem(filterKey(SESSION));
 
   return raw === null ? null : (JSON.parse(raw) as { usedAt: number; query: string });
-}
-
-function row(id: string): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep: null, rule: null },
-  };
-}
-
-/** An answer of the API, as much of one as `api/client.ts` reads. */
-function answer(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(),
-    json: async () => body,
-  } as unknown as Response;
 }
 
 /** `fetch`, answering every call with `respond`'s answer, its calls recorded. */
@@ -122,13 +80,6 @@ async function renderFilter(options: Omit<FilterOptions, 'sessionId' | 'messages
     },
     unmount: () => act(async () => root.unmount()),
   };
-}
-
-/** Lets a search's answer, a chain of promises, reach the page. */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  });
 }
 
 describe('useRequestFilter', () => {

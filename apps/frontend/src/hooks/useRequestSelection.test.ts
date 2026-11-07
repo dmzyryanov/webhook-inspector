@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
-import { describe, it, type TestContext } from 'node:test';
-import { setImmediate } from 'node:timers';
+import { describe, it } from 'node:test';
 import { act, createElement, useRef, useState } from 'react';
-import { ErrorCode, type RequestDetails, type RequestListItem } from '@webhook-inspector/shared';
+import { ErrorCode, type RequestListItem } from '@webhook-inspector/shared';
 import type { ToastIcon } from '../components/Toast.tsx';
 import { en, type Phrase } from '../i18n/en.ts';
-import { loadReadIds, type ReadStateStorage } from '../lib/read-state.ts';
+import { loadReadIds } from '../lib/read-state.ts';
 import type { SessionPageStatus } from '../lib/session-lifetime.ts';
+import {
+  detail,
+  detailUrl,
+  holdFetch,
+  memoryStorage,
+  row,
+  SESSION,
+} from '../testing/hook-helpers.ts';
 import { installFakeBrowser } from '../testing/render-in-node.ts';
 import type { RequestSelection } from './useRequestSelection.ts';
 
@@ -17,8 +24,6 @@ import type { RequestSelection } from './useRequestSelection.ts';
  * the page does and calls the hook, with `fetch` held until a test answers
  * each detail call as the server would.
  */
-
-const SESSION = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
 
 /** The fake window, with the scroll position the push flow notes as a request opens. */
 const browser: ReturnType<typeof installFakeBrowser> & { scrollY: number } = Object.assign(
@@ -41,103 +46,6 @@ Object.assign(globalThis, { CSS: { escape: (value: string) => value } });
 // Imported once the fake browser is in place: React DOM looks for a DOM as it loads.
 const { createRoot } = await import('react-dom/client');
 const { staleLink, useRequestSelection } = await import('./useRequestSelection.ts');
-
-/** A `localStorage` of one browser, in memory. */
-function memoryStorage(): ReadStateStorage {
-  const items = new Map<string, string>();
-
-  return {
-    get length() {
-      return items.size;
-    },
-    key: (index) => [...items.keys()][index] ?? null,
-    getItem: (name) => items.get(name) ?? null,
-    setItem: (name, value) => {
-      items.set(name, String(value));
-    },
-    removeItem: (name) => {
-      items.delete(name);
-    },
-  };
-}
-
-function row(id: string): RequestListItem {
-  return {
-    id,
-    method: 'POST',
-    receivedAt: '2026-09-17T14:32:06.000Z',
-    bodySize: 19,
-    sourceIp: '145.40.74.12',
-    path: `/s/${SESSION}/stripe/events`,
-    response: { state: 'sent', status: 200, queueStep: null, rule: null },
-  };
-}
-
-/** A request's details as the API answers them, its body `body`, with no response recorded. */
-function detail(id: string, body = '{"type":"charge"}'): RequestDetails {
-  return {
-    ...row(id),
-    queryString: '',
-    headers: [['Content-Type', 'application/json']],
-    body,
-    bodyBase64: null,
-    isBinary: false,
-    raw: null,
-    rawBase64: null,
-    isRawBinary: false,
-    httpVersion: '1.1',
-    response: null,
-  };
-}
-
-/** An answer of the API, as much of one as `api/client.ts` reads. */
-function answer(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(),
-    json: async () => body,
-  } as unknown as Response;
-}
-
-/** Lets an answer, a chain of promises, reach the page. */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-}
-
-/** One detail call `fetch` was asked for, held until the test answers it. */
-interface HeldCall {
-  url: string;
-  answer: (status: number, body: unknown) => Promise<void>;
-}
-
-/** `fetch`, holding every call until the test answers it, in whatever order it chooses. */
-function holdFetch(t: TestContext): HeldCall[] {
-  const calls: HeldCall[] = [];
-
-  t.mock.method(
-    globalThis,
-    'fetch',
-    (url: string) =>
-      new Promise<Response>((resolve) => {
-        calls.push({
-          url,
-          answer: async (status, body) => {
-            resolve(answer(status, body));
-            await settle();
-          },
-        });
-      }),
-  );
-
-  return calls;
-}
-
-function detailUrl(id: string): string {
-  return `/api/sessions/${SESSION}/requests/${id}`;
-}
 
 /** What the page around the hook holds, as the test reads it after each render. */
 interface Page {
@@ -303,6 +211,66 @@ describe('useRequestSelection', () => {
     assert.equal(await opening, 'superseded');
     assert.equal(page.current.selection.details, null);
     assert.equal(page.current.selection.selectedId, null);
+
+    await page.unmount();
+  });
+
+  it('writes the open request to the ref the socket reads as soon as one is opened or closed, before the page renders again (D137)', async (t) => {
+    const calls = holdFetch(t);
+    const page = await renderSelection([row('req-a'), row('req-b')]);
+
+    // Each read is made inside the handler, right after its call: the page
+    // has not rendered since, so the effect that mirrors the selection into
+    // the ref has not run, and a deletion event landing now sees only what
+    // the call itself wrote.
+    const [first] = await page.run((selection) => {
+      const opening = selection.select('req-a');
+
+      return {
+        opening,
+        rendered: page.current.selection.selectedId,
+        ref: selection.selectedIdRef.current,
+      };
+    });
+
+    assert.equal(first.rendered, null);
+    assert.equal(first.ref, 'req-a');
+
+    await calls[0]!.answer(200, detail('req-a'));
+    assert.equal(await first.opening, 'shown');
+    assert.equal(page.current.selection.selectedIdRef.current, 'req-a');
+
+    // Another row clicked while one is open.
+    const [second] = await page.run((selection) => {
+      const opening = selection.select('req-b');
+
+      return {
+        opening,
+        rendered: page.current.selection.selectedId,
+        ref: selection.selectedIdRef.current,
+      };
+    });
+
+    assert.equal(second.rendered, 'req-a');
+    assert.equal(second.ref, 'req-b');
+
+    // Closed, as a deletion made by another viewer closes it.
+    const [closed] = await page.run((selection) => {
+      selection.discardPendingDetails();
+
+      return {
+        rendered: page.current.selection.selectedId,
+        ref: selection.selectedIdRef.current,
+      };
+    });
+
+    assert.equal(closed.rendered, 'req-b');
+    assert.equal(closed.ref, null);
+
+    await calls[1]!.answer(200, detail('req-b'));
+    assert.equal(await second.opening, 'superseded');
+    assert.equal(page.current.selection.selectedId, null);
+    assert.equal(page.current.selection.selectedIdRef.current, null);
 
     await page.unmount();
   });
