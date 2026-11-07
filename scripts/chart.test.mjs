@@ -3757,6 +3757,62 @@ test("no key path of values.yaml ends in a file's name the README's reader takes
   assert.deepEqual(keysTakenForFiles(null), []);
 });
 
+/** `names` holds each name of `pinned`; it fails naming those it lacks, in `pinned`'s order. */
+function assertFileNamesHeld(names, pinned) {
+  const lacking = pinned.filter((name) => !names.has(name));
+
+  assert.deepEqual(lacking, [], `FILE_NAMES lacks ${lacking.join(', ')}`);
+}
+
+test('FILE_NAMES holds each of the 17 file names #416 lists, written out here, and the check fails, naming it, on a copy of the set lacking any one (#416; #442, criteria 1 and 2)', () => {
+  // Written out rather than read from FILE_NAMES, so a name dropped from the
+  // set fails here, named, until it is dropped from this list too; otherwise
+  // it would surface only as a file name in README.md's prose failing as a
+  // missing key. The set may hold more names than these.
+  const pinned = [
+    'sh',
+    'log',
+    'tsx',
+    'ts',
+    'mjs',
+    'js',
+    'gz',
+    'crt',
+    'key',
+    'pem',
+    'yaml',
+    'yml',
+    'json',
+    'md',
+    'txt',
+    'asc',
+    'Dockerfile',
+  ];
+
+  assert.equal(new Set(pinned).size, 17);
+  assertFileNamesHeld(FILE_NAMES, pinned);
+
+  // Each name taken out of a copy of the set fails the check, naming it alone
+  // on the message's first line, after which node:assert may add its diff.
+  for (const name of pinned) {
+    const copy = new Set(FILE_NAMES);
+
+    copy.delete(name);
+    assert.throws(() => assertFileNamesHeld(copy, pinned), {
+      actual: [name],
+      expected: [],
+      message: new RegExp(`^FILE_NAMES lacks ${name}$`, 'm'),
+    });
+  }
+  // Two names lacking are both named, in the list's order; a name beyond the
+  // list fails nothing.
+  assert.throws(() => assertFileNamesHeld(new Set(['sh']), ['json', 'sh', 'md']), {
+    actual: ['json', 'md'],
+    message: /^FILE_NAMES lacks json, md$/m,
+  });
+  assertFileNamesHeld(new Set([...FILE_NAMES, 'html']), pinned);
+});
+
 test('every command of README.md\'s Install section, but the variables it sets, is given as it stands in "Installing on k3s with the chart" (#395, criterion 2)', () => {
   assertInstallHeld(readme());
 });
