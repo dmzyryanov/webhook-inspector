@@ -553,7 +553,11 @@ and the description of `create_session` name the service by that name too; the
 address, the tools' names, their arguments and their answers are unchanged,
 and a client that gave the server another name in its settings keeps working.
 The examples for adding the server now call it `webhook-inspector`. Behind the
-scenes, the service's internal names follow its own. (#323, D278)
+scenes, the service's internal names follow its own. A copy of the source code
+set up locally before this version takes two commands, once:
+`docker rm --force` on the database container of its old local project,
+`qa-tools`, which `docker ps -a` lists, and `npm run db:rebuild`; the data of
+that old local database is not carried over. (#323, #352, D278)
 
 ## 1.18.1
 

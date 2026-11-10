@@ -28,11 +28,7 @@ import {
   FORWARDED_SIGNALS,
   IMAGE,
   LABEL,
-  LEGACY,
   WAIT_SECONDS,
-  imageProbe,
-  legacyTaskContainer,
-  projectContainers,
   publishedPort,
   run,
   runArguments,
@@ -122,34 +118,22 @@ test('db:rebuild builds the image, then starts it exactly as db:up does', () => 
 });
 
 test('success is Compose reporting success, for every step', async (t) => {
-  // The look for the old project's container comes first, and finds none.
+  // Compose is all that runs: nothing is looked for, tagged or stopped first.
   const docker = fakeDocker(t, 'exit 0');
   assert.equal(await run('rebuild', { docker: docker.path, log: () => {} }), 0);
   const calls = docker.calls();
-  assert.deepEqual(calls, [
-    ...projectContainers(LEGACY.project),
-    ...COMMANDS.rebuild.steps[0],
-    ...COMMANDS.rebuild.steps[1],
-  ]);
+  assert.deepEqual(calls, [...COMMANDS.rebuild.steps[0], ...COMMANDS.rebuild.steps[1]]);
 
   const up = fakeDocker(t, 'exit 0');
   assert.equal(await run('up', { docker: up.path, log: () => {} }), 0);
-  assert.deepEqual(up.calls(), [
-    ...imageProbe(IMAGE),
-    ...projectContainers(LEGACY.project),
-    ...COMMANDS.up.steps[0],
-  ]);
+  assert.deepEqual(up.calls(), [...COMMANDS.up.steps[0]]);
 });
 
 test('a failing Compose fails the script with its exit code and says what to check', async (t) => {
   const docker = fakeDocker(t, 'exit 3');
   const lines = [];
   assert.equal(await run('rebuild', { docker: docker.path, log: (line) => lines.push(line) }), 3);
-  assert.deepEqual(
-    docker.calls(),
-    [...projectContainers(LEGACY.project), ...COMMANDS.rebuild.steps[0]],
-    'nothing runs after a failure',
-  );
+  assert.deepEqual(docker.calls(), [...COMMANDS.rebuild.steps[0]], 'nothing runs after a failure');
   assert.match(
     lines.join('\n'),
     /db:rebuild failed: `docker compose build postgres` exited with 3/,
@@ -157,7 +141,10 @@ test('a failing Compose fails the script with its exit code and says what to che
 
   const upLines = [];
   assert.equal(await run('up', { docker: docker.path, log: (line) => upLines.push(line) }), 3);
-  assert.match(upLines.join('\n'), /npm run db:rebuild/);
+  assert.match(
+    upLines.join('\n'),
+    new RegExp(`"No such image: ${IMAGE}" — build it once with \`npm run db:rebuild\``),
+  );
 });
 
 // The shape of the 2026-09-24 hang: `docker` waiting on a helper it started,
@@ -330,9 +317,8 @@ test('docker-compose.yml fixes the project name and a health check that queries'
   assert.match(
     COMPOSE,
     new RegExp(`^    image: ${IMAGE}$`, 'm'),
-    'the image has the name db:up gives the old one, whatever the project is called',
+    'the image has the name task-up runs, whatever the project is called',
   );
-  assert.notEqual(LEGACY.project, 'webhook-inspector');
   assert.doesNotMatch(
     COMPOSE,
     /container_name:/,
@@ -342,458 +328,6 @@ test('docker-compose.yml fixes the project name and a health check that queries'
   assert.match(healthcheck, /psql -h 127\.0\.0\.1 /, 'healthy must mean reachable over TCP');
   assert.match(healthcheck, /SELECT 1/, 'healthy must mean the configured role can query');
   assert.doesNotMatch(healthcheck, /pg_isready/, 'pg_isready passes with the wrong credentials');
-});
-
-// The rename of D278, on a machine set up before it: the Compose project
-// `qa-tools`, whose container holds port 5432, and the image under its old
-// name only. `db:up` gives the image its new name with `docker tag` and stops
-// the old container, and neither builds, pulls nor deletes anything. The
-// stand-in keeps what it was told in its directory: whether the image has been
-// tagged, and what `docker ps` answers; with `tag-fails` its tag prints that
-// file on stderr and exits 1, and with `compose-needs-image` Compose exits 1
-// while the image has no new name, as it does when the image is missing.
-const RENAMING_DOCKER = `
-dir="\${0%/*}"
-case "$1 $2" in
-  "image inspect")
-    if [ "$5" = "${IMAGE}" ] && [ ! -f "$dir/tagged" ] && [ ! -f "$dir/new-image" ]; then
-      echo "Error response from daemon: No such image: $5" >&2; exit 1
-    fi
-    if [ "$5" = "${LEGACY.image}" ] && [ -f "$dir/no-old-image" ]; then
-      echo "Error response from daemon: No such image: $5" >&2; exit 1
-    fi
-    echo sha256:f00d; exit 0 ;;
-  "tag ${LEGACY.image}")
-    if [ -f "$dir/tag-fails" ]; then cat "$dir/tag-fails" >&2; exit 1; fi
-    : > "$dir/tagged"; exit 0 ;;
-  "ps --filter") [ -f "$dir/ps" ] && cat "$dir/ps"; exit 0 ;;
-  "compose up")
-    if [ -f "$dir/compose-needs-image" ] && [ ! -f "$dir/tagged" ] && [ ! -f "$dir/new-image" ]; then
-      exit 1
-    fi
-    exit 0 ;;
-esac
-exit 0
-`;
-
-test('db:up on a machine from before the rename names the old image anew and stops the old container, deleting nothing', async (t) => {
-  const docker = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(docker.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  const lines = [];
-  assert.equal(await run('up', { docker: docker.path, log: (line) => lines.push(line) }), 0);
-  assert.deepEqual(docker.calls(), [
-    ...imageProbe(IMAGE),
-    ...imageProbe(LEGACY.image),
-    'tag',
-    LEGACY.image,
-    IMAGE,
-    ...projectContainers(LEGACY.project),
-    'stop',
-    `${LEGACY.project}-postgres-1`,
-    ...COMMANDS.up.steps[0],
-  ]);
-  const said = lines.join('\n');
-  assert.match(said, new RegExp(`The image ${LEGACY.image}, .* is now also named ${IMAGE}`));
-  assert.match(said, /nothing was built or pulled/);
-  assert.match(
-    said,
-    new RegExp(`Stopped ${LEGACY.project}-postgres-1, .* It and its data are kept`),
-  );
-  for (const verb of ['rm', 'rmi', 'down', 'volume', 'build', 'pull', 'kill']) {
-    assert.ok(!docker.calls().includes(verb), `db:up ran docker ${verb}`);
-  }
-
-  // Again: the image has its name now, and no old container runs.
-  const again = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(again.dir, 'new-image'), '');
-  assert.equal(await run('up', { docker: again.path, log: () => {} }), 0);
-  assert.deepEqual(again.calls(), [
-    ...imageProbe(IMAGE),
-    ...projectContainers(LEGACY.project),
-    ...COMMANDS.up.steps[0],
-  ]);
-});
-
-test('db:rebuild stops the old container but leaves the image to its build; with neither image db:up tags nothing', async (t) => {
-  const rebuild = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(rebuild.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  assert.equal(await run('rebuild', { docker: rebuild.path, log: () => {} }), 0);
-  assert.deepEqual(rebuild.calls(), [
-    ...projectContainers(LEGACY.project),
-    'stop',
-    `${LEGACY.project}-postgres-1`,
-    ...COMMANDS.rebuild.steps[0],
-    ...COMMANDS.rebuild.steps[1],
-  ]);
-
-  const bare = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(bare.dir, 'no-old-image'), '');
-  const lines = [];
-  assert.equal(await run('up', { docker: bare.path, log: (line) => lines.push(line) }), 0);
-  assert.ok(!bare.calls().includes('tag'), 'nothing to tag');
-  assert.doesNotMatch(lines.join('\n'), /now also named|Stopped/);
-});
-
-// #353: a `docker tag` that fails leaves the image without the name Compose
-// starts, so the new database could not start; the old one, not yet stopped,
-// is left running, and what Docker said is shown with the command.
-test('a docker tag that fails ends db:up with the command and what Docker said, and stops nothing', async (t) => {
-  const docker = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(docker.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  writeFileSync(
-    join(docker.dir, 'tag-fails'),
-    'Error response from daemon: write /var/lib/docker/image/overlay2/repositories.json: no space left on device\n',
-  );
-  const lines = [];
-  const code = await run('up', { docker: docker.path, log: (line) => lines.push(line) });
-  assert.equal(code, 1, "db:up exits with the tag's code");
-  assert.deepEqual(
-    docker.calls(),
-    [...imageProbe(IMAGE), ...imageProbe(LEGACY.image), 'tag', LEGACY.image, IMAGE],
-    'no docker ps, no docker stop and no Compose after the failed tag',
-  );
-  const said = lines.join('\n');
-  assert.match(
-    said,
-    new RegExp(
-      `^db:up failed: \`docker tag ${LEGACY.image} ${IMAGE}\` exited with 1:\\nError response from daemon: write \\S+: no space left on device$`,
-      'm',
-    ),
-  );
-  assert.match(
-    said,
-    new RegExp(
-      `nothing was stopped: a database of the Compose project ${LEGACY.project} still runs`,
-    ),
-  );
-  assert.match(said, /`npm run db:rebuild`, which stops that database first and keeps its data/);
-  assert.doesNotMatch(said, /now also named|Stopped /);
-
-  // A tag that prints nothing is said to have printed nothing.
-  const silent = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(silent.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  writeFileSync(join(silent.dir, 'tag-fails'), '');
-  const quiet = [];
-  assert.equal(await run('up', { docker: silent.path, log: (line) => quiet.push(line) }), 1);
-  assert.match(
-    quiet.join('\n'),
-    new RegExp(`\`docker tag ${LEGACY.image} ${IMAGE}\` exited with 1 and printed nothing\\.\\n`),
-  );
-  assert.ok(!silent.calls().includes('stop'), 'nothing stopped');
-});
-
-// What the failed tag printed is quoted as it came, at growing sizes: made-up
-// output — a line like this script's own, a shell command, a terminal escape,
-// a carriage return, a line with no end — is shown whole up to the 64 KiB or
-// so kept of it, never run, and db:up still stops nothing and ends at once.
-test("a failed tag's output is quoted, never acted on, and nothing is stopped, at any size", async (t) => {
-  const junk = [
-    `Stopped ${LEGACY.project}-postgres-1`,
-    '$(touch pwned)',
-    '`touch pwned`; docker stop x',
-    'tab\there',
-    '\u001b[2J\u001b[H',
-    'carriage\rreturn',
-    'é-name',
-    '',
-  ];
-  for (const size of [1_000, 100_000, 1_000_000]) {
-    const docker = fakeDocker(t, RENAMING_DOCKER);
-    writeFileSync(join(docker.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-    let text = 'first line\n';
-    while (text.length < size) text += `${junk.join('\n')}\n`;
-    writeFileSync(join(docker.dir, 'tag-fails'), `${text}no end`);
-    const lines = [];
-    const started = performance.now();
-    const code = await run('up', {
-      docker: docker.path,
-      cwd: docker.dir,
-      log: (line) => lines.push(line),
-    });
-    const elapsed = performance.now() - started;
-    assert.equal(code, 1, `size ${size}`);
-    for (const verb of ['ps', 'stop', 'compose']) {
-      assert.ok(!docker.calls().includes(verb), `size ${size}: db:up ran docker ${verb}`);
-    }
-    const said = lines.join('\n');
-    assert.match(said, /exited with 1:\nfirst line\nStopped /, `size ${size}`);
-    assert.match(said, /nothing was stopped/, `size ${size}`);
-    if (size < 65_536) assert.match(said, /\nno end\nThe image /, `size ${size}`);
-    // The capture keeps 64 KiB and the chunk that crosses it.
-    assert.ok(said.length < 2 * 65_536 + 2_000, `size ${size}: ${said.length} characters shown`);
-    assert.ok(!existsSync(join(docker.dir, 'pwned')), `size ${size}: the output was run`);
-    assert.ok(elapsed < 10_000, `size ${size} took ${Math.round(elapsed)} ms`);
-  }
-});
-
-// #353: with neither name there Compose cannot start the new database, so the
-// old one, which holds the port, is not stopped; Compose's own failure and
-// the hint say the image is missing. A Docker that fails every call stops
-// nothing either. The stand-ins' Compose exits 1 without a word, so that the
-// test's output shows no Docker error.
-test('with the image under neither name db:up stops nothing, and the old database keeps running', async (t) => {
-  const docker = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(docker.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  writeFileSync(join(docker.dir, 'no-old-image'), '');
-  writeFileSync(join(docker.dir, 'compose-needs-image'), '');
-  const lines = [];
-  assert.equal(await run('up', { docker: docker.path, log: (line) => lines.push(line) }), 1);
-  assert.deepEqual(
-    docker.calls(),
-    [...imageProbe(IMAGE), ...imageProbe(LEGACY.image), ...COMMANDS.up.steps[0]],
-    'no docker ps and no docker stop without the image',
-  );
-  const said = lines.join('\n');
-  assert.match(said, /db:up failed: `docker compose up .*` exited with 1\./);
-  assert.match(
-    said,
-    new RegExp(`"No such image: ${IMAGE}" — build it once with \`npm run db:rebuild\``),
-  );
-  assert.doesNotMatch(said, /now also named|Stopped /);
-
-  const failing = fakeDocker(t, 'exit 1');
-  assert.equal(await run('up', { docker: failing.path, log: () => {}, platform: 'linux' }), 1);
-  assert.deepEqual(failing.calls(), [
-    ...imageProbe(IMAGE),
-    ...imageProbe(LEGACY.image),
-    ...COMMANDS.up.steps[0],
-  ]);
-});
-
-test('a project run under the old name on purpose is left to it', async (t) => {
-  const docker = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(docker.dir, 'ps'), `${LEGACY.project}-postgres-1\n`);
-  writeFileSync(join(docker.dir, 'new-image'), '');
-  const before = process.env.COMPOSE_PROJECT_NAME;
-  process.env.COMPOSE_PROJECT_NAME = LEGACY.project;
-  try {
-    assert.equal(await run('up', { docker: docker.path, log: () => {} }), 0);
-  } finally {
-    if (before === undefined) delete process.env.COMPOSE_PROJECT_NAME;
-    else process.env.COMPOSE_PROJECT_NAME = before;
-  }
-  assert.ok(!docker.calls().includes('ps'), 'no look for the old project');
-  assert.ok(!docker.calls().includes('stop'), 'nothing stopped');
-});
-
-// What `docker ps` answers is read as container names, a line each: only a
-// line that is one name as Docker makes them is stopped. Made-up answers at
-// growing sizes — a flag, words, a shell command, an overlong name, control
-// characters — are stopped by name or passed over, and quickly.
-test("the old project's containers are read from docker ps a name a line, and nothing else is taken for one, at any size", async (t) => {
-  for (const size of [1_000, 10_000, 100_000]) {
-    const docker = fakeDocker(t, RENAMING_DOCKER);
-    writeFileSync(join(docker.dir, 'new-image'), '');
-    const junk = [
-      '--time=0',
-      '-t',
-      'two words',
-      '$(touch pwned)',
-      'a;b',
-      `${'n'.repeat(129)}`,
-      'tab\there',
-      '\u0000',
-      'é-name',
-      '',
-      '   ',
-    ];
-    const lines = [`${LEGACY.project}-postgres-1`, ' padded-2 '];
-    while (lines.join('\n').length < size) lines.push(...junk);
-    writeFileSync(join(docker.dir, 'ps'), `${lines.join('\n')}\n`);
-    const started = performance.now();
-    assert.equal(await run('up', { docker: docker.path, log: () => {} }), 0);
-    const elapsed = performance.now() - started;
-    const calls = docker.calls();
-    const stopped = calls.flatMap((arg, index) => (arg === 'stop' ? [calls[index + 1]] : []));
-    assert.deepEqual(stopped, [`${LEGACY.project}-postgres-1`, 'padded-2'], `size ${size}`);
-    assert.ok(elapsed < 10_000, `size ${size} took ${Math.round(elapsed)} ms`);
-  }
-});
-
-// The containers `docker stop` was given, in order.
-const stoppedBy = (calls) =>
-  calls.flatMap((arg, index) => (arg === 'stop' ? [calls[index + 1]] : []));
-
-// The image Compose built for the old project carries the project's and the
-// service's labels itself, and every container started from it with `docker
-// run` — a task's database under either name, an e2e one — carries them too.
-// Only Compose sets `oneoff`, and only on a service's own containers `False`
-// with a `container-number`. The labels below are those `docker inspect` showed
-// on stand-ins of each kind (Docker Engine 29.9, Compose 5.6), under the names
-// they have on a machine from before the rename.
-const IMAGE_LABELS = {
-  'com.docker.compose.project': LEGACY.project,
-  'com.docker.compose.service': 'postgres',
-  'com.docker.compose.version': '5.6.1',
-};
-const COMPOSE_LABELS = {
-  'com.docker.compose.config-hash': 'f00d',
-  'com.docker.compose.image': 'sha256:f00d',
-};
-const RUNNING = [
-  {
-    name: `${LEGACY.project}-postgres-1`,
-    labels: {
-      ...IMAGE_LABELS,
-      ...COMPOSE_LABELS,
-      'com.docker.compose.container-number': '1',
-      'com.docker.compose.oneoff': 'False',
-    },
-  },
-  { name: legacyTaskContainer('339'), labels: { ...IMAGE_LABELS, [LEGACY.label]: '339' } },
-  { name: taskNames('323').container, labels: { ...IMAGE_LABELS, [LABEL]: '323' } },
-  { name: 'webhook-inspector-postgres-e2e', labels: { ...IMAGE_LABELS } },
-  {
-    name: `${LEGACY.project}-postgres-run-0b5e`,
-    labels: {
-      ...IMAGE_LABELS,
-      ...COMPOSE_LABELS,
-      'com.docker.compose.oneoff': 'True',
-      'com.docker.compose.slug': '0b5e',
-    },
-  },
-  {
-    name: 'webhook-inspector-postgres-1',
-    labels: {
-      ...IMAGE_LABELS,
-      ...COMPOSE_LABELS,
-      'com.docker.compose.project': 'webhook-inspector',
-      'com.docker.compose.container-number': '1',
-      'com.docker.compose.oneoff': 'False',
-    },
-  },
-];
-
-// A stand-in whose `docker ps` lists the running containers above as Docker
-// does: every `--filter label=<key>` or `label=<key>=<value>` must hold.
-const LABELLED_DOCKER = `
-dir="\${0%/*}"
-[ "$1" = ps ] && exec "${process.execPath}" "$dir/ps.mjs" "$@"
-exit 0
-`;
-const LABEL_FILTER = `
-import { readFileSync } from 'node:fs';
-import process from 'node:process';
-const running = JSON.parse(readFileSync(new URL('./running.json', import.meta.url), 'utf8'));
-const args = process.argv.slice(3);
-const wanted = [];
-for (let i = 0; i < args.length; i += 2) {
-  if (args[i] === '--format' && args[i + 1] === '{{.Names}}') continue;
-  const label = args[i] === '--filter' && /^label=([^=]+)(?:=(.*))?$/s.exec(args[i + 1]);
-  if (!label) {
-    console.error('unexpected: ' + args[i] + ' ' + args[i + 1]);
-    process.exit(1);
-  }
-  wanted.push([label[1], label[2]]);
-}
-for (const { name, labels } of running) {
-  if (wanted.every(([key, value]) => Object.hasOwn(labels, key) && (value === undefined || labels[key] === value))) {
-    console.log(name);
-  }
-}
-`;
-function labelledDocker(t) {
-  const docker = fakeDocker(t, LABELLED_DOCKER);
-  writeFileSync(join(docker.dir, 'ps.mjs'), LABEL_FILTER);
-  writeFileSync(join(docker.dir, 'running.json'), JSON.stringify(RUNNING));
-  return docker;
-}
-
-test("the old project's container is looked for by the labels Compose sets on a service's own containers, which no image carries", () => {
-  assert.deepEqual(projectContainers(LEGACY.project), [
-    'ps',
-    '--filter',
-    `label=com.docker.compose.project=${LEGACY.project}`,
-    '--filter',
-    'label=com.docker.compose.service=postgres',
-    '--filter',
-    'label=com.docker.compose.oneoff=False',
-    '--filter',
-    'label=com.docker.compose.container-number',
-    '--format',
-    '{{.Names}}',
-  ]);
-});
-
-test("db:up and db:rebuild stop the container Compose made for the old project's postgres, and none started from its image another way", async (t) => {
-  // The project's and the service's labels alone match every container
-  // started from the image, other tasks' databases among them.
-  const look = labelledDocker(t);
-  const byImage = spawnSync(
-    look.path,
-    [
-      'ps',
-      '--filter',
-      `label=com.docker.compose.project=${LEGACY.project}`,
-      '--filter',
-      'label=com.docker.compose.service=postgres',
-      '--format',
-      '{{.Names}}',
-    ],
-    { encoding: 'utf8' },
-  );
-  assert.equal(byImage.status, 0, byImage.stderr);
-  assert.deepEqual(byImage.stdout.split('\n').slice(0, -1), [
-    `${LEGACY.project}-postgres-1`,
-    legacyTaskContainer('339'),
-    taskNames('323').container,
-    'webhook-inspector-postgres-e2e',
-    `${LEGACY.project}-postgres-run-0b5e`,
-  ]);
-
-  for (const name of ['up', 'rebuild']) {
-    const docker = labelledDocker(t);
-    const lines = [];
-    assert.equal(await run(name, { docker: docker.path, log: (line) => lines.push(line) }), 0);
-    assert.deepEqual(stoppedBy(docker.calls()), [`${LEGACY.project}-postgres-1`], name);
-    assert.equal(lines.filter((line) => line.startsWith('Stopped ')).length, 1, name);
-  }
-});
-
-// `docker ps`'s answer is captured up to 64 KiB, and the line it is cut in is
-// then the start of a name: another container's, perhaps, which `docker stop`
-// takes as it takes the start of an ID. Only a line that ends is acted on.
-test("a name cut off at the end of docker ps's answer is not stopped, without its newline or past the 64 KiB kept", async (t) => {
-  const short = fakeDocker(t, RENAMING_DOCKER);
-  writeFileSync(join(short.dir, 'new-image'), '');
-  writeFileSync(join(short.dir, 'ps'), `${LEGACY.project}-postgres-1\n${LEGACY.project}-postgres`);
-  assert.equal(await run('up', { docker: short.path, log: () => {} }), 0);
-  assert.deepEqual(stoppedBy(short.calls()), [`${LEGACY.project}-postgres-1`]);
-
-  // Lines that are no name whole, for the `!` that ends each, while every
-  // start of one cut before it is: wherever the 64 KiB end, but at a `!` or a
-  // newline, the cut line looks like a name.
-  for (const size of [100_000, 1_000_000]) {
-    const docker = fakeDocker(t, RENAMING_DOCKER);
-    writeFileSync(join(docker.dir, 'new-image'), '');
-    const lines = [`${LEGACY.project}-postgres-1`];
-    while (lines.length * 100 < size) lines.push(`${'a'.repeat(98)}!`);
-    writeFileSync(join(docker.dir, 'ps'), `${lines.join('\n')}\n`);
-    const started = performance.now();
-    assert.equal(await run('up', { docker: docker.path, log: () => {} }), 0);
-    const elapsed = performance.now() - started;
-    assert.deepEqual(stoppedBy(docker.calls()), [`${LEGACY.project}-postgres-1`], `size ${size}`);
-    assert.ok(elapsed < 10_000, `size ${size} took ${Math.round(elapsed)} ms`);
-  }
-});
-
-test('a look for the old names that does not finish is stopped at the limit and named', async (t) => {
-  const docker = fakeDocker(t, '[ "$1" = ps ] && exec sleep 30\nexit 0');
-  const lines = [];
-  const code = await run('up', {
-    docker: docker.path,
-    limitSeconds: 1,
-    log: (line) => lines.push(line),
-    platform: 'linux',
-  });
-  assert.equal(code, 124);
-  assert.match(
-    lines.join('\n'),
-    new RegExp(
-      `db:up gave up after 1 s: \`docker ps --filter label=com\\.docker\\.compose\\.project=${LEGACY.project} `,
-    ),
-  );
-  assert.ok(!docker.calls().includes('compose'), 'Compose never ran');
 });
 
 test('a hang-up reaches the Docker process group, and the script reports it', async (t) => {
@@ -859,13 +393,6 @@ if (args[0] === 'inspect') {
   data.containers[container] = { label, status: 'running', health: data.health ?? ['starting', 'healthy'] };
   save();
   process.stdout.write('f00d\\n');
-} else if (args[0] === 'image') {
-  if (!(data.images ?? [${JSON.stringify(IMAGE)}]).includes(name)) { process.stderr.write('Error response from daemon: No such image: ' + name + '\\n'); process.exit(1); }
-  process.stdout.write('sha256:f00d\\n');
-} else if (args[0] === 'tag') {
-  if (data.tagFails !== undefined) { process.stderr.write(data.tagFails); process.exit(1); }
-  data.images = [...(data.images ?? []), args[2]];
-  save();
 } else if (args[0] === 'start') {
   data.containers[name].status = 'running';
   save();
@@ -1018,13 +545,8 @@ test('task-up starts the container, waits until it is healthy, migrates it and p
     "the migrations ran against the task's database, not the URL in the environment",
   );
   const verbs = f.calls().map((args) => args[0]);
-  assert.deepEqual(verbs, ['inspect', 'image', 'run', 'inspect', 'inspect', 'port']);
-  assert.deepEqual(
-    f.calls()[1],
-    imageProbe(IMAGE),
-    'the image is looked for, never built or pulled',
-  );
-  assert.deepEqual(f.calls()[2], runArguments('127'));
+  assert.deepEqual(verbs, ['inspect', 'run', 'inspect', 'inspect', 'port']);
+  assert.deepEqual(f.calls()[1], runArguments('127'), 'never built or pulled');
 
   // Running already: no second container, the migrations again, the URL again.
   const again = await f.run('task-up', '127');
@@ -1048,15 +570,12 @@ test('task-down removes the container with its data, and only one made for that 
   assert.equal((await f.run('task-up', 'day-x')).code, 0);
   const down = await f.run('task-down', 'day-x');
   assert.equal(down.code, 0, down.logged);
-  assert.deepEqual(f.calls().at(-2), [
+  assert.deepEqual(f.calls().at(-1), [
     'rm',
     '--force',
     '--volumes',
     'webhook-inspector-test-day-x',
   ]);
-  // And then the look for its container from before the rename, which is not there.
-  assert.deepEqual(f.calls().at(-1).slice(0, 1), ['inspect']);
-  assert.equal(f.calls().at(-1).at(-1), legacyTaskContainer('day-x'));
   assert.deepEqual(f.containers(), {});
   const none = await f.run('task-down', 'day-x');
   assert.equal(none.code, 0);
@@ -1085,101 +604,6 @@ test('task-down removes the container with its data, and only one made for that 
       'nothing but the look',
     );
   }
-});
-
-// The rename of D278 for a task's database: a machine that has the image
-// under its old name only gives it the new one before `docker run`, and a
-// task container made before the rename, `qa-tools-test-<task>` labelled
-// `qa-tools.task`, is still removed by `task-down` — when its old label names
-// that task, and never otherwise.
-test("task-up names an image from before the rename anew; task-down also removes the task's container from before it, by its old label alone", async (t) => {
-  assert.equal(legacyTaskContainer('127'), `${LEGACY.project}-test-t127`);
-  assert.equal(legacyTaskContainer('day-x'), `${LEGACY.project}-test-day-x`);
-  assert.equal(legacyTaskContainer('qa_tools'), null);
-
-  const old = taskFixture(t, { images: [LEGACY.image] });
-  const up = await old.run('task-up', '127');
-  assert.equal(up.code, 0, up.logged);
-  assert.deepEqual(
-    old.calls().map((args) => args[0]),
-    ['inspect', 'image', 'image', 'tag', 'run', 'inspect', 'inspect', 'port'],
-  );
-  assert.deepEqual(old.calls()[3], ['tag', LEGACY.image, IMAGE]);
-  assert.match(up.logged, new RegExp(`The image ${LEGACY.image}, .* is now also named ${IMAGE}`));
-
-  const none = taskFixture(t, { images: [], runFails: true });
-  const missing = await none.run('task-up', '127');
-  assert.equal(missing.code, 125);
-  assert.deepEqual(
-    none.calls().map((args) => args[0]),
-    ['inspect', 'image', 'image', 'run'],
-  );
-  assert.match(missing.logged, /npm run db:rebuild/);
-
-  const oldBox = legacyTaskContainer('127');
-  const box = (label) => ({ label, status: 'running', health: ['healthy'] });
-
-  // The old container alone: task-up leaves it, task-down removes it.
-  const alone = taskFixture(t, { containers: { [oldBox]: box('127') } });
-  assert.equal((await alone.run('task-up', '127')).code, 0);
-  assert.ok(alone.containers()[oldBox], 'task-up left the old container as it was');
-  assert.equal(alone.calls().filter((args) => args.includes(oldBox)).length, 0);
-  const down = await alone.run('task-down', '127');
-  assert.equal(down.code, 0, down.logged);
-  assert.deepEqual(down.printed, [
-    'Removed the test database of 127: webhook-inspector-test-t127 and its data.',
-    `Removed the test database of 127 from before the rename: ${oldBox} and its data.`,
-  ]);
-  assert.deepEqual(alone.containers(), {});
-  assert.deepEqual(alone.calls().at(-1), ['rm', '--force', '--volumes', oldBox]);
-  assert.ok(
-    alone.calls().at(-2).includes(`{{index .Config.Labels "${LEGACY.label}"}} {{.State.Status}}`),
-    'known by its old label',
-  );
-
-  // Only the old one there: removed, and nothing else said.
-  const only = taskFixture(t, { containers: { [oldBox]: box('127') } });
-  const onlyDown = await only.run('task-down', '127');
-  assert.equal(onlyDown.code, 0, onlyDown.logged);
-  assert.deepEqual(onlyDown.printed, [
-    `Removed the test database of 127 from before the rename: ${oldBox} and its data.`,
-  ]);
-
-  // An old container of that name another task's, or no script's: left.
-  for (const label of ['128', undefined]) {
-    const other = taskFixture(t, { containers: { [oldBox]: box(label) } });
-    const kept = await other.run('task-down', '127');
-    assert.equal(kept.code, 0, kept.logged);
-    assert.match(kept.printed.join('\n'), /No test database of 127 to remove/);
-    assert.ok(other.containers()[oldBox], `an old container labelled ${label} was removed`);
-    assert.equal(other.calls().filter((args) => args[0] === 'rm').length, 0);
-  }
-});
-
-// #353, for a task's database: a tag that fails ends task-up with the command
-// and what Docker said, before any `docker run` whose "Unable to find image"
-// would hide it.
-test('task-up whose docker tag fails says so with what Docker said, and starts nothing', async (t) => {
-  const f = taskFixture(t, {
-    images: [LEGACY.image],
-    tagFails: 'Error response from daemon: no space left on device\n',
-  });
-  const up = await f.run('task-up', '127');
-  assert.equal(up.code, 1);
-  assert.deepEqual(
-    f.calls().map((args) => args[0]),
-    ['inspect', 'image', 'image', 'tag'],
-  );
-  assert.match(
-    up.logged,
-    new RegExp(
-      `^task-up 127 failed: docker tag ${LEGACY.image} ${IMAGE} exited with 1\\.\\nError response from daemon: no space left on device$`,
-      'm',
-    ),
-  );
-  assert.doesNotMatch(up.logged, /now also named|No such image/);
-  assert.deepEqual(up.printed, [], 'no URL');
-  assert.deepEqual(f.containers(), {}, 'no container started');
 });
 
 // How often a stand-in was asked for the container's health: its `docker
@@ -1256,7 +680,7 @@ test('task-up fails with the reason when Docker, the image, the health check or 
     assert.equal(slow.code, 124);
     assert.deepEqual(slow.printed, []);
     const callEnded = new RegExp(
-      `^task-up 127 gave up after ${limitSeconds} s: docker (?:(?:inspect|run) webhook-inspector-test-t127|image inspect --format \\{\\{\\.Id\\}\\} ${IMAGE}) did not finish\\.$`,
+      `^task-up 127 gave up after ${limitSeconds} s: docker (?:inspect|run) webhook-inspector-test-t127 did not finish\\.$`,
       'm',
     );
     if (callEnded.test(slow.logged)) {
@@ -1301,7 +725,7 @@ test("on Linux a task's database comes up and goes against Docker Engine, and a 
   assert.deepEqual(up.printed, [
     'DATABASE_URL=postgres://webhook_inspector:webhook_inspector@127.0.0.1:32768/webhook_inspector_t127',
   ]);
-  assert.equal(f.calls()[2][0], 'run', 'a missing container in the daemon’s words is absent');
+  assert.equal(f.calls()[1][0], 'run', 'a missing container in the daemon’s words is absent');
   const down = await f.run('task-down', '127');
   assert.equal(down.code, 0, down.logged);
   assert.deepEqual(f.containers(), {});
@@ -1431,7 +855,7 @@ test("task-test brings the task's database up and runs the backend suite against
   assert.equal(readFileSync(f.seen, 'utf8'), seen.url, 'the migrations ran on the same database');
   assert.deepEqual(
     f.calls().map((args) => args[0]),
-    ['inspect', 'image', 'run', 'inspect', 'inspect', 'port'],
+    ['inspect', 'run', 'inspect', 'inspect', 'port'],
   );
 
   // Its exit code is the suite's, and the arguments after -- are the suite's.

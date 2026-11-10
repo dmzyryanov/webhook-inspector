@@ -32,24 +32,6 @@
 // `task-down` removes only a container this script made for that task, which
 // it knows by its label; the application's container and its
 // `webhook_inspector` database are never touched.
-//
-// Until 1.18.2 every name here was `qa-tools`' (D278): the Compose project
-// `qa-tools`, whose container `qa-tools-postgres-1` held port 5432, the image
-// `qa-tools-postgres`, and the task containers `qa-tools-test-<task>` labelled
-// `qa-tools.task`. A machine still holding them keeps working, and nothing of
-// theirs is deleted: `up` gives the old image the new name too when the new
-// one is missing (`docker tag`, local, no registry), and `up` and `rebuild`
-// stop the running container Compose created for the old project's `postgres`
-// service, which would hold the port — not one started from its image with
-// `docker run`, which carries the project's labels too — and leave it and its
-// volume `qa-tools_postgres-data` where they are. `up` stops it only once the
-// image it starts has its new name (#353): a `docker tag` that fails ends `up`
-// with what Docker said, and with neither name there `up` stops nothing and
-// leaves Compose to say the image is missing, so the old database keeps
-// running either way. `task-up` and `task-test` give the image its new name
-// the same way, and fail with what Docker said when the tag fails, and
-// `task-down` also removes the old container of that task, known by the old
-// label.
 
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -64,43 +46,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // The image `db:up` starts, which `db:rebuild` builds (D159) and
 // docker-compose.yml names.
 export const IMAGE = 'webhook-inspector-postgres';
-
-/**
- * The names before the rename (D278), which these commands still recognise so
- * that a machine set up before it keeps working: the Compose project, the
- * image, and a task container's label and name.
- */
-export const LEGACY = {
-  project: 'qa-tools',
-  image: 'qa-tools-postgres',
-  label: 'qa-tools.task',
-  container: (slug) => `qa-tools-test-${slug}`,
-};
-
-/** `docker` arguments that answer 0 when `image` is there. */
-export const imageProbe = (image) => ['image', 'inspect', '--format', '{{.Id}}', image];
-
-/**
- * `docker` arguments that list the running containers Compose itself created
- * for a project's `postgres` service, a name a line. An image Compose built
- * carries the project and service labels too, and so does every container
- * started from it with `docker run` — a task's database, an e2e one — which is
- * why only containers with `oneoff=False` and a `container-number`, labels
- * Compose sets on a service's own containers alone, are listed.
- */
-export const projectContainers = (project) => [
-  'ps',
-  '--filter',
-  `label=com.docker.compose.project=${project}`,
-  '--filter',
-  'label=com.docker.compose.service=postgres',
-  '--filter',
-  'label=com.docker.compose.oneoff=False',
-  '--filter',
-  'label=com.docker.compose.container-number',
-  '--format',
-  '{{.Names}}',
-];
 
 // How long Compose waits for the container to report healthy. The health check
 // in docker-compose.yml settles well inside this, on a new volume too.
@@ -137,8 +82,8 @@ const hints = (name, platform) =>
       'The database is not running. The usual causes, by the message above:',
       `- "No such image: ${IMAGE}" — build it once with \`npm run db:rebuild\`.`,
       '- "port is already allocated" — something else listens on POSTGRES_PORT (default 5432),',
-      '  such as a database container left from before a rename (D159, D278) by a checkout',
-      '  older than this one.',
+      '  such as another PostgreSQL or a database container of another project; `docker ps`',
+      '  lists the containers.',
       '- "unhealthy" — see `npm run db:logs`; a volume created with other credentials fails the',
       '  health check.',
     ],
@@ -259,92 +204,10 @@ function runStep(executable, args, { cwd, deadline, capture = false, toStderr = 
 }
 
 /**
- * Gives the image its name since D278 when only the old one is there: `docker
- * tag`, which stays on this machine and needs no registry. Resolves to
- * `{ named }`, whether the image answers to its new name now: true when it
- * did already or the tag gave it the name, false when neither name answered,
- * which is left to the command that follows, whose own failure says what is
- * missing or what to check. A step that did not finish, or a `docker tag`
- * that failed (#353), resolves to that step's result with its `args`, `named`
- * false.
- */
-async function nameTheImage(step, { image = IMAGE, legacy = LEGACY, log }) {
-  const probe = imageProbe(image);
-  const present = await step(probe, { capture: true });
-  if (present.interrupted || present.timedOut) return { ...present, args: probe, named: false };
-  if (present.code === 0) return { named: true };
-
-  const old = imageProbe(legacy.image);
-  const before = await step(old, { capture: true });
-  if (before.interrupted || before.timedOut) return { ...before, args: old, named: false };
-  if (before.code !== 0) return { named: false };
-
-  const tag = ['tag', legacy.image, image];
-  const tagged = await step(tag, { capture: true });
-  if (tagged.interrupted || tagged.timedOut || tagged.code !== 0) {
-    return { ...tagged, args: tag, named: false };
-  }
-  log(
-    `The image ${legacy.image}, from before the rename (D278), is now also named ${image}; nothing was built or pulled.`,
-  );
-  return { named: true };
-}
-
-// What a command printed, its stderr then its stdout, each trimmed, as a
-// failure quotes it; empty when it printed nothing.
-const printedBy = (result) =>
-  [result.err, result.out]
-    .map((text) => (text ?? '').trim())
-    .filter((text) => text !== '')
-    .join('\n');
-
-/**
- * Stops the running database container Compose created for the project before
- * the rename (D278), which would hold the port the new one publishes; one
- * started from its image another way is not it (`projectContainers`). It and
- * its volume are left where they are; the README says how to remove them.
- * Resolves to null when it is done or there is nothing to do, or to the step
- * that did not finish, with its `args`.
- */
-async function stopTheOldProject(step, { legacy = LEGACY, log }) {
-  // Whoever runs the old project on purpose, by its name, is left to it.
-  if (process.env.COMPOSE_PROJECT_NAME === legacy.project) return null;
-
-  const list = projectContainers(legacy.project);
-  const listed = await step(list, { capture: true });
-  if (listed.interrupted || listed.timedOut) return { ...listed, args: list };
-  if (listed.code !== 0) return null;
-
-  // A name as Docker gives one, on a line that ends: the capture keeps only
-  // the first 64 KiB, and a name cut off there may be the prefix of another
-  // container's, which `docker stop` would take. Anything else is not acted on.
-  const names = listed.out
-    .split('\n')
-    .slice(0, -1)
-    .map((line) => line.trim())
-    .filter((line) => /^[A-Za-z0-9][\w.-]{0,127}$/.test(line));
-  for (const container of names) {
-    const stop = ['stop', container];
-    const stopped = await step(stop, { capture: true });
-    if (stopped.interrupted || stopped.timedOut) return { ...stopped, args: stop };
-    if (stopped.code === 0) {
-      log(
-        `Stopped ${container}, the local database of the Compose project ${legacy.project} from before the rename (D278), which would hold its port. It and its data are kept; the README says how to remove them.`,
-      );
-    }
-  }
-  return null;
-}
-
-/**
  * Runs `up` or `rebuild` and resolves to the exit code: 0 only when Compose
  * reported the container healthy, 124 when the overall limit ran out.
  * `platform`, `process.platform` unless given, picks what the messages say to
- * check. Before Compose runs, the names from before the rename are dealt with
- * (`nameTheImage` for `up`, `stopTheOldProject` for both); `legacy`, `LEGACY`
- * unless given, says which names those are. `up` stops the old project's
- * container only when the image it starts answers to its new name, so a
- * hand-over that fails leaves the old database running (#353).
+ * check.
  */
 export async function run(
   name,
@@ -354,7 +217,6 @@ export async function run(
     limitSeconds,
     log = console.error,
     platform = process.platform,
-    legacy = LEGACY,
   } = {},
 ) {
   const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
@@ -364,55 +226,17 @@ export async function run(
   }
   const limit = limitSeconds ?? command.limitSeconds;
   const deadline = Date.now() + limit * 1000;
-  const step = (args, options = {}) => runStep(docker, args, { cwd, deadline, ...options });
-  const gaveUp = (args) =>
-    log(
-      [
-        `\ndb:${name} gave up after ${limit} s: \`docker ${args.join(' ')}\` did not finish.`,
-        ...notAnswering(platform),
-      ].join('\n'),
-    );
-
-  // `rebuild` builds the image after the stop, so only `up` needs it named.
-  let named = true;
-  if (name === 'up') {
-    const image = await nameTheImage(step, { legacy, log });
-    if (image.interrupted) return image.code;
-    if (image.timedOut) {
-      gaveUp(image.args);
-      return image.code;
-    }
-    if (image.args) {
-      // The tag failed: Compose would find no image, and the old database,
-      // not yet stopped, is left running.
-      const said = printedBy(image);
-      log(
-        [
-          `\ndb:${name} failed: \`docker ${image.args.join(' ')}\` exited with ${image.code}${said ? ':' : ' and printed nothing.'}`,
-          ...(said ? [said] : []),
-          `The image ${legacy.image}, from before the rename (D278), did not get the name ${IMAGE}, and nothing was stopped: a database of the Compose project ${legacy.project} still runs if it ran. Once what Docker said is dealt with, run it again, or build the image with \`npm run db:rebuild\`, which stops that database first and keeps its data.`,
-        ].join('\n'),
-      );
-      return image.code;
-    }
-    named = image.named;
-  }
-  // With the image missing, Compose cannot start the new database, so the
-  // old one, which holds the port, is not stopped either.
-  if (named) {
-    const unfinished = await stopTheOldProject(step, { legacy, log });
-    if (unfinished?.interrupted) return unfinished.code;
-    if (unfinished?.timedOut) {
-      gaveUp(unfinished.args);
-      return unfinished.code;
-    }
-  }
 
   for (const args of command.steps) {
-    const { code, timedOut, interrupted } = await step(args);
+    const { code, timedOut, interrupted } = await runStep(docker, args, { cwd, deadline });
     if (interrupted) return code;
     if (timedOut) {
-      gaveUp(args);
+      log(
+        [
+          `\ndb:${name} gave up after ${limit} s: \`docker ${args.join(' ')}\` did not finish.`,
+          ...notAnswering(platform),
+        ].join('\n'),
+      );
       return code;
     }
     if (code !== 0) {
@@ -453,11 +277,6 @@ export function taskNames(task) {
     container: `webhook-inspector-test-${slug}`,
     database: `webhook_inspector_${slug.replaceAll('-', '_')}`,
   };
-}
-
-/** The container a task's database had before the rename (D278), or null for a name that is no task. */
-export function legacyTaskContainer(task, legacy = LEGACY) {
-  return taskNames(task) === null ? null : legacy.container(slugOf(task));
 }
 
 /** The `docker run` arguments that start a task's database. */
@@ -529,7 +348,6 @@ export async function taskDatabase(
     suiteLimitSeconds = SUITE_LIMIT_SECONDS,
     log = console.error,
     print = console.log,
-    legacy = LEGACY,
   } = {},
 ) {
   const names = taskNames(task);
@@ -574,41 +392,20 @@ export async function taskDatabase(
   }
 
   if (action === 'task-down') {
-    if (!absent) {
-      const removed = await step(['rm', '--force', '--volumes', container], { toStderr: true });
-      if (removed.code !== 0 || removed.interrupted)
-        return failed(`docker rm ${container}`, removed);
-      print(`Removed the test database of ${task}: ${container} and its data.`);
-    }
-
-    // And the task's container from before the rename (D278), only when the
-    // old label says this script made it for this task.
-    const old = legacyTaskContainer(task, legacy);
-    const before = await step(
-      ['inspect', '--format', `{{index .Config.Labels "${legacy.label}"}} {{.State.Status}}`, old],
-      { capture: true },
-    );
-    if (before.interrupted || before.timedOut) return failed(`docker inspect ${old}`, before);
-    const oldOwner = before.code === 0 ? before.out.trim().split(' ')[0] : null;
-    if (oldOwner === task) {
-      const removed = await step(['rm', '--force', '--volumes', old], { toStderr: true });
-      if (removed.code !== 0 || removed.interrupted) return failed(`docker rm ${old}`, removed);
-      print(`Removed the test database of ${task} from before the rename: ${old} and its data.`);
-    } else if (absent) {
+    if (absent) {
       print(`No test database of ${task} to remove (${container}).`);
+      return 0;
     }
+    const removed = await step(['rm', '--force', '--volumes', container], { toStderr: true });
+    if (removed.code !== 0 || removed.interrupted) return failed(`docker rm ${container}`, removed);
+    print(`Removed the test database of ${task}: ${container} and its data.`);
     return 0;
   }
 
   if (absent) {
-    // A probe that did not finish, or a tag that failed, with what it said.
-    const image = await nameTheImage(step, { legacy, log });
-    if (image.args) return failed(`docker ${image.args.join(' ')}`, image);
     const started = await step(runArguments(task), { toStderr: true });
     if (started.code !== 0 || started.interrupted) {
-      log(
-        `No such image ${IMAGE}? Build it once with \`npm run db:rebuild\`, or run \`npm run db:up\`.`,
-      );
+      log(`No such image ${IMAGE}? Build it once with \`npm run db:rebuild\`.`);
       return failed(`docker run ${container}`, started);
     }
   } else if (status !== 'running') {

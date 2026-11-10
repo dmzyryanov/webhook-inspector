@@ -186,33 +186,6 @@ npm run db:down           # stop PostgreSQL, keeping data
 npm run db:reset          # stop PostgreSQL and delete all local data
 ```
 
-### A database from before the rename
-
-Until 1.18.2 the Compose project, the image, the database and its role were
-named `qa-tools` and `qa_tools`. On a machine set up before, the first
-`npm run db:up` gives the image `qa-tools-postgres` its new name with
-`docker tag`, building and pulling nothing, stops the old container
-`qa-tools-postgres-1`, which would hold port 5432, and starts the new one on a
-new, empty volume. It stops the old container only once the image has its new
-name: when `docker tag` fails, `db:up` exits non-zero quoting what Docker said,
-and when neither name is there Compose reports the image missing; either way
-the old database keeps running. `npm run db:rebuild` builds the image under
-its new name, stopping the old container first. The old container and its
-volume `qa-tools_postgres-data`, with the sessions it held, are left as they
-were. A `.env` copied from the old `.env.example` still names `qa_tools`; copy
-`.env.example` again for the new names. When nothing in the old database is
-wanted any more, remove what is left; the image stays, under its new name:
-
-```bash
-docker rm qa-tools-postgres-1
-docker volume rm qa-tools_postgres-data
-docker network rm qa-tools_default
-docker image rm qa-tools-postgres   # the old name only
-```
-
-A test database of a task from before, `qa-tools-test-<task>`, goes with
-`node scripts/db.mjs task-down <task>`, as the new one does.
-
 ## Tests and checks
 
 ```bash
