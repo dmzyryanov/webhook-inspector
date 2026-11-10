@@ -866,10 +866,11 @@ given as `false` or empty, `/changelog`, `/changelog.md` and the two feeds
 must each answer `Page not found` and the line that says what passed says
 so; given as `true`, and when not given, the two feeds are checked as served,
 as before, so the call with the hosts alone against production loses no
-check. So do the about pages' titles since #380: given as `false` or empty,
-`/about` and `/ru/about` must carry `About Webhook Inspector` and
-`О Webhook Inspector` (`aboutTitleTags`); given as `true`, and when not
-given, production's, as before. `deployment-smoke` gives the check production's three from
+check. Since #380 the about pages' titles follow the option as well: given as
+`false` or empty, `/about` and `/ru/about` must carry
+`About Webhook Inspector` and `О Webhook Inspector` (`aboutTitleTags`); given
+as `true`, and when not given, production's, as before. `deployment-smoke`
+gives the check production's three from
 the project's CI/CD variables themselves, each in double quotes, so one set
 empty is checked as left out (`scripts/chart.test.mjs` runs the job's command
 with them).
