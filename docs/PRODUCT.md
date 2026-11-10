@@ -103,6 +103,13 @@ Since 1.19.36 (issue #431) such a copy names its one host once in the
 section's bullet on its address, where it named it twice, and every copy with
 no second address, with the texts or without, leaves out the relay section's
 bullet on the script's old name, which tells this site's rename and move.
+Since 1.19.39 (issue #380) it also covers the [about pages](#about-page)'
+title and description, which name QA Tools, and their line on who decides
+what to build: such a copy titles them `About Webhook Inspector` and
+`О Webhook Inspector`, describes them as `How Webhook Inspector is built and
+what happens to your data.` and `Как устроен Webhook Inspector и что
+происходит с вашими данными.`, and its `How it's built` keeps its first and
+last lines.
 
 ## Footer
 
@@ -291,6 +298,18 @@ the facts false changes the page with it. On the desktop the story is a 680 px
 column and the labels sit on a 160 px rail beside their lines; below 768 px
 each label sits above its lines. `/docs` points to the page in one sentence of
 its introduction.
+
+A copy of the inspector built without the operator's texts (`OPERATOR_TEXTS`,
+see [Status page](#status-page)) has the second paragraph, the third only
+with a contact address of its own, and the facts `How it's built` and `Your
+data` (v1.19.6, issue #369); since v1.19.39 (issue #380), in the owner's words
+of 2026-11-10, its `How it's built` leaves out the line in the owner's first
+person on who decides what to build, keeping the other two, and its title is `About Webhook Inspector` and its description
+`How Webhook Inspector is built and what happens to your data.`, naming
+neither QA Tools nor who runs or pays for it. Its Russian version is the same:
+`О Webhook Inspector`, `Как устроен Webhook Inspector и что происходит с
+вашими данными.`, and `Как это сделано` without its line beginning `Я решаю`.
+This site's pages are unchanged.
 
 Since v1.13.0 (issue #170, D255) the page has a Russian version,
 `https://qa-tools.ru/ru/about`, in the owner's words, approved word for word:
@@ -605,14 +624,14 @@ About page (v0.50.0, issue #131, D211; see [About page](#about-page)):
 https://qa-tools.ru/about
 ```
 
-`/about` and `/about/` answer `200` with the page, `text/html`, with `Cache-Control: no-cache` and never the application page. The page's title is `About QA Tools`, its description `Who runs QA Tools, how it is built, who pays for it and what happens to your data.`, and its canonical address `https://qa-tools.ru/about`.
+`/about` and `/about/` answer `200` with the page, `text/html`, with `Cache-Control: no-cache` and never the application page. The page's title is `About QA Tools`, its description `Who runs QA Tools, how it is built, who pays for it and what happens to your data.`, and its canonical address `https://qa-tools.ru/about`; a copy built without `OPERATOR_TEXTS` titles it `About Webhook Inspector` and describes it as `How Webhook Inspector is built and what happens to your data.` (v1.19.39, issue #380).
 
 About page in Russian (v1.13.0, issue #170, D255; see [About page](#about-page)):
 ```text
 https://qa-tools.ru/ru/about
 ```
 
-`/ru/about` and `/ru/about/` answer `200` with the page, `text/html`, `<html lang="ru">`, with `Cache-Control: no-cache`, no `X-Robots-Tag` and never the application page; `/ru/about/index.html` by name, `/RU/about` and `/ru/about.html` are `Page not found`. Its title is `О QA Tools`, its description `Кто и как делает QA Tools, кто за него платит и что происходит с вашими данными.`, and its canonical address `https://qa-tools.ru/ru/about`. Both about pages carry the same `hreflang` links, `en` and `x-default` to `https://qa-tools.ru/about` and `ru` to `https://qa-tools.ru/ru/about`. `/about` is the English page whatever `Accept-Language` asks for, with no redirect.
+`/ru/about` and `/ru/about/` answer `200` with the page, `text/html`, `<html lang="ru">`, with `Cache-Control: no-cache`, no `X-Robots-Tag` and never the application page; `/ru/about/index.html` by name, `/RU/about` and `/ru/about.html` are `Page not found`. Its title is `О QA Tools`, its description `Кто и как делает QA Tools, кто за него платит и что происходит с вашими данными.`, and its canonical address `https://qa-tools.ru/ru/about`; a copy built without `OPERATOR_TEXTS` titles it `О Webhook Inspector` and describes it as `Как устроен Webhook Inspector и что происходит с вашими данными.` (v1.19.39, issue #380). Both about pages carry the same `hreflang` links, `en` and `x-default` to `https://qa-tools.ru/about` and `ru` to `https://qa-tools.ru/ru/about`. `/about` is the English page whatever `Accept-Language` asks for, with no redirect.
 
 Terms of Use and Privacy Policy (v0.52.0, issue #112, D217; see [Terms of Use and Privacy Policy](#terms-of-use-and-privacy-policy)):
 ```text

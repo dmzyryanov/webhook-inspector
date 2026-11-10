@@ -23,10 +23,14 @@ import { mailtoOf, OPERATOR, type Operator } from './operator.ts';
  * paragraph, who runs the service, and the facts `Who pays for it` and
  * `Security reviews` are there only when the build shows the operator's
  * texts, and the third paragraph, which ends in the contact address, only
- * when it names one. The rest describes the service itself and is always
- * there. `composeAbout()` makes that choice for both languages, from the
- * parts each writes (`AboutText`), so the two pages leave out the same
- * places.
+ * when it names one. So is, since issue #380, the line of `How it's built`
+ * in the operator's first person, and the page's title and meta
+ * description, which name QA Tools: a build without the texts keeps the
+ * fact's other two lines, and its head names the service, Webhook
+ * Inspector, and the two facts the page keeps. The rest describes the
+ * service itself and is always there. `composeAbout()` makes that choice
+ * for both languages, from the parts each writes (`AboutText`), so the two
+ * pages leave out the same places.
  *
  * `ABOUT_EN` gathers them into the page's object, of the type its Russian
  * twin `ABOUT_RU` (`about-copy-ru.ts`, issue #170, D255) shares, so one
@@ -50,6 +54,26 @@ export interface AboutFact {
   readonly lines: readonly string[];
 }
 
+/** A page's `<title>` and its meta description, which the build writes into its template's head. */
+export interface AboutHead {
+  readonly title: string;
+  readonly description: string;
+}
+
+/** The fact `How it's built`, line by line, as `composeAbout()` puts its lines together. */
+export interface AboutHowItIsBuilt {
+  readonly label: string;
+  /** Who writes, tests and reviews the code: AI agents. Always there. */
+  readonly writtenBy: string;
+  /**
+   * Who decides what to build and approves every design: the operator, in
+   * the first person, so there only with the operator's texts (issue #380).
+   */
+  readonly decidedBy: string;
+  /** What it is made of and runs on. Always there. */
+  readonly madeOf: string;
+}
+
 /** The languages the about page is written in (D211, D255). */
 export type AboutLanguage = 'en' | 'ru';
 
@@ -59,7 +83,7 @@ export interface AboutCopy {
   readonly lang: AboutLanguage;
   /** Where the site serves it, and where its footer link points. */
   readonly path: string;
-  /** Its `<title>`, meta description and canonical address. */
+  /** Its `<title>`, meta description and canonical address; the first two the build's operator's (`composeAbout`). */
   readonly title: string;
   readonly description: string;
   readonly url: string;
@@ -75,11 +99,24 @@ export interface AboutCopy {
 /** The MCP server's address (D203), which the second paragraph names, on this build's site (D274). */
 export const MCP_SERVER_URL = `${APP_ORIGIN}/mcp`;
 
-/** The page's `<title>`, its meta description, and where it is served. */
+/**
+ * The page's `<title>` and its meta description with the operator's texts,
+ * production's, which `about/index.html` is written with, and where it is
+ * served.
+ */
 export const ABOUT_TITLE = 'About QA Tools';
 export const ABOUT_DESCRIPTION =
   'Who runs QA Tools, how it is built, who pays for it and what happens to your data.';
 export const ABOUT_URL = `${APP_ORIGIN}/about`;
+
+/**
+ * The page's `<title>` and its meta description without the operator's
+ * texts (issue #380): the service's own name, and the two facts such a page
+ * keeps, so that a search result promises nothing the page leaves out.
+ */
+export const ABOUT_TITLE_WITHOUT_TEXTS = 'About Webhook Inspector';
+export const ABOUT_DESCRIPTION_WITHOUT_TEXTS =
+  'How Webhook Inspector is built and what happens to your data.';
 
 /** The eyebrow above the title, written in capitals as the home page's is. */
 export const ABOUT_EYEBROW = 'ABOUT QA TOOLS';
@@ -87,35 +124,53 @@ export const ABOUT_EYEBROW = 'ABOUT QA TOOLS';
 export const ABOUT_HEADING = 'Made by a tester, for\u00a0testers';
 
 /**
- * One language's story and facts, by part, as `composeAbout()` puts them
- * together for a build's operator (issue #369).
+ * One language's head, story and facts, by part, as `composeAbout()` puts
+ * them together for a build's operator (issues #369, #380).
  */
 export interface AboutText {
+  /** The head with the operator's texts, naming QA Tools: the one the page's template is written with. */
+  readonly head: AboutHead;
+  /** The head without them, naming the service (issue #380). */
+  readonly headWithoutTexts: AboutHead;
   /** The first paragraph, who runs the service: the operator's text. */
   readonly whoRunsIt: readonly AboutPart[];
   /** The second, how it is made and for whom, ending in the MCP address: always there. */
   readonly madeForAgents: readonly AboutPart[];
   /** The third, around the contact address, there when the build names one. */
   readonly writeTo: (mail: AboutPart) => readonly AboutPart[];
-  /** The four facts, in the order the page lists them: the second and the fourth are the operator's. */
-  readonly howItIsBuilt: AboutFact;
+  /**
+   * The four facts, in the order the page lists them: the second and the
+   * fourth are the operator's, and so is the first's `decidedBy` line.
+   */
+  readonly howItIsBuilt: AboutHowItIsBuilt;
   readonly whoPays: AboutFact;
   readonly yourData: AboutFact;
   readonly securityReviews: AboutFact;
 }
 
 /**
- * A page's story and facts for `operator`: every part when it shows its
- * texts and names its contact address, as production's build does, and the
- * parts about the service alone when it does neither.
+ * A page's head, story and facts for `operator`: every part when it shows
+ * its texts and names its contact address, as production's build does, and
+ * the parts about the service alone, under the head that names it, when it
+ * does neither.
  */
 export function composeAbout(
   text: AboutText,
   operator: Operator,
-): Pick<AboutCopy, 'story' | 'facts'> {
+): Pick<AboutCopy, 'title' | 'description' | 'story' | 'facts'> {
   const contact = operator.contactEmail;
+  const built = text.howItIsBuilt;
+  const howItIsBuilt: AboutFact = {
+    label: built.label,
+    lines: operator.texts
+      ? [built.writtenBy, built.decidedBy, built.madeOf]
+      : [built.writtenBy, built.madeOf],
+  };
+  const head = operator.texts ? text.head : text.headWithoutTexts;
 
   return {
+    title: head.title,
+    description: head.description,
     story: [
       ...(operator.texts ? [text.whoRunsIt] : []),
       text.madeForAgents,
@@ -124,13 +179,18 @@ export function composeAbout(
         : [text.writeTo({ kind: 'mail', text: contact, href: mailtoOf(contact) })]),
     ],
     facts: operator.texts
-      ? [text.howItIsBuilt, text.whoPays, text.yourData, text.securityReviews]
-      : [text.howItIsBuilt, text.yourData],
+      ? [howItIsBuilt, text.whoPays, text.yourData, text.securityReviews]
+      : [howItIsBuilt, text.yourData],
   };
 }
 
-/** The English story and facts, word for word as approved. */
+/** The English head, story and facts, word for word as approved. */
 export const ABOUT_TEXT_EN: AboutText = {
+  head: { title: ABOUT_TITLE, description: ABOUT_DESCRIPTION },
+  headWithoutTexts: {
+    title: ABOUT_TITLE_WITHOUT_TEXTS,
+    description: ABOUT_DESCRIPTION_WITHOUT_TEXTS,
+  },
   whoRunsIt: [
     {
       kind: 'text',
@@ -155,11 +215,12 @@ export const ABOUT_TEXT_EN: AboutText = {
   ],
   howItIsBuilt: {
     label: "How it's built",
-    lines: [
+    writtenBy:
       'Written entirely by AI agents: Claude Code writes, tests and\u00a0reviews\u00a0the\u00a0code.',
+    decidedBy:
       'I decide what to build and approve every design, drawn\u00a0in\u00a0Figma\u00a0first.',
+    madeOf:
       'TypeScript, React and Fastify, PostgreSQL, a small Kubernetes\u00a0cluster\u00a0(k3s).',
-    ],
   },
   whoPays: {
     label: 'Who pays for it',
@@ -183,17 +244,20 @@ export const ABOUT_TEXT_EN: AboutText = {
   },
 };
 
-/** The English page, `/about`, for `operator`'s build (issue #369). */
+/** The English page, `/about`, for `operator`'s build (issues #369, #380). */
 export function aboutEnglish(operator: Operator = OPERATOR): AboutCopy {
+  const { title, description, story, facts } = composeAbout(ABOUT_TEXT_EN, operator);
+
   return {
     lang: 'en',
     path: '/about',
-    title: ABOUT_TITLE,
-    description: ABOUT_DESCRIPTION,
+    title,
+    description,
     url: ABOUT_URL,
     eyebrow: ABOUT_EYEBROW,
     heading: ABOUT_HEADING,
-    ...composeAbout(ABOUT_TEXT_EN, operator),
+    story,
+    facts,
   };
 }
 

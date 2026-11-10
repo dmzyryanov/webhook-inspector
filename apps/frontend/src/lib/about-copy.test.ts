@@ -2,17 +2,22 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   ABOUT_DESCRIPTION,
+  ABOUT_DESCRIPTION_WITHOUT_TEXTS,
   ABOUT_EYEBROW,
   ABOUT_FACTS,
   ABOUT_HEADING,
   ABOUT_STORY,
+  ABOUT_TEXT_EN,
   ABOUT_TITLE,
+  ABOUT_TITLE_WITHOUT_TEXTS,
   ABOUT_URL,
+  aboutEnglish,
   aboutParagraphText,
   MCP_SERVER_URL,
 } from './about-copy.ts';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { LEGAL_PAGES } from './legal-copy.ts';
+import { NO_OPERATOR, parseOperator } from './operator.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
 
 /**
@@ -165,5 +170,85 @@ describe('the about page text (Scope 2)', () => {
       'Who runs QA Tools, how it is built, who pays for it and what happens to your data.',
     );
     assert.equal(ABOUT_URL, `${APP_ORIGIN}/about`);
+  });
+});
+
+/**
+ * The words of a page built without the operator's texts (issue #380), as
+ * agreed on 2026-11-10: the service's own name in the title
+ * and the meta description, which promises only the two facts such a page
+ * keeps, and `How it's built` without its line in the operator's first
+ * person, its other two lines as they are.
+ */
+describe('the about page text of a build without the operator’s texts (issue #380)', () => {
+  /** A copy with a contact address and no texts, which keeps the third paragraph. */
+  const CONTACT_ONLY = parseOperator({ CONTACT_EMAIL: 'hello@inspector.example' });
+
+  it('names the service in the title and promises only the facts the page keeps', () => {
+    assert.equal(ABOUT_TITLE_WITHOUT_TEXTS, 'About Webhook Inspector');
+    assert.equal(
+      ABOUT_DESCRIPTION_WITHOUT_TEXTS,
+      'How Webhook Inspector is built and what happens to your data.',
+    );
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      const page = aboutEnglish(operator);
+
+      assert.equal(page.title, ABOUT_TITLE_WITHOUT_TEXTS);
+      assert.equal(page.description, ABOUT_DESCRIPTION_WITHOUT_TEXTS);
+      // Neither QA Tools nor who runs or pays for it.
+      for (const text of [page.title, page.description]) {
+        assert.doesNotMatch(text, /QA Tools|runs|pays|\bI\b/, text);
+        assert.doesNotMatch(text, /[^\x20-\x7e]/, text);
+      }
+      assert.deepEqual(
+        page.facts.map((fact) => fact.label),
+        ["How it's built", 'Your data'],
+      );
+    }
+  });
+
+  it('leaves out the first-person line of How it’s built and keeps its other two as they are', () => {
+    assert.equal(
+      ABOUT_TEXT_EN.howItIsBuilt.decidedBy,
+      approved(
+        'I decide what to build and approve every design, drawn NBSP in NBSP Figma NBSP first.',
+      ),
+    );
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      assert.deepEqual(aboutEnglish(operator).facts[0], {
+        label: "How it's built",
+        lines: [
+          approved(
+            'Written entirely by AI agents: Claude Code writes, tests and NBSP reviews NBSP the NBSP code.',
+          ),
+          approved(
+            'TypeScript, React and Fastify, PostgreSQL, a small Kubernetes NBSP cluster NBSP (k3s).',
+          ),
+        ],
+      });
+      assert.ok(
+        aboutEnglish(operator).facts.every((fact) =>
+          fact.lines.every((line) => !/\bI\b|\bI'/.test(line)),
+        ),
+      );
+    }
+
+    // With the texts, the fact has its three lines in order, the line on who
+    // decides between the other two, as `ABOUT_FACTS` pins them above.
+    assert.deepEqual(ABOUT_FACTS[0]?.lines, [
+      ABOUT_TEXT_EN.howItIsBuilt.writtenBy,
+      ABOUT_TEXT_EN.howItIsBuilt.decidedBy,
+      ABOUT_TEXT_EN.howItIsBuilt.madeOf,
+    ]);
+  });
+
+  it('keeps production’s title and description in a build with the operator’s texts', () => {
+    assert.deepEqual(ABOUT_TEXT_EN.head, { title: ABOUT_TITLE, description: ABOUT_DESCRIPTION });
+    assert.deepEqual(ABOUT_TEXT_EN.headWithoutTexts, {
+      title: ABOUT_TITLE_WITHOUT_TEXTS,
+      description: ABOUT_DESCRIPTION_WITHOUT_TEXTS,
+    });
   });
 });

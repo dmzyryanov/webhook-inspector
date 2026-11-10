@@ -44,19 +44,23 @@ const {
   productionNamesLeft,
   // @ts-expect-error -- a plain ES module with no declarations; the build runs it.
 } = await import('../../scripts/check-build.mjs');
-const { ABOUT_RU } = await import('./about-copy-ru.ts');
+const { ABOUT_RU, aboutRussian } = await import('./about-copy-ru.ts');
 const {
   ABOUT_DESCRIPTION,
+  ABOUT_DESCRIPTION_WITHOUT_TEXTS,
   ABOUT_EN,
   ABOUT_EYEBROW,
   ABOUT_FACTS,
   ABOUT_HEADING,
   ABOUT_STORY,
   ABOUT_TITLE,
+  ABOUT_TITLE_WITHOUT_TEXTS,
   ABOUT_URL,
+  aboutEnglish,
   aboutParagraphText,
   MCP_SERVER_URL,
 } = await import('./about-copy.ts');
+const { NO_OPERATOR } = await import('./operator.ts');
 const { PRODUCTION_ORIGINS, SITE_ORIGINS, siteOriginPlugin } =
   await import('../../scripts/site-origin.mjs');
 
@@ -465,6 +469,146 @@ describe('the Russian template (D255)', () => {
     assert.equal(russianTemplate.split(ABOUT_PLACEHOLDER).length - 1, 1);
     assert.ok(russianPage.includes(russianBody));
     assert.ok(!russianPage.includes(ABOUT_PLACEHOLDER));
+  });
+});
+
+describe('the head a build writes (issue #380)', () => {
+  /** The head of a page or a template, `<head>` to `</head>`. */
+  const headOf = (html: string) => /<head>[\s\S]*?<\/head>/.exec(html)?.[0] ?? '';
+  const copyEnglish = aboutEnglish(NO_OPERATOR);
+  const copyRussian = aboutRussian(NO_OPERATOR);
+  const copyPage = renderAboutPage(template, copyEnglish);
+  const copyRussianPage = renderAboutPage(russianTemplate, copyRussian);
+
+  it('is the template’s head byte for byte with the operator’s texts, as production’s build has them', () => {
+    assert.equal(headOf(page), headOf(template));
+    assert.equal(headOf(russianPage), headOf(russianTemplate));
+    assert.equal(
+      page,
+      template.replace(ABOUT_PLACEHOLDER, () => body),
+    );
+    assert.equal(
+      russianPage,
+      russianTemplate.replace(ABOUT_PLACEHOLDER, () => russianBody),
+    );
+  });
+
+  it('names the service in both pages’ title and description without them, and changes nothing else of the head', () => {
+    for (const [html, written, copy, whole] of [
+      [copyPage, template, copyEnglish, ABOUT_EN],
+      [copyRussianPage, russianTemplate, copyRussian, ABOUT_RU],
+    ] as const) {
+      const head = headOf(html);
+
+      assert.equal(head.split(`<title>${copy.title}</title>`).length - 1, 1, copy.lang);
+      assert.equal(head.split(`content="${copy.description}"`).length - 1, 1, copy.lang);
+      assert.doesNotMatch(head, /QA Tools/, copy.lang);
+      assert.equal(
+        head
+          .replace(`<title>${copy.title}</title>`, `<title>${whole.title}</title>`)
+          .replace(`content="${copy.description}"`, `content="${whole.description}"`),
+        headOf(written),
+        copy.lang,
+      );
+      assert.equal(
+        html.split('<body>')[1],
+        written.split('<body>')[1]?.replace(ABOUT_PLACEHOLDER, () => renderAboutBody(copy)),
+      );
+    }
+    assert.equal(copyEnglish.title, ABOUT_TITLE_WITHOUT_TEXTS);
+    assert.equal(copyEnglish.description, ABOUT_DESCRIPTION_WITHOUT_TEXTS);
+    assert.match(
+      headOf(copyPage),
+      /<title>About Webhook Inspector<\/title>\n {4}<meta\n {6}name="description"\n {6}content="How Webhook Inspector is built and what happens to your data\."\n {4}\/>/,
+    );
+    assert.match(
+      headOf(copyRussianPage),
+      /<title>О Webhook Inspector<\/title>\n {4}<meta\n {6}name="description"\n {6}content="Как устроен Webhook Inspector и что происходит с вашими данными\."\n {4}\/>/,
+    );
+  });
+
+  it('draws How it’s built without its first-person line in both languages, the other two as with the texts', () => {
+    const lines = (html: string) =>
+      [...(/<div class="fact"><dt>([^<]*)<\/dt><dd>(.*?)<\/dd><\/div>/g.exec(html) ?? [])].slice(2);
+
+    assert.deepEqual(lines(copyPage), [
+      '<p>Written entirely by AI agents: Claude Code writes, tests and\u00a0reviews\u00a0the\u00a0code.</p><p>TypeScript, React and Fastify, PostgreSQL, a small Kubernetes\u00a0cluster\u00a0(k3s).</p>',
+    ]);
+    assert.deepEqual(lines(copyRussianPage), [
+      '<p>Весь код написан ИИ-агентами: Claude Code пишет его, тестирует\u00a0и\u00a0проверяет.</p><p>TypeScript, React и\u00a0Fastify, PostgreSQL, небольшой кластер\u00a0Kubernetes\u00a0(k3s).</p>',
+    ]);
+    assert.doesNotMatch(copyPage, /I decide what to build/);
+    assert.doesNotMatch(copyRussianPage, /решаю, что делать/);
+    assert.match(page, /I decide what to build/);
+    assert.match(russianPage, /решаю, что делать/);
+  });
+
+  it('refuses a template without its language’s title or description exactly once', () => {
+    const refused = /the about page template does not hold /;
+
+    for (const broken of [
+      template.replace(`<title>${ABOUT_TITLE}</title>`, '<title>About</title>'),
+      template.replace(`<title>${ABOUT_TITLE}</title>`, `<title>${ABOUT_TITLE}</title>`.repeat(2)),
+      template.replace(`content="${ABOUT_DESCRIPTION}"`, 'content="About"'),
+      template.replace(
+        '</head>',
+        `<meta name="og:description" content="${ABOUT_DESCRIPTION}" /></head>`,
+      ),
+    ]) {
+      assert.throws(() => renderAboutPage(broken), refused);
+      assert.throws(() => renderAboutPage(broken, copyEnglish), refused);
+    }
+    // Each template is written for its own language's head.
+    assert.throws(() => renderAboutPage(russianTemplate, ABOUT_EN), refused);
+    assert.throws(() => renderAboutPage(template, ABOUT_RU), refused);
+    // The body's placeholder is looked for first, as before.
+    assert.throws(() => renderAboutPage('<head></head><body></body>'), /no <!-- about:page -->/);
+  });
+
+  it('escapes a title and a description it writes, at growing sizes, in time', () => {
+    for (const size of [1, 1_000, 100_000]) {
+      const hostile = `</title><script>alert(1)</script>"' &amp; <!--`.repeat(size);
+      const started = performance.now();
+      const html = renderAboutPage(template, {
+        ...copyEnglish,
+        title: hostile,
+        description: hostile,
+      });
+      const head = headOf(html);
+
+      assert.equal(head.split('<title>').length - 1, 1, `${size}`);
+      assert.equal(head.split('</title>').length - 1, 1, `${size}`);
+      assert.doesNotMatch(head, /<script/, `${size}`);
+      // The template's own comment, and no other.
+      assert.equal(head.split('<!--').length - 1, 1, `${size}`);
+      assert.equal(head.split('name="description"').length - 1, 1, `${size}`);
+      assert.ok(
+        head.includes(
+          `content="${'&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;&#39; &amp;amp; &lt;!--'.repeat(size)}"`,
+        ),
+        `${size}`,
+      );
+
+      // A template whose title is there many times is refused; one with a
+      // long run of text before its head is written.
+      const repeated = template.replace(
+        `<title>${ABOUT_TITLE}</title>`,
+        `<title>${ABOUT_TITLE}</title>`.repeat(size + 1),
+      );
+      const padded = template.replace(
+        '<head>',
+        `<head>${' <title'.repeat(size)}${'content="'.repeat(size)}`,
+      );
+
+      assert.throws(() => renderAboutPage(repeated, copyEnglish), /does not hold <title>/);
+      assert.equal(
+        headOf(renderAboutPage(padded, copyEnglish)).split(
+          `<title>${ABOUT_TITLE_WITHOUT_TEXTS}</title>`,
+        ).length,
+        2,
+      );
+      assert.ok(performance.now() - started < 2_000, `${size}: ${performance.now() - started} ms`);
+    }
   });
 });
 
@@ -946,6 +1090,55 @@ describe('the build check', () => {
       ),
       ['the about page about/index.html asks search engines not to index it'],
     );
+  });
+
+  it('passes a page built without the operator’s texts against its own head, and fails one with production’s (issue #380)', () => {
+    const copies = [
+      [aboutEnglish(NO_OPERATOR), template, 'the about page about/index.html'],
+      [aboutRussian(NO_OPERATOR), russianTemplate, 'the Russian about page ru/about/index.html'],
+    ] as const;
+
+    for (const [copy, written, named] of copies) {
+      const html = built(renderAboutPage(written, copy));
+      const whole = copy.lang === 'ru' ? ABOUT_RU : ABOUT_EN;
+
+      assert.deepEqual(aboutPageProblems(html, copy), [], named);
+      // Production's head where the copy's should be: its title and its description.
+      assert.deepEqual(aboutPageProblems(built(renderAboutPage(written, whole)), copy), [
+        `${named} has no <title>${copy.title}</title>`,
+        `${named} does not have the one description "${copy.description}"`,
+      ]);
+      // Production's description alone, under the copy's title.
+      assert.deepEqual(
+        aboutPageProblems(
+          html.replace(`content="${copy.description}"`, `content="${whole.description}"`),
+          copy,
+        ),
+        [`${named} does not have the one description "${copy.description}"`],
+      );
+      // The copy's page checked as production's.
+      assert.deepEqual(aboutPageProblems(html, whole), [
+        `${named} has no <title>${whole.title}</title>`,
+        `${named} does not have the one description "${whole.description}"`,
+      ]);
+    }
+  });
+
+  it('fails a page with no meta description, two, or another', () => {
+    const named = 'the about page about/index.html';
+    const problem = `${named} does not have the one description "${ABOUT_DESCRIPTION}"`;
+
+    for (const html of [
+      built().replace(/<meta\s+name="description"[^>]*>/, ''),
+      built().replace(
+        '</head>',
+        `<meta name="description" content="${ABOUT_DESCRIPTION}" /></head>`,
+      ),
+      built().replace(`content="${ABOUT_DESCRIPTION}"`, 'content="About QA Tools."'),
+    ]) {
+      assert.deepEqual(aboutPageProblems(html), [problem]);
+      assert.ok(problems(both({ 'about/index.html': html })).includes(problem));
+    }
   });
 
   it('fails a page in the wrong language, under another address, or without the hreflang pair (D255)', () => {

@@ -125,6 +125,19 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.39
+
+2026-11-10
+
+**Nothing changes on this site; a copy of the inspector built from its source
+no longer names this site in its about pages' titles and descriptions.** A
+copy built without this site's texts titles its about page `About Webhook
+Inspector`, in Russian `О Webhook Inspector`, and describes it to search
+engines and link previews as what it says, how Webhook Inspector is built and
+what happens to your data, rather than who runs it and who pays for it, which
+such a page leaves out; its `How it's built` no longer speaks in this site's
+owner's first person. This site's about pages are exactly as before. (#380)
+
 ## 1.19.38
 
 2026-11-10

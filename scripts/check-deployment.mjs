@@ -220,6 +220,30 @@ export const RUSSIAN_ABOUT_MARKS = {
 };
 
 /**
+ * The two about pages' titles in an image built without the operator's
+ * texts (#380), which name the service rather than QA Tools. The smoke keeps
+ * its own copy, as it does of production's; `scripts/delivery.test.mjs`
+ * keeps it equal to the titles the pages' texts give such a build.
+ */
+export const ABOUT_TITLE_TAGS_WITHOUT_TEXTS = Object.freeze({
+  en: '<title>About Webhook Inspector</title>',
+  ru: '<title>О Webhook Inspector</title>',
+});
+
+/**
+ * The titles the smoke expects of the two about pages, as `--operator-texts`
+ * says: without the texts, those of `ABOUT_TITLE_TAGS_WITHOUT_TEXTS`; with
+ * them, or not given, production's, as before the option, so an image
+ * built without the texts is checked with `--operator-texts=`, as its
+ * changelog's feeds are.
+ */
+export function aboutTitleTags(operator) {
+  return operator.texts === false
+    ? ABOUT_TITLE_TAGS_WITHOUT_TEXTS
+    : { en: ABOUT_TITLE_TAG, ru: RUSSIAN_ABOUT_MARKS.titleTag };
+}
+
+/**
  * The Terms of Use and the Privacy Policy (D217), each by its address, what it
  * is called in a failure and the title that tells it from the application
  * shell, in an image built with the operator's texts (#369). The smoke keeps
@@ -630,14 +654,16 @@ export async function checkDeployment(
     throw new Error('/openapi.json did not return the OpenAPI description, uncached');
   }
   // The about page (D211): its own static page, never the application shell,
-  // revalidated on every use and offered to search engines (D183).
+  // revalidated on every use and offered to search engines (D183), under the
+  // title the image's OPERATOR_TEXTS gives it (#380).
+  const aboutTitles = aboutTitleTags(operator);
   const about = await get('/about');
   if (
     about.status !== 200 ||
     !about.headers.get('content-type')?.includes('text/html') ||
     about.headers.get('cache-control') !== 'no-cache' ||
     about.headers.get('x-robots-tag') !== indexable ||
-    !about.text.includes(ABOUT_TITLE_TAG)
+    !about.text.includes(aboutTitles.en)
   ) {
     throw new Error('/about did not return the about page, uncached and indexable');
   }
@@ -650,7 +676,7 @@ export async function checkDeployment(
     russianAbout.headers.get('cache-control') !== 'no-cache' ||
     russianAbout.headers.get('x-robots-tag') !== indexable ||
     !russianAbout.text.includes(RUSSIAN_ABOUT_MARKS.lang) ||
-    !russianAbout.text.includes(RUSSIAN_ABOUT_MARKS.titleTag)
+    !russianAbout.text.includes(aboutTitles.ru)
   ) {
     throw new Error('/ru/about did not return the Russian about page, uncached and indexable');
   }
