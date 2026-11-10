@@ -270,12 +270,10 @@ test('a Docker that ignores the polite stop is killed after the grace period', a
   );
 });
 
-// What `db:up` relies on in the compose file: one project for every checkout,
-// whatever its directory is called, names that follow that project, and a
-// health check `--wait` can trust.
-// #280's acceptance 4, for `db:up` and `db:rebuild`: on Linux the messages
-// name Docker Engine — its daemon and its socket — and never Docker Desktop or
-// its credential helper; on the Mac what they named before.
+// When `db:up` gives up on a Docker that stops answering, or `db:rebuild`
+// meets one that fails, on Linux the messages name Docker Engine — its daemon
+// and its socket — and never Docker Desktop or its credential helper; on the
+// Mac they name Docker Desktop, and never Docker Engine or `systemctl` (#280).
 test('on Linux a Docker that fails or stops answering is said to be the Docker Engine daemon, on the Mac Docker Desktop', async (t) => {
   for (const [platform, says, never] of [
     [
@@ -320,6 +318,9 @@ test('on Linux a Docker that fails or stops answering is said to be the Docker E
   }
 });
 
+// What `db:up` relies on in the compose file: one project for every checkout,
+// whatever its directory is called, names that follow that project, and a
+// health check `--wait` can trust.
 test('docker-compose.yml fixes the project name and a health check that queries', () => {
   assert.match(
     COMPOSE,
@@ -1285,11 +1286,11 @@ test('task-up fails with the reason when Docker, the image, the health check or 
   );
 });
 
-// #280's acceptance 4, for a task's database: against a stand-in docker that
-// answers as Docker Engine's CLI on Linux — a missing container in the
-// daemon's words, a port it chose — the database comes up and goes as on the
-// Mac; a daemon that is stopped, or a socket this user may not open, fails
-// with the Engine's own words before anything is started.
+// A task's database on Linux: against a stand-in docker that answers as
+// Docker Engine's CLI does — a missing container in the daemon's words, a port
+// it chose — the database comes up and goes as on the Mac; a daemon that is
+// stopped, or a socket this user may not open, fails with the Engine's own
+// words before anything is started (#280).
 test("on Linux a task's database comes up and goes against Docker Engine, and a stopped daemon or a refused socket fails with its words", async (t) => {
   const f = taskFixture(t, {
     missing: 'Error response from daemon: No such container: ',
