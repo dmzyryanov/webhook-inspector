@@ -150,7 +150,8 @@ test.describe('E2E-20 — the new session’s options', () => {
     });
     await expect(tile(page)).toContainText('— your temporary endpoint, ready in a second');
 
-    // Acceptance 1 on the wire: no body and no Content-Type at all (D104).
+    // With the defaults, the request that creates the session carries no body
+    // and no Content-Type at all (D104).
     const plain = await generate(page, sent);
 
     expect(plain.postData()).toBeNull();
