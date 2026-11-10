@@ -18,7 +18,9 @@
  *   `security.txt`, the legal pages and the API description's `info.contact`
  *   name it; unset, no address is shown and no `security.txt` is served.
  * - `OPERATOR_TEXTS`: `true` shows the operator's texts, in both languages:
- *   the about pages' lines on who runs the service and who pays for it, the
+ *   the about pages' lines on who runs the service and who pays for it, and
+ *   since issue #380 their line on who decides what to build and their title
+ *   and meta description, which name QA Tools (`composeAbout`), the
  *   Terms of Use and the Privacy Policy with the footer's links to them, and
  *   the API description's sentences pointing at them; since issue #396 also
  *   the changelog of this site's releases with every link to it

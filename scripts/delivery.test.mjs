@@ -12,6 +12,8 @@ import { URL, fileURLToPath } from 'node:url';
 import { IMPORTED_VERSION, checkVersion, isRuntimePath } from './check-version.mjs';
 import {
   ABOUT_TITLE_TAG,
+  ABOUT_TITLE_TAGS_WITHOUT_TEXTS,
+  aboutTitleTags,
   ATOM_CONTENT_TYPE,
   ATOM_FEED_ROOT,
   CHANGELOG_FEEDS,
@@ -50,10 +52,14 @@ import {
 // No imports of their own, so Node loads them as TypeScript here with nothing installed.
 import {
   mailtoOf,
+  NO_OPERATOR as NO_OPERATOR_BUILT,
   parseContactEmail,
   parseOperatorTexts,
   parseStatusPageUrl,
 } from '../apps/frontend/src/lib/operator.ts';
+// The about pages' texts, which import only operator.ts and site-origin.mjs.
+import { aboutEnglish } from '../apps/frontend/src/lib/about-copy.ts';
+import { aboutRussian } from '../apps/frontend/src/lib/about-copy-ru.ts';
 // The frontend build's own writers of security.txt and of the /status
 // locations, which import nothing installed either.
 import { securityTxt } from '../apps/frontend/scripts/build-security-txt.mjs';
@@ -411,6 +417,16 @@ const RUSSIAN_ABOUT_HTML =
   '<!doctype html>\n<html lang="ru">\n  <head>\n    <title>О QA Tools</title>\n  </head>\n  <body><main><h1>От тестировщика — тестировщикам</h1></main></body>\n</html>\n';
 const russianAboutPage = (headers = {}, status = 200, text = RUSSIAN_ABOUT_HTML) =>
   aboutPage(headers, status, text);
+// The two about pages of an image built without the operator's texts (#380),
+// titled by the service.
+const ABOUT_HTML_WITHOUT_TEXTS = ABOUT_HTML.replace(
+  ABOUT_TITLE_TAG,
+  '<title>About Webhook Inspector</title>',
+);
+const RUSSIAN_ABOUT_HTML_WITHOUT_TEXTS = RUSSIAN_ABOUT_HTML.replace(
+  '<title>О QA Tools</title>',
+  '<title>О Webhook Inspector</title>',
+);
 // The Terms of Use and the Privacy Policy (D217), as nginx answers them: static
 // pages like /about, revalidated.
 const TERMS_HTML =
@@ -1271,6 +1287,32 @@ test('the smoke expects the title the about page carries', () => {
   );
   assert.equal(ABOUT_TITLE_TAG, '<title>About QA Tools</title>');
   assert.ok(template.includes(ABOUT_TITLE_TAG));
+});
+
+// The smoke keeps its own copy of the titles of an image built without the
+// operator's texts; this keeps them equal to the pages' texts for such a
+// build, and production's to the templates (#380).
+test('the smoke expects the titles the about pages carry without the operator texts, and production’s with them or not given', () => {
+  assert.deepEqual(ABOUT_TITLE_TAGS_WITHOUT_TEXTS, {
+    en: `<title>${aboutEnglish(NO_OPERATOR_BUILT).title}</title>`,
+    ru: `<title>${aboutRussian(NO_OPERATOR_BUILT).title}</title>`,
+  });
+  assert.deepEqual(ABOUT_TITLE_TAGS_WITHOUT_TEXTS, {
+    en: '<title>About Webhook Inspector</title>',
+    ru: '<title>О Webhook Inspector</title>',
+  });
+  const production = { en: ABOUT_TITLE_TAG, ru: RUSSIAN_ABOUT_MARKS.titleTag };
+  assert.deepEqual(aboutTitleTags({ texts: false }), ABOUT_TITLE_TAGS_WITHOUT_TEXTS);
+  assert.deepEqual(aboutTitleTags({ texts: true }), production);
+  assert.deepEqual(aboutTitleTags(OPERATOR_NOT_GIVEN), production);
+  for (const [lang, path] of [
+    ['en', '../apps/frontend/about/index.html'],
+    ['ru', '../apps/frontend/ru/about/index.html'],
+  ]) {
+    const template = readFileSync(new URL(path, import.meta.url), 'utf8');
+    assert.equal(template.split(production[lang]).length - 1, 1, lang);
+    assert.ok(!template.includes(ABOUT_TITLE_TAGS_WITHOUT_TEXTS[lang]), lang);
+  }
 });
 
 // The smoke keeps its own copy of the page's marks rather than importing the
@@ -2834,8 +2876,14 @@ function deployment(built, seen = [], answers = {}) {
     '/': html,
     '/docs': reference,
     '/openapi.json': description,
-    '/about': aboutPage,
-    '/ru/about': russianAboutPage,
+    // The about pages' titles are the operator's texts' too (#380).
+    '/about': () => aboutPage({}, 200, built.texts ? ABOUT_HTML : ABOUT_HTML_WITHOUT_TEXTS),
+    '/ru/about': () =>
+      russianAboutPage(
+        {},
+        200,
+        built.texts ? RUSSIAN_ABOUT_HTML : RUSSIAN_ABOUT_HTML_WITHOUT_TEXTS,
+      ),
     '/terms': () => (built.texts ? termsPage() : pageNotFound()),
     '/privacy': () => (built.texts ? privacyPage() : pageNotFound()),
     '/ru/': russianHome,
@@ -2903,7 +2951,14 @@ test("smoke checks the operator's details as the deployment's settings give them
   const never = Object.fromEntries(
     OPERATOR_PATHS.map((path) => [path, () => assert.fail(`${path} was asked for`)]),
   );
-  const feedsServed = { '/changelog.xml': atomFeed, '/changelog-breaking.xml': breakingFeed };
+  // So are the about pages, under production's titles, which the smoke
+  // expects when the texts are not given (#380).
+  const feedsServed = {
+    '/changelog.xml': atomFeed,
+    '/changelog-breaking.xml': breakingFeed,
+    '/about': () => aboutPage(),
+    '/ru/about': () => russianAboutPage(),
+  };
   for (const built of [OPERATOR, NO_OPERATOR]) {
     const seen = [];
     await smokeOf(built, OPERATOR_NOT_GIVEN, seen, { ...never, ...feedsServed });
@@ -2983,6 +3038,54 @@ test("smoke refuses the legal pages unlike OPERATOR_TEXTS: missing with the text
       await assert.rejects(smokeOf(NO_OPERATOR, NO_OPERATOR, [], { [path]: answer }), notFound);
     }
   }
+});
+
+test('smoke refuses an about page titled unlike OPERATOR_TEXTS: production’s title without the texts, the service’s with them or not given (#380)', async () => {
+  const english = /^Error: \/about did not return the about page, uncached and indexable$/;
+  const russian =
+    /^Error: \/ru\/about did not return the Russian about page, uncached and indexable$/;
+  const production = {
+    '/about': () => aboutPage(),
+    '/ru/about': () => russianAboutPage(),
+  };
+  const withoutTexts = {
+    '/about': () => aboutPage({}, 200, ABOUT_HTML_WITHOUT_TEXTS),
+    '/ru/about': () => russianAboutPage({}, 200, RUSSIAN_ABOUT_HTML_WITHOUT_TEXTS),
+  };
+
+  // As built, each passes.
+  await smokeOf(NO_OPERATOR, NO_OPERATOR);
+  await smokeOf(CONTACT_ONLY, CONTACT_ONLY);
+  await smokeOf(OPERATOR, OPERATOR);
+  await smokeOf(OPERATOR, OPERATOR_NOT_GIVEN);
+  // Without the texts, production's title on either page is refused.
+  for (const built of [NO_OPERATOR, CONTACT_ONLY]) {
+    await assert.rejects(smokeOf(built, built, [], { '/about': production['/about'] }), english);
+    await assert.rejects(
+      smokeOf(built, built, [], { '/ru/about': production['/ru/about'] }),
+      russian,
+    );
+  }
+  // With them, or with the setting not given, the service's title is refused.
+  for (const operator of [OPERATOR, OPERATOR_NOT_GIVEN]) {
+    await assert.rejects(
+      smokeOf(OPERATOR, operator, [], { '/about': withoutTexts['/about'] }),
+      english,
+    );
+    await assert.rejects(
+      smokeOf(OPERATOR, operator, [], { '/ru/about': withoutTexts['/ru/about'] }),
+      russian,
+    );
+  }
+  // The Russian title alone at /about, or the English one at /ru/about, is no page either.
+  await assert.rejects(
+    smokeOf(NO_OPERATOR, NO_OPERATOR, [], { '/about': withoutTexts['/ru/about'] }),
+    english,
+  );
+  await assert.rejects(
+    smokeOf(NO_OPERATOR, NO_OPERATOR, [], { '/ru/about': withoutTexts['/about'] }),
+    russian,
+  );
 });
 
 test('smoke refuses security.txt unlike CONTACT_EMAIL: the file of another address with one, any but a 404 without one (#381)', async () => {
@@ -3665,9 +3768,23 @@ test("the smoke's command line says what it checked of the operator's details, a
     ],
   );
   // Not given, they are checked as served, as before #396: an image without
-  // the texts then fails on its first feed (Decision 4).
+  // the texts then fails on its about page, titled by the service (#380),
+  // and, were that titled as production's, on its first feed (Decision 4).
   await assert.rejects(
     run(CONTACT_ONLY, ['--contact-email=hello@inspector.example']),
+    /^Error: \/about did not return the about page, uncached and indexable$/,
+  );
+  await assert.rejects(
+    checkDeploymentMain(
+      [SITE, RECEIVE, '--contact-email=hello@inspector.example'],
+      deployment(CONTACT_ONLY, [], {
+        '/about': () => aboutPage(),
+        '/ru/about': () => russianAboutPage(),
+      }),
+      NOW,
+      async () => assert.fail('no wait'),
+      () => {},
+    ),
     /^Error: \/changelog\.xml did not return the changelog's Atom feed, uncached$/,
   );
   assert.equal(
@@ -3676,14 +3793,16 @@ test("the smoke's command line says what it checked of the operator's details, a
   );
   assert.equal(notCheckedLine(OPERATOR), undefined);
   assert.match(checkedList(OPERATOR_NOT_GIVEN), /^frontend, .* and the receive host$/);
-  // A deployment unlike the settings given fails, naming what.
+  // A deployment unlike the settings given fails, naming what: first its
+  // about page, whose title the texts give since #380, which the smoke reads
+  // before the legal pages.
   await assert.rejects(
     run(OPERATOR, ['--status-page=', '--contact-email=', '--operator-texts=']),
-    /^Error: \/terms did not answer the site's Page not found, as an image without the operator's texts does$/,
+    /^Error: \/about did not return the about page, uncached and indexable$/,
   );
   await assert.rejects(
     run(NO_OPERATOR, OPERATOR_OPTIONS),
-    /^Error: \/terms did not return the Terms of Use, uncached and indexable$/,
+    /^Error: \/about did not return the about page, uncached and indexable$/,
   );
 });
 

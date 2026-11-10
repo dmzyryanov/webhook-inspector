@@ -50,7 +50,10 @@
  *   only content-hashed files and no Scalar, has the title `About QA Tools`,
  *   has had its body written, and asks no search engine to leave it out; and
  *   its Russian twin (D255), `dist/ru/about/index.html` at /ru/about, the
- *   same way with the title `О QA Tools`. Each is `<html lang>` of its
+ *   same way with the title `О QA Tools`. A build without the operator's
+ *   texts has the titles `About Webhook Inspector` and `О Webhook Inspector`
+ *   instead (issue #380), and each page has exactly one meta description,
+ *   the build's own. Each is `<html lang>` of its
  *   language, has exactly one canonical address, its own, and carries the
  *   pair's reciprocal hreflang set (`en` and `x-default` to /about, `ru` to
  *   /ru/about).
@@ -127,6 +130,7 @@ import {
   RELAY_SCRIPT_NAME,
   sha256Hex,
 } from './relay-script.mjs';
+import { escapeHtml, escapeText } from './site-chrome.mjs';
 import { APP_ORIGIN, isProduction, SITE_ORIGINS } from './site-origin.mjs';
 
 /** Strings only Scalar's build contains: its root class, its entry, its hosts. */
@@ -450,7 +454,9 @@ export const ABOUT_HREFLANG = [
 
 /**
  * What is wrong with a built about page (D211, D255), `/about`'s unless
- * `page` is the Russian one: not its title, not its language's `lang`, a
+ * `page` is the Russian one: not its title, other than exactly one meta
+ * description, its own — both the build's operator's, so a copy's page
+ * keeps neither of production's (issue #380) — not its language's `lang`, a
  * body never written, other than exactly one canonical address, its own, not
  * the pair's hreflang set, or a `noindex` that would keep it out of search.
  */
@@ -458,8 +464,16 @@ export function aboutPageProblems(html, page = ABOUT_EN) {
   const named = `${page.lang === 'ru' ? 'the Russian about page' : 'the about page'} ${aboutTemplate(page)}`;
   const problems = [];
 
-  if (!html.includes(`<title>${page.title}</title>`)) {
+  if (!html.includes(`<title>${escapeText(page.title)}</title>`)) {
     problems.push(`${named} has no <title>${page.title}</title>`);
+  }
+
+  const descriptions = tagAttributes(html, 'meta')
+    .filter((meta) => meta.name === 'description')
+    .map((meta) => meta.content);
+
+  if (descriptions.length !== 1 || descriptions[0] !== escapeHtml(page.description)) {
+    problems.push(`${named} does not have the one description "${page.description}"`);
   }
 
   if (!new RegExp(`<html lang="${page.lang}">`).test(html)) {

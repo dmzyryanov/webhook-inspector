@@ -14,13 +14,25 @@
  * with the header and the band in Russian; every function here takes the
  * page it writes, English unless told otherwise.
  *
- * Every text is written between tags with `escapeText`, so the page holds it
- * byte for byte, its no-break spaces and no-break hyphen included.
- * `check-build.mjs` fails the build when a page is missing, has not been
- * written, or lacks its title.
+ * Each template's head is written with production's title and meta
+ * description, the ones with the operator's texts; the page's own, which a
+ * build without them names the service with (issue #380), are written in
+ * their place, so production's page is the template's head byte for byte.
+ *
+ * Every text is written between tags with `escapeText`, and the description
+ * into its attribute with `escapeHtml`, so the page holds it byte for byte,
+ * its no-break spaces and no-break hyphen included. `check-build.mjs` fails
+ * the build when a page is missing, has not been written, or lacks its title
+ * or its description.
  */
-import { ABOUT_RU } from '../src/lib/about-copy-ru.ts';
-import { ABOUT_DESCRIPTION, ABOUT_EN, ABOUT_TITLE, ABOUT_URL } from '../src/lib/about-copy.ts';
+import { ABOUT_RU, ABOUT_TEXT_RU } from '../src/lib/about-copy-ru.ts';
+import {
+  ABOUT_DESCRIPTION,
+  ABOUT_EN,
+  ABOUT_TEXT_EN,
+  ABOUT_TITLE,
+  ABOUT_URL,
+} from '../src/lib/about-copy.ts';
 import { escapeHtml, escapeText, keptRuns, siteFooter, siteHeader } from './site-chrome.mjs';
 
 /** Where a page's template holds the body this module writes. */
@@ -100,13 +112,46 @@ export function renderAboutBody(page = ABOUT_EN) {
   ].join('\n');
 }
 
-/** A page's template with its body in place, `/about`'s unless `page` is another. */
+/** The head each language's template is written with: production's, with the operator's texts. */
+const TEMPLATE_HEADS = { en: ABOUT_TEXT_EN.head, ru: ABOUT_TEXT_RU.head };
+
+/** A head's `<title>` element as a page writes it. */
+function titleElement(title) {
+  return `<title>${escapeText(title)}</title>`;
+}
+
+/** A head's meta description as a page writes its `content` attribute. */
+function descriptionContent(description) {
+  return `content="${escapeHtml(description)}"`;
+}
+
+/**
+ * A page's template with its head and its body in place, `/about`'s unless
+ * `page` is another: the page's title and meta description where the
+ * template has its language's production ones, each found exactly once as
+ * fixed text, and the body where the placeholder is. A template without the
+ * placeholder, or without either text exactly once, is refused rather than
+ * written with production's words left in it.
+ */
 export function renderAboutPage(template, page = ABOUT_EN) {
   if (!template.includes(ABOUT_PLACEHOLDER)) {
     throw new Error(`the about page template has no ${ABOUT_PLACEHOLDER}`);
   }
 
-  return template.replace(ABOUT_PLACEHOLDER, () => renderAboutBody(page));
+  const written = TEMPLATE_HEADS[page.lang];
+  const title = titleElement(written.title);
+  const description = descriptionContent(written.description);
+
+  for (const mark of [title, description]) {
+    if (template.split(mark).length !== 2) {
+      throw new Error(`the about page template does not hold ${mark} once`);
+    }
+  }
+
+  return template
+    .replace(title, () => titleElement(page.title))
+    .replace(description, () => descriptionContent(page.description))
+    .replace(ABOUT_PLACEHOLDER, () => renderAboutBody(page));
 }
 
 /**

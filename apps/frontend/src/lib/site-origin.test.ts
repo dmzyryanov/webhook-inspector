@@ -1543,6 +1543,34 @@ describe('a build for another address (issue #320, criterion 2)', () => {
     );
   });
 
+  it('keeps production’s title, description and How it’s built on both about pages, built with production’s operator settings (issue #380)', () => {
+    for (const [path, template, line] of [
+      [
+        'about/index.html',
+        '../../about/index.html',
+        'I decide what to build and approve every design, drawn\u00a0in\u00a0Figma\u00a0first.',
+      ],
+      [
+        'ru/about/index.html',
+        '../../ru/about/index.html',
+        'Я\u00a0решаю, что делать, и\u00a0утверждаю каждый экран\u00a0— сначала его рисуют\u00a0в\u00a0Figma.',
+      ],
+    ] as const) {
+      const head = (html: string) =>
+        (/<head>[\s\S]*?<\/head>/.exec(html)?.[0] ?? '')
+          .replace(/<link[^>]*>\n/g, '')
+          .replace(/<script[^>]*><\/script>\n/g, '');
+      const fact = /<div class="fact"><dt>[^<]*<\/dt><dd>(.*?)<\/dd><\/div>/.exec(built(path))?.[1];
+
+      // Its title and its meta description as the template writes them,
+      // whatever links the build adds or names under the address.
+      assert.equal(head(built(path)), head(read(template)), path);
+      assert.match(built(path), /<title>(?:About QA Tools|О QA Tools)<\/title>/, path);
+      assert.equal(fact?.split('<p>').length, 4, path);
+      assert.ok(fact?.includes(`<p>${line}</p>`), path);
+    }
+  });
+
   it('names it in the agent documentation, the feeds, the relay script and the API description', () => {
     assert.ok(built('llms.txt').includes(`(${OTHER.app}/openapi.json)`));
     assert.ok(built('llms-full.txt').includes(`${OTHER.receive}/s/`));

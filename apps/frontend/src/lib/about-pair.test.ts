@@ -20,7 +20,12 @@ Object.assign(process.env, {
   APP_ALIAS_ORIGIN: 'https://webhook.qa-tools.ru',
 });
 
-const { ABOUT_RU, ABOUT_RU_APPROVED_AGAINST } = await import('./about-copy-ru.ts');
+const {
+  ABOUT_RU,
+  ABOUT_RU_APPROVED_AGAINST,
+  ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST,
+  aboutRussian,
+} = await import('./about-copy-ru.ts');
 const {
   ABOUT_DESCRIPTION,
   ABOUT_EN,
@@ -31,7 +36,9 @@ const {
   ABOUT_TITLE,
   ABOUT_URL,
   aboutCopyText,
+  aboutEnglish,
 } = await import('./about-copy.ts');
+const { NO_OPERATOR, parseOperator } = await import('./operator.ts');
 const { nameSite, PRODUCTION_ORIGINS, SITE_ORIGINS } =
   await import('../../scripts/site-origin.mjs');
 
@@ -197,6 +204,60 @@ describe('the two about pages', () => {
       sha256(aboutCopyText({ ...ABOUT_EN, lang: 'ru', path: '/x', url: 'https://example.com/' })),
       ABOUT_RU_APPROVED_AGAINST,
     );
+  });
+
+  it('leave out the same places without the operator’s texts, under heads of their own (issue #380)', () => {
+    const contactOnly = parseOperator({ CONTACT_EMAIL: 'hello@inspector.example' });
+
+    for (const operator of [NO_OPERATOR, contactOnly]) {
+      const english = aboutEnglish(operator);
+      const russian = aboutRussian(operator);
+
+      assert.deepEqual(shape(russian), shape(english));
+      // How it's built without its line on who decides, and Your data.
+      assert.deepEqual(shape(english).facts, [2, 2]);
+      assert.notEqual(english.title, ABOUT_EN.title);
+      assert.notEqual(russian.title, ABOUT_RU.title);
+      assert.notEqual(english.description, ABOUT_EN.description);
+      assert.notEqual(russian.description, ABOUT_RU.description);
+      // The eyebrow, the heading and the address are the same in every build.
+      for (const [page, whole] of [
+        [english, ABOUT_EN],
+        [russian, ABOUT_RU],
+      ] as const) {
+        assert.deepEqual(
+          [page.lang, page.path, page.url, page.eyebrow, page.heading],
+          [whole.lang, whole.path, whole.url, whole.eyebrow, whole.heading],
+        );
+      }
+    }
+  });
+
+  it('follows the English text of a page without the operator’s texts the Russian was approved against (issue #380)', () => {
+    const english = aboutEnglish(NO_OPERATOR);
+
+    assert.equal(
+      sha256(aboutCopyText(english)),
+      ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST,
+      'the English about text of a build without the operator’s texts changed: change its ' +
+        'Russian twin in about-copy-ru.ts in the same merge request, have the owner approve it, ' +
+        'and record the new hash (D255)',
+    );
+
+    // Its own words count, and so do the parts it shares with production's page.
+    for (const page of [
+      { ...english, title: 'About' },
+      { ...english, description: `${english.description} ` },
+      {
+        ...english,
+        facts: english.facts.map((fact, index) =>
+          index === 0 ? { ...fact, lines: ABOUT_FACTS[0]?.lines ?? [] } : fact,
+        ),
+      },
+      { ...english, heading: english.heading.replace('tester', 'QA engineer') },
+    ]) {
+      assert.notEqual(sha256(aboutCopyText(page)), ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST);
+    }
   });
 
   it('are composed for another address as for production, but for the address, in both (D274)', () => {

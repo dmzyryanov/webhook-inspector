@@ -650,14 +650,27 @@ describe('the pages of a build with no operator settings', () => {
     for (const [index, page] of [aboutEnglish(NO_OPERATOR), aboutRussian(NO_OPERATOR)].entries()) {
       const whole = full[index] as AboutCopy;
 
-      // The second paragraph and the first and third facts: the service's own.
+      // The second paragraph and the first and third facts: the service's own,
+      // the first without its line in the operator's first person (#380).
       assert.deepEqual(story(page), [story(whole)[1]]);
       assert.deepEqual(labels(page), [labels(whole)[0], labels(whole)[2]]);
+      assert.deepEqual(page.facts[0]?.lines, [whole.facts[0]?.lines[0], whole.facts[0]?.lines[2]]);
+      assert.deepEqual(page.facts[1], whole.facts[2]);
       assert.ok(page.story.flat().every((part) => part.kind !== 'mail'));
-      assert.deepEqual({ ...page, story: [], facts: [] }, { ...whole, story: [], facts: [] });
+      // Its title and description name the service (#380); the rest is the same.
+      assert.notEqual(page.title, whole.title);
+      assert.notEqual(page.description, whole.description);
+      assert.deepEqual(
+        { ...page, title: '', description: '', story: [], facts: [] },
+        { ...whole, title: '', description: '', story: [], facts: [] },
+      );
     }
 
     for (const page of [aboutEnglish(CONTACT_ONLY), aboutRussian(CONTACT_ONLY)]) {
+      const none = page.lang === 'ru' ? aboutRussian(NO_OPERATOR) : aboutEnglish(NO_OPERATOR);
+
+      assert.deepEqual([page.title, page.description], [none.title, none.description]);
+      assert.deepEqual(page.facts, none.facts);
       assert.equal(page.story.length, 2);
       assert.deepEqual(
         page.story[1]?.find((part) => part.kind === 'mail'),
@@ -3312,6 +3325,47 @@ describe('a build with example origins and no operator settings (issue #369, cri
       built('ru/about/index.html'),
       /Кто платит|Проверка безопасности|личный проект/,
     );
+  });
+
+  it('titles and describes both about pages by the service, and draws How it’s built without its first-person line (issue #380)', () => {
+    for (const [path, title, description, kept, left] of [
+      [
+        'about/index.html',
+        'About Webhook Inspector',
+        'How Webhook Inspector is built and what happens to your data.',
+        ['Written entirely by AI agents', 'a small Kubernetes\u00a0cluster\u00a0(k3s).'],
+        /I decide what to build|approve every design/,
+      ],
+      [
+        'ru/about/index.html',
+        'О Webhook Inspector',
+        'Как устроен Webhook Inspector и что происходит с вашими данными.',
+        ['Весь код написан ИИ-агентами', 'небольшой кластер\u00a0Kubernetes\u00a0(k3s).'],
+        /решаю, что делать|утверждаю каждый экран/,
+      ],
+    ] as const) {
+      const html = built(path);
+      const head = /<head>[\s\S]*?<\/head>/.exec(html)?.[0] ?? '';
+      const descriptions = [...head.matchAll(/<meta\s+name="description"\s+content="([^"]*)"/g)];
+      const fact = /<div class="fact"><dt>[^<]*<\/dt><dd>(.*?)<\/dd><\/div>/.exec(html)?.[1] ?? '';
+
+      assert.equal(head.split('<title>').length - 1, 1, path);
+      assert.ok(head.includes(`<title>${title}</title>`), path);
+      assert.deepEqual(
+        descriptions.map((match) => match[1]),
+        [description],
+        path,
+      );
+      assert.doesNotMatch(head, /og:title|og:description/, path);
+      // Neither names QA Tools, who runs the service or who pays for it.
+      assert.doesNotMatch(head, /QA Tools|Who runs|who pays|Кто и как|платит/, path);
+      // How it's built: its first and last lines, not the one in between.
+      assert.equal(fact.split('<p>').length - 1, 2, path);
+      for (const line of kept) {
+        assert.ok(fact.includes(line), `${path}: ${line}`);
+      }
+      assert.doesNotMatch(html, left, path);
+    }
   });
 
   it('fails the build check, naming the file, with a changelog file or a link to one left in it (issue #396, criterion 4)', () => {

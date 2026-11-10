@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ABOUT_RU } from './about-copy-ru.ts';
+import { ABOUT_RU, ABOUT_TEXT_RU, aboutRussian } from './about-copy-ru.ts';
 import { aboutParagraphText, MCP_SERVER_URL } from './about-copy.ts';
+import { NO_OPERATOR, parseOperator } from './operator.ts';
 import { ABOUT_ADDRESSES } from './about-link.ts';
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
@@ -258,12 +259,91 @@ describe('the Russian about page text (variant A, 2026-10-20)', () => {
     // Russian to an explicit set rather than dropped: printable ASCII, the
     // Russian alphabet with Ё, the no-break space and hyphen, the em dash.
     // No `« »`, which the text does not use.
-    for (const text of [ABOUT_RU.title, ABOUT_RU.description, ...everyText()]) {
+    const copy = aboutRussian(NO_OPERATOR);
+
+    for (const text of [
+      ABOUT_RU.title,
+      ABOUT_RU.description,
+      copy.title,
+      copy.description,
+      ...everyText(),
+    ]) {
       assert.doesNotMatch(text, /[^\x20-\x7e\u0410-\u044f\u0401\u0451\u00a0\u2011\u2014]/, text);
     }
 
     // No no-break hyphen: the hyphens of `ИИ-агенты` and `MCP-сервер` are as written.
     assert.ok(!everyText().join('').includes(NBH));
     assert.equal(everyText().join('').split(EM_DASH).length - 1, 4);
+  });
+});
+
+/**
+ * The Russian words of a page built without the operator's texts (issue
+ * #380), agreed with the English on 2026-11-10: the service's name in the
+ * title and the description, and `Как это сделано` without its line in the
+ * first person, as `about-copy.test.ts` holds the English.
+ */
+describe('the Russian about page text of a build without the operator’s texts (issue #380)', () => {
+  const CONTACT_ONLY = parseOperator({ CONTACT_EMAIL: 'hello@inspector.example' });
+
+  it('names the service in the title and promises only the facts the page keeps', () => {
+    assert.deepEqual(ABOUT_TEXT_RU.headWithoutTexts, {
+      title: 'О Webhook Inspector',
+      description: 'Как устроен Webhook Inspector и что происходит с вашими данными.',
+    });
+    // The tab title and the description keep their ordinary spaces, as production's do.
+    assert.ok(!JSON.stringify(ABOUT_TEXT_RU.headWithoutTexts).includes(NBSP));
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      const page = aboutRussian(operator);
+
+      assert.equal(page.title, 'О Webhook Inspector');
+      assert.equal(
+        page.description,
+        'Как устроен Webhook Inspector и что происходит с вашими данными.',
+      );
+      for (const text of [page.title, page.description]) {
+        assert.doesNotMatch(text, /QA Tools|плат|делает/, text);
+      }
+      assert.deepEqual(
+        page.facts.map((fact) => fact.label),
+        ['Как это сделано', 'Ваши данные'],
+      );
+    }
+  });
+
+  it('leaves out the first-person line of Как это сделано and keeps its other two as they are', () => {
+    assert.equal(
+      ABOUT_TEXT_RU.howItIsBuilt.decidedBy,
+      approved(
+        'Я NBSP решаю, что делать, и NBSP утверждаю каждый экран NBSP — сначала его рисуют NBSP в NBSP Figma.',
+      ),
+    );
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      assert.deepEqual(aboutRussian(operator).facts[0], {
+        label: 'Как это сделано',
+        lines: [
+          approved(
+            'Весь код написан ИИ-агентами: Claude Code пишет его, тестирует NBSP и NBSP проверяет.',
+          ),
+          approved(
+            'TypeScript, React и NBSP Fastify, PostgreSQL, небольшой кластер NBSP Kubernetes NBSP (k3s).',
+          ),
+        ],
+      });
+      assert.ok(
+        aboutRussian(operator).facts.every((fact) =>
+          fact.lines.every((line) => !/(?<![\p{L}])Я(?![\p{L}])/u.test(line)),
+        ),
+      );
+    }
+  });
+
+  it('keeps production’s title and description in a build with the operator’s texts', () => {
+    assert.deepEqual(ABOUT_TEXT_RU.head, {
+      title: ABOUT_RU.title,
+      description: ABOUT_RU.description,
+    });
   });
 });

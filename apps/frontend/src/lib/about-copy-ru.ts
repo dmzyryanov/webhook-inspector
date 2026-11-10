@@ -31,11 +31,21 @@ import { OPERATOR, type Operator } from './operator.ts';
  * else of the application, so Node loads it as TypeScript there.
  *
  * The operator's parts are left out where the English page leaves them out
- * (issue #369, `composeAbout`): the first paragraph and the facts `Кто
- * платит` and `Проверка безопасности` without the operator's texts, the
- * third paragraph without a contact address.
+ * (issue #369, `composeAbout`): the first paragraph, the facts `Кто
+ * платит` and `Проверка безопасности` and, since issue #380, the line of
+ * `Как это сделано` in the first person without the operator's texts, under
+ * a head that names the service, approved with the English on 2026-11-10;
+ * the third paragraph without a contact address.
  */
 export const ABOUT_TEXT_RU: AboutText = {
+  head: {
+    title: 'О QA Tools',
+    description: 'Кто и как делает QA Tools, кто за него платит и что происходит с вашими данными.',
+  },
+  headWithoutTexts: {
+    title: 'О Webhook Inspector',
+    description: 'Как устроен Webhook Inspector и что происходит с вашими данными.',
+  },
   whoRunsIt: [
     {
       kind: 'text',
@@ -57,11 +67,12 @@ export const ABOUT_TEXT_RU: AboutText = {
   ],
   howItIsBuilt: {
     label: 'Как это сделано',
-    lines: [
+    writtenBy:
       'Весь код написан ИИ-агентами: Claude Code пишет его, тестирует\u00a0и\u00a0проверяет.',
+    decidedBy:
       'Я\u00a0решаю, что делать, и\u00a0утверждаю каждый экран\u00a0— сначала его рисуют\u00a0в\u00a0Figma.',
+    madeOf:
       'TypeScript, React и\u00a0Fastify, PostgreSQL, небольшой кластер\u00a0Kubernetes\u00a0(k3s).',
-    ],
   },
   whoPays: {
     label: 'Кто платит',
@@ -85,17 +96,20 @@ export const ABOUT_TEXT_RU: AboutText = {
   },
 };
 
-/** The Russian page, `/ru/about`, for `operator`'s build (issue #369). */
+/** The Russian page, `/ru/about`, for `operator`'s build (issues #369, #380). */
 export function aboutRussian(operator: Operator = OPERATOR): AboutCopy {
+  const { title, description, story, facts } = composeAbout(ABOUT_TEXT_RU, operator);
+
   return {
     lang: 'ru',
     path: '/ru/about',
-    title: 'О QA Tools',
-    description: 'Кто и как делает QA Tools, кто за него платит и что происходит с вашими данными.',
+    title,
+    description,
     url: `${APP_ORIGIN}/ru/about`,
     eyebrow: 'О\u00a0QA\u00a0TOOLS',
     heading: 'От тестировщика\u00a0— тестировщикам',
-    ...composeAbout(ABOUT_TEXT_RU, operator),
+    story,
+    facts,
   };
 }
 
@@ -111,3 +125,13 @@ export const ABOUT_RU: AboutCopy = aboutRussian();
  */
 export const ABOUT_RU_APPROVED_AGAINST =
   'b9b41eac5c0296a4906a9d2ce6691d2395b03e61b88addcd94ab3abda4b6f41c';
+
+/**
+ * The SHA-256 of the English text of a page built without the operator's
+ * texts (`aboutCopyText(aboutEnglish(NO_OPERATOR))` for production's
+ * origins, hex), which the Russian of such a page was approved against on
+ * 2026-11-10 (issue #380): its head and the parts it keeps. It holds that
+ * page to D255's rule as the value above holds production's.
+ */
+export const ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST =
+  'd70e56e4fa87a551c66d7159ea8671df2a6610b1b561dfc2ba97e0eaed276e8b';
