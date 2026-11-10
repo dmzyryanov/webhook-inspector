@@ -125,6 +125,22 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.38
+
+2026-11-10
+
+**Nothing changes on this site; the local database commands of its source
+code now know only the database's current names.** They no longer stop the
+database container of the old local project, `qa-tools`, or give its image
+the new name, as they did from 1.18.2, so a copy set up before 1.18.2 that has
+not run `npm run db:up` since takes three steps, once:
+`docker ps -a --filter label=com.docker.compose.project=qa-tools` lists that
+old container, `docker rm --force` with its name removes it, and
+`npm run db:rebuild` builds the database and starts it under the current
+names. The old database's data is not carried over: its volume stays on disk,
+listed by `docker volume ls --filter label=com.docker.compose.project=qa-tools`,
+until it is removed. (#352, D278)
+
 ## 1.19.37
 
 2026-11-07

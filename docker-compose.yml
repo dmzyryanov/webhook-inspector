@@ -8,9 +8,7 @@
 # `webhook-inspector-postgres-1`, image `webhook-inspector-postgres` and volume
 # `webhook-inspector_postgres-data` (D159, D278). Start it with
 # `npm run db:up`, which never builds or pulls; `npm run db:rebuild` builds the
-# image, needed only on a new machine or after deploy/postgres/ changes. Until
-# 1.18.2 the project was `qa-tools` (D278): `db:up` stops its running container
-# and gives its image the new name, and leaves its volume as it is.
+# image, needed only on a new machine or after deploy/postgres/ changes.
 name: webhook-inspector
 
 services:

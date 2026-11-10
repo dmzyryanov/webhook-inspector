@@ -7,13 +7,14 @@
  * which the orchestrator reads once the series is done.
  *
  * It changes nothing the backend does: it registers every `pg.Pool` the
- * backend makes - by its `application_name`, `webhook-inspector-capture` and
- * `webhook-inspector-api` since D278, `qa-tools-capture` and `qa-tools-api`
- * from D244 until then, `shared` for the one pool before it - notes the
- * most callers waiting for a connection after each `connect`, and samples the
- * event loop's delay at 10 ms. So it measures a base image as it measures
- * this branch's. Only the backend's own process is probed: a `node` the
- * container's health check or `docker exec` starts loads it and does nothing.
+ * backend makes - by its `application_name` less the `webhook-inspector-`
+ * before it, `capture` and `api` (D244, D278), `shared` for a pool that sets
+ * none (`poolName`) - notes the most callers waiting for a connection after
+ * each `connect`, and samples the event loop's delay at 10 ms. So it measures
+ * a base image as it measures this branch's. Only the backend's own process
+ * is probed: a `node` the container's health check or `docker exec` starts
+ * loads it and does nothing; a module that imports it, as its test does, gets
+ * `poolName` and nothing else.
  *
  * Beside them, for each of the two listeners - `receive`, on `RECEIVE_PORT`,
  * and `app` - where a request's time inside the process goes: from its
@@ -36,6 +37,15 @@ const OUT = '/tmp/qa-probe.jsonl';
 const EVERY_MS = 250;
 const RECEIVE_PORT = Number(process.env.RECEIVE_PORT ?? 3001);
 const main = process.argv[1];
+
+/**
+ * The name a pool's readings go under: its `application_name` without the
+ * `webhook-inspector-` the backend puts before a named pool's, once, at its
+ * start alone; `shared` for a pool that sets none.
+ */
+export function poolName(options) {
+  return String(options?.application_name ?? 'shared').replace(/^webhook-inspector-/, '');
+}
 
 /** One listener's timings in the window since the line before. */
 function timings() {
@@ -101,10 +111,7 @@ if (main !== undefined && main.endsWith('src/index.ts')) {
     constructor(options) {
       super(options);
 
-      const name = String(options?.application_name ?? 'shared').replace(
-        /^(?:webhook-inspector|qa-tools)-/,
-        '',
-      );
+      const name = poolName(options);
 
       this.probe = { name, maxWaiting: 0, maxTotal: 0, acquire: [], hold: [] };
       pools.push(this);

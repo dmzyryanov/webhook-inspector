@@ -1669,12 +1669,11 @@ docker run -d --name webhook-inspector-postgres-e2e -p 5433:5432 \
 
 The image is `webhook-inspector-postgres` whichever checkout or worktree built
 it, because `docker-compose.yml` names it (D159, D278); if
-`npm run db:rebuild` has already run on this machine, the build step is done,
-and on a machine set up before 1.18.2 `npm run db:up` once gives the image
-built then, `qa-tools-postgres`, that name. `npm run db:up` starts the
-application's database and is not otherwise used here. The container above is
-disposable: `docker rm -f webhook-inspector-postgres-e2e` removes it with
-everything the suite wrote.
+`npm run db:rebuild` has already run on this machine, the build step is done.
+`npm run db:up` starts the application's database and is not otherwise used
+here. The container above is disposable:
+`docker rm -f webhook-inspector-postgres-e2e` removes it with everything the
+suite wrote.
 
 ### The commands
 
