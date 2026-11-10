@@ -129,22 +129,48 @@ test('success is Compose reporting success, for every step', async (t) => {
   assert.deepEqual(up.calls(), [...COMMANDS.up.steps[0]]);
 });
 
+// What `db:up`, and `db:rebuild` once its image is built, say when the port
+// is taken, as by the container of another project still running on it.
+const PORT_TAKEN_HINT = new RegExp(
+  [
+    '^- "port is already allocated" — something else listens on POSTGRES_PORT \\(default 5432\\),',
+    '  such as another PostgreSQL or a database container of another project; `docker ps`',
+    '  lists the containers\\.$',
+  ].join('\n'),
+  'm',
+);
+
 test('a failing Compose fails the script with its exit code and says what to check', async (t) => {
   const docker = fakeDocker(t, 'exit 3');
   const lines = [];
   assert.equal(await run('rebuild', { docker: docker.path, log: (line) => lines.push(line) }), 3);
   assert.deepEqual(docker.calls(), [...COMMANDS.rebuild.steps[0]], 'nothing runs after a failure');
-  assert.match(
-    lines.join('\n'),
-    /db:rebuild failed: `docker compose build postgres` exited with 3/,
-  );
+  const text = lines.join('\n');
+  assert.match(text, /db:rebuild failed: `docker compose build postgres` exited with 3/);
+  assert.match(text, /^The image was not built\.$/m);
+  assert.doesNotMatch(text, /port is already allocated/, 'a build takes no port');
 
   const upLines = [];
   assert.equal(await run('up', { docker: docker.path, log: (line) => upLines.push(line) }), 3);
+  const upText = upLines.join('\n');
   assert.match(
-    upLines.join('\n'),
+    upText,
     new RegExp(`"No such image: ${IMAGE}" — build it once with \`npm run db:rebuild\``),
   );
+  assert.match(upText, PORT_TAKEN_HINT);
+});
+
+test('db:rebuild that built its image and could not start it says what db:up says of the port', async (t) => {
+  const docker = fakeDocker(t, 'if [ "$2" = build ]; then exit 0; fi\nexit 1');
+  const lines = [];
+  assert.equal(await run('rebuild', { docker: docker.path, log: (line) => lines.push(line) }), 1);
+  assert.deepEqual(docker.calls(), [...COMMANDS.rebuild.steps[0], ...COMMANDS.rebuild.steps[1]]);
+  const text = lines.join('\n');
+  assert.match(text, /db:rebuild failed: `docker compose up --detach --no-build .*` exited with 1/);
+  assert.match(text, /^The image was built, but the database did not start\./m);
+  assert.match(text, PORT_TAKEN_HINT);
+  assert.match(text, /^- "unhealthy" — see `npm run db:logs`/m);
+  assert.doesNotMatch(text, /No such image|Docker Hub/, 'the image was built: neither applies');
 });
 
 // The shape of the 2026-09-24 hang: `docker` waiting on a helper it started,

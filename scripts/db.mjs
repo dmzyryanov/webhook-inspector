@@ -76,24 +76,38 @@ export const COMMANDS = {
 export const dockerOf = (platform = process.platform) =>
   platform === 'darwin' ? 'Docker Desktop' : 'Docker Engine';
 
-const hints = (name, platform) =>
-  ({
-    up: [
+// Why the container did not start, by what Compose printed: the same for
+// `db:up` and for the start that ends `db:rebuild`.
+const NOT_STARTED = [
+  '- "port is already allocated" — something else listens on POSTGRES_PORT (default 5432),',
+  '  such as another PostgreSQL or a database container of another project; `docker ps`',
+  '  lists the containers.',
+  '- "unhealthy" — see `npm run db:logs`; a volume created with other credentials fails the',
+  '  health check.',
+];
+
+// What to check after the step `args` of `db:<name>` failed.
+const hints = (name, args, platform) => {
+  if (name === 'up') {
+    return [
       'The database is not running. The usual causes, by the message above:',
       `- "No such image: ${IMAGE}" — build it once with \`npm run db:rebuild\`.`,
-      '- "port is already allocated" — something else listens on POSTGRES_PORT (default 5432),',
-      '  such as another PostgreSQL or a database container of another project; `docker ps`',
-      '  lists the containers.',
-      '- "unhealthy" — see `npm run db:logs`; a volume created with other credentials fails the',
-      '  health check.',
-    ],
-    rebuild: [
-      'The image was not built or the database did not start.',
-      dockerOf(platform) === 'Docker Desktop'
-        ? 'Building pulls `postgres:16` from Docker Hub: check the network and Docker Desktop.'
-        : 'Building pulls `postgres:16` from Docker Hub: check the network and the Docker Engine daemon.',
-    ],
-  })[name];
+      ...NOT_STARTED,
+    ];
+  }
+  if (args === UP) {
+    return [
+      'The image was built, but the database did not start. The usual causes, by the message above:',
+      ...NOT_STARTED,
+    ];
+  }
+  return [
+    'The image was not built.',
+    dockerOf(platform) === 'Docker Desktop'
+      ? 'Building pulls `postgres:16` from Docker Hub: check the network and Docker Desktop.'
+      : 'Building pulls `postgres:16` from Docker Hub: check the network and the Docker Engine daemon.',
+  ];
+};
 
 // What a Docker that stopped answering may be waiting on: Docker Desktop and
 // its credential helper on the Mac; on Linux the Engine's daemon, or a socket
@@ -241,7 +255,7 @@ export async function run(
     }
     if (code !== 0) {
       log(`\ndb:${name} failed: \`docker ${args.join(' ')}\` exited with ${code}.`);
-      log(hints(name, platform).join('\n'));
+      log(hints(name, args, platform).join('\n'));
       return code;
     }
   }

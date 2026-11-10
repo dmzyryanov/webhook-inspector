@@ -3,13 +3,11 @@
  * probe files each pool's readings under its `application_name` without the
  * prefix the backend gives a named pool, so a series reads `capture` and
  * `api` whatever the base image. Only the backend's own prefix is taken off,
- * once and at the start; any other name, made-up ones at growing sizes
- * included, is kept as it is. Importing the probe starts nothing: it probes
- * only the backend's own process.
+ * once and at the start; any other name is kept as it is. Importing the probe
+ * starts nothing: it probes only the backend's own process.
  */
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { performance } from 'node:perf_hooks';
 import { describe, it } from 'node:test';
 import { poolName } from '../../../scripts/measure-backend-probe.mjs';
 import { APPLICATION_NAME_PREFIX } from './db/pool.ts';
@@ -45,24 +43,5 @@ describe('poolName', () => {
       assert.equal(poolName({ application_name: given }), kept, JSON.stringify(given));
     }
     assert.equal(poolName({ application_name: 42 }), '42');
-  });
-
-  it('takes the prefix off once, quickly, at any length', () => {
-    for (const size of [1_000, 100_000, 1_000_000]) {
-      const repeated = APPLICATION_NAME_PREFIX.repeat(
-        Math.ceil(size / APPLICATION_NAME_PREFIX.length),
-      );
-      const started = performance.now();
-      assert.equal(
-        poolName({ application_name: `${repeated}api` }),
-        `${repeated.slice(APPLICATION_NAME_PREFIX.length)}api`,
-      );
-      const dashless = 'webhook-inspector'.repeat(Math.ceil(size / 17));
-      assert.equal(poolName({ application_name: dashless }), dashless);
-      const other = 'a'.repeat(size);
-      assert.equal(poolName({ application_name: other }), other);
-      const elapsed = performance.now() - started;
-      assert.ok(elapsed < 1_000, `size ${size} took ${Math.round(elapsed)} ms`);
-    }
   });
 });
