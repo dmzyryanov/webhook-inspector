@@ -2265,17 +2265,19 @@ test('the certificate code is read a few causes deep, and a cause of any shape, 
   ]) {
     assert.equal(pendingCertificateCode(shape), undefined, String(shape?.code ?? shape));
   }
-  // A cycle, and causes deeper than the walk goes.
-  const cyclic = new Error('a');
-  cyclic.cause = cyclic;
-  assert.equal(pendingCertificateCode(cyclic), undefined);
+  // Causes deeper than the walk goes, and a cycle: only the first few causes
+  // are read, so the code at the end of a long chain, one the reader waits
+  // for, is not found, and a cause that refers back to its error ends the
+  // walk. The long chains come first, so a reader that walks the whole chain
+  // fails on them instead of looping on the cycle.
   for (const depth of [10, 1000, 100_000]) {
     let chain = { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' };
     for (let index = 0; index < depth; index += 1) chain = { cause: chain };
-    const started = performance.now();
-    assert.equal(pendingCertificateCode(chain), undefined);
-    assert.ok(performance.now() - started < 100, `depth ${depth}`);
+    assert.equal(pendingCertificateCode(chain), undefined, `depth ${depth}`);
   }
+  const cyclic = new Error('a');
+  cyclic.cause = cyclic;
+  assert.equal(pendingCertificateCode(cyclic), undefined);
   let shallow = { code: 'SELF_SIGNED_CERT_IN_CHAIN' };
   for (let index = 0; index < 4; index += 1) shallow = { cause: shallow };
   assert.equal(pendingCertificateCode(shallow), 'SELF_SIGNED_CERT_IN_CHAIN');
