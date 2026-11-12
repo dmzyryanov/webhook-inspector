@@ -135,9 +135,12 @@ requests than the limits allow, at most once a minute, as 1.0.11 announced.**
 When the calls one address has had refused in a minute pass its limit itself
 — it has asked for more than twice what it may, 120 session creations or 2,400
 other calls of the API or the MCP server in one minute — the server's log
-records that address once for the minute, an IPv6 address by its `/64`, with
-which limit refused it and how many calls it had refused. An address within
-its limits, or over them by less than that, is never recorded. That log stays
+records that address, an IPv6 address by its `/64`, with the limit it passed
+and the number of its calls refused when it passed it, that limit plus one. An
+address is recorded at most once a minute, whichever of the two limits it
+passes, the line naming the one it passed first; for the seconds of an update,
+when two server processes count apart, each may record it once. An address
+within its limits, or over them by less than that, is never recorded. That log stays
 on the server until the server is next updated and is not backed up or sent
 anywhere. The Privacy Policy's `Logs` says so in its first and last lines, and
 the announcement of the change, now made, has left `Changes to this policy`.

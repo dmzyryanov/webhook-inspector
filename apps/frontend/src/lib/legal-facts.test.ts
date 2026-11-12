@@ -207,8 +207,8 @@ describe('the numbers of the Terms of Use and the Privacy Policy, against their 
   });
 
   it("states the server's log of a flooding address: at most once a minute, the limits' window, in the backend's own output (#215)", () => {
-    // One line a window for each address and counter, which the backend's
-    // `rate-limit-flood.test.ts` holds, and the window a minute.
+    // One line a window for each address across both counters, which the
+    // backend's `rate-limit-flood.test.ts` holds, and the window a minute.
     assert.equal(RATE_LIMIT_WINDOW_SECONDS, 60, 'the window is no longer a minute');
     assert.ok(
       section(PRIVACY_PAGE, 'Logs').includes(

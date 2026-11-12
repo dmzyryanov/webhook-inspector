@@ -5,9 +5,11 @@
  * asked for more than twice what the window allows - writes one line at
  * `warn`, `FLOOD_LINE`, naming the address as the limits count it, an IPv6
  * address by its `/64`, the counter, `creations` or `calls`, and the
- * refusals so far. At most one a window for each address and counter, on
- * `/api` and `/mcp` alike, and none for an address within its limits or
- * refused no more than the limit.
+ * refusals so far, the limit plus one. At most one a window for each
+ * address across both counters, naming the counter that passed first, so
+ * that two lines of one address are at least a window apart; on `/api` and
+ * `/mcp` alike, and none for an address within its limits or refused no
+ * more than the limit.
  *
  * Every call comes through a trusted proxy with the client's address in
  * `X-Forwarded-For`, as in production, so that the request log names the
@@ -275,71 +277,135 @@ describe('the line naming an address far over a limit (#215)', () => {
     }
   });
 
-  it('names an address over both counters once for each, and an IPv4-mapped address by its IPv4', async () => {
+  it('names an address over both counters once a window, by the counter that passed first, two lines at least a window apart, and an IPv4-mapped address by its IPv4', async () => {
     const server = logged({ sessionCreates: 1, apiCalls: 2 });
     const address = '203.0.113.9';
+    const creations: Flood = { address, counter: 'creations', refused: 2 };
+    const calls: Flood = { address, counter: 'calls', refused: 3 };
 
-    await send(server, `::ffff:${address}`, CREATE, 3);
-    await send(server, address, CALL, 5);
+    // The creations pass first, from the mapped spelling: the line.
+    assert.deepEqual(await send(server, `::ffff:${address}`, CREATE, 3), [201, 429, 429]);
+    assertFloods(server, [creations]);
+
+    // Half a window later the other calls' window starts, and passes a
+    // millisecond before the line's window ends: no second line.
+    server.advance(MINUTE / 2);
+    assert.deepEqual(await send(server, address, CALL, 4), [404, 404, 429, 429]);
+    server.advance(MINUTE / 2 - 1);
+    assert.deepEqual(await send(server, `::ffff:${address}`, CALL, 1), [429]);
     await send(server, address, CREATE, 10);
     await send(server, `::ffff:${address}`, CALL, 10);
+    assertFloods(server, [creations]);
 
-    assertFloods(server, [
-      { address, counter: 'creations', refused: 2 },
-      { address, counter: 'calls', refused: 3 },
-    ]);
+    // A window after the line, the other calls' window still running and
+    // passed already: nothing more from them, and the creations' new window
+    // passes again, a window after the first line.
+    server.advance(1);
+    await send(server, address, CALL, 10);
+    assertFloods(server, [creations]);
+    assert.deepEqual(await send(server, address, CREATE, 3), [201, 429, 429]);
+    assertFloods(server, [creations, creations]);
+
+    // Once every window has ended, the other calls pass first and are named,
+    // and the creations then write nothing.
+    server.advance(MINUTE);
+    assert.deepEqual(await send(server, address, CALL, 5), [404, 404, 429, 429, 429]);
+    assertFloods(server, [creations, creations, calls]);
+    assert.deepEqual(await send(server, address, CREATE, 3), [201, 429, 429]);
+    await send(server, `::ffff:${address}`, CALL, 10);
+    assertFloods(server, [creations, creations, calls]);
     assert.ok(!server.text().includes('::ffff:'), 'a line names the mapped spelling');
   });
 
-  it('names an address on /mcp as on /api, the two sharing each count', async () => {
+  it('writes no second line for one counter passing again just after its window ends, until a window after the first line', async () => {
+    const server = logged({ sessionCreates: 1, apiCalls: 100 });
+    const address = '198.51.100.47';
+    const flood: Flood = { address, counter: 'creations', refused: 2 };
+
+    // The creations pass 2 ms before their window ends: the line.
+    assert.deepEqual(await send(server, address, CREATE, 1), [201]);
+    server.advance(MINUTE - 2);
+    assert.deepEqual(await send(server, address, CREATE, 2), [429, 429]);
+    assertFloods(server, [flood]);
+
+    // Their next window passes 2 ms after the line, and nothing more is
+    // written while a window has not passed since the line, to 1 ms before.
+    server.advance(2);
+    assert.deepEqual(await send(server, address, CREATE, 3), [201, 429, 429]);
+    assertFloods(server, [flood]);
+    server.advance(MINUTE - 3);
+    await send(server, address, CREATE, 10);
+    assertFloods(server, [flood]);
+
+    // The window after that passes a window and 2 ms after the line, and
+    // writes the second.
+    server.advance(3);
+    assert.deepEqual(await send(server, address, CREATE, 3), [201, 429, 429]);
+    assertFloods(server, [flood, flood]);
+  });
+
+  it('names an address on /mcp as on /api, the two sharing each count and its one line a window', async () => {
     const server = logged({ sessionCreates: 1, apiCalls: 2 });
     const address = '198.51.100.52';
-    const created = await server.app.inject(
-      mcp(address, 'tools/call', { name: 'create_session', arguments: {} }),
-    );
+    const creations: Flood = { address, counter: 'creations', refused: 2 };
+    const calls: Flood = { address, counter: 'calls', refused: 3 };
 
-    assert.equal(created.statusCode, 200);
-    createdSessionIds.push(
-      created.json<{ result: { structuredContent: { sessionId: string } } }>().result
-        .structuredContent.sessionId,
-    );
+    /** A `create_session` on `/mcp`: its session kept for the cleanup, or its tool error's text. */
+    async function createOnMcp(): Promise<string> {
+      const response = await server.app.inject(
+        mcp(address, 'tools/call', { name: 'create_session', arguments: {} }),
+      );
+      const { result } = response.json<{
+        result: { content: { text: string }[]; structuredContent?: { sessionId: string } };
+      }>();
+
+      assert.equal(response.statusCode, 200);
+
+      if (result.structuredContent !== undefined) {
+        createdSessionIds.push(result.structuredContent.sessionId);
+
+        return 'created';
+      }
+
+      return result.content[0]?.text ?? '';
+    }
+
+    assert.equal(await createOnMcp(), 'created');
 
     // Over the creations: a tool error naming the limit (D203), its first
     // refusal unnamed, its second past the limit itself.
     for (let index = 0; index < 2; index += 1) {
-      const refused = await server.app.inject(
-        mcp(address, 'tools/call', { name: 'create_session', arguments: {} }),
-      );
-
-      assert.match(
-        refused.json<{ result: { content: { text: string }[] } }>().result.content[0]?.text ?? '',
-        /^errorCode 1015 /,
-      );
-      assertFloods(server, index === 0 ? [] : [{ address, counter: 'creations', refused: 2 }]);
+      assert.match(await createOnMcp(), /^errorCode 1015 /);
+      assertFloods(server, index === 0 ? [] : [creations]);
     }
 
     // The other calls: one of each let through, then refused in turn, the
-    // third refusal past the limit, an API call.
+    // third refusal past the limit, on `/mcp`: no line, the address has had
+    // its line of the window.
     assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 200);
     assert.deepEqual(await send(server, address, CALL, 1), [404]);
     assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 429);
     assert.deepEqual(await send(server, address, CALL, 1), [429]);
-    assertFloods(server, [{ address, counter: 'creations', refused: 2 }]);
     assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 429);
-    assertFloods(server, [
-      { address, counter: 'creations', refused: 2 },
-      { address, counter: 'calls', refused: 3 },
-    ]);
+    assertFloods(server, [creations]);
 
-    // And no more in the window, from either.
-    await server.app.inject(mcp(address, 'tools/call', { name: 'create_session', arguments: {} }));
-    await server.app.inject(mcp(address, 'tools/list'));
+    // The next window: the other calls pass first, on `/mcp`, and are named;
+    // the creations then pass on `/mcp` too, and write nothing.
+    server.advance(MINUTE);
+    assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 200);
+    assert.deepEqual(await send(server, address, CALL, 1), [404]);
+    assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 429);
+    assert.deepEqual(await send(server, address, CALL, 1), [429]);
+    assertFloods(server, [creations]);
+    assert.equal((await server.app.inject(mcp(address, 'tools/list'))).statusCode, 429);
+    assertFloods(server, [creations, calls]);
+
+    assert.equal(await createOnMcp(), 'created');
+    assert.match(await createOnMcp(), /^errorCode 1015 /);
+    assert.match(await createOnMcp(), /^errorCode 1015 /);
     await send(server, address, CREATE, 1);
     await send(server, address, CALL, 1);
-    assertFloods(server, [
-      { address, counter: 'creations', refused: 2 },
-      { address, counter: 'calls', refused: 3 },
-    ]);
+    assertFloods(server, [creations, calls]);
   });
 
   it('writes one line for each of 10, 100 and 1,000 addresses flooding at once, each naming its own, and none for one beside them within its limit', async () => {
@@ -367,13 +433,14 @@ describe('the line naming an address far over a limit (#215)', () => {
     assert.ok(!server.text().includes(quiet), 'a line names the address within its limit');
   });
 
-  it('writes a line in each of two processes counting apart, as during a deployment', async () => {
+  it('writes one line in each of two processes counting apart, as during a deployment, over both counters', async () => {
     const old = logged({ sessionCreates: 1, apiCalls: 2 });
     const next = logged({ sessionCreates: 1, apiCalls: 2 });
     const address = '198.51.100.63';
 
     for (const server of [old, next]) {
       assert.deepEqual(await send(server, address, CALL, 6), [404, 404, 429, 429, 429, 429]);
+      assert.deepEqual(await send(server, address, CREATE, 4), [201, 429, 429, 429]);
       assertFloods(server, [{ address, counter: 'calls', refused: 3 }]);
     }
   });

@@ -19,9 +19,11 @@
  * in a window past the limit itself - an address that has asked for more
  * than twice what the window allows - writes one line at `warn` naming the
  * address as it is counted, the counter, `creations` or `calls`, and the
- * refusals so far (`FLOOD_LINE`), at most once a window for each counter.
- * An address within its limits, or over them by no more than the limit, is
- * written in no line (#215, D201). And a call either count refuses writes
+ * refusals so far, the limit plus one (`FLOOD_LINE`). An address has at most
+ * one such line a window across both counters, so two of its lines are at
+ * least a window apart and each names the counter whose refusals passed
+ * first. An address within its limits, or over them by no more than the
+ * limit, is written in no line (#215, D201). And a call either count refuses writes
  * no line of the request log at all, neither `incoming request` nor `request
  * completed`, on the API and on `/mcp` (#189, `lib/request-log.ts`).
  *
@@ -145,7 +147,8 @@ export interface Verdict {
 
 /**
  * The line at `warn` of an address refused far over a limit (#215): with
- * the address as it is counted, the counter and the refusals so far.
+ * the address as it is counted, the counter and the refusals so far, which
+ * are the limit plus one, since the line is written as they pass it.
  */
 export const FLOOD_LINE =
   'API calls refused: their address asked for more than twice its rate limit in one window';
@@ -154,9 +157,11 @@ export const FLOOD_LINE =
  * Whether `verdict` is the refusal that takes its key's refusals in the
  * window past the limit itself, the key having then asked for more than
  * twice what the window allows: the one call of the window whose refusal
- * writes `FLOOD_LINE`. Every other call, let through or refused, is not, so
- * a window writes at most one line for each key and counter, and a key
- * refused no more than the limit writes none.
+ * can write `FLOOD_LINE`. Every other call, let through or refused, is not,
+ * so a counter's window passes it at most once for each key, and a key
+ * refused no more than the limit never does. `registerRateLimits` writes the
+ * line for at most one of an address's passes a window, across both
+ * counters.
  */
 export function passesFloodThreshold(verdict: Verdict): boolean {
   return verdict.refused === verdict.limit + 1;
@@ -507,8 +512,9 @@ function pathOf(url: string): string {
  * line of `requestLog`, the listener's request log, whose `incoming request`
  * waits for the verdict of every call these limits decide on (#189). The
  * one line a refusal can write is `FLOOD_LINE`, on the API and on `/mcp`
- * alike, once a window for each address and counter whose refusals pass the
- * limit itself (#215).
+ * alike, for an address whose refusals in a window pass the limit itself:
+ * at most once a window for each address across both counters, naming the
+ * counter that passed first (#215).
  *
  * Inside its place among the calls in flight, every handler of the API and
  * of `/mcp` waits for a slot of the gate in front of their work, `work`, three
@@ -533,6 +539,13 @@ export function registerRateLimits(
     name: `${settings.apiCalls} API calls per minute`,
     logName: 'calls',
   };
+  // The time of each address's last `FLOOD_LINE`, kept until a window has
+  // passed since it: one call a window, hit only by a refusal that passes
+  // the flood threshold, so that its window opens at the line itself and the
+  // next line of the address is written only once a window has passed since
+  // it, whichever counter passes, even one passing again just after its own
+  // window ends. Swept and closed as the two counters are (#215).
+  const floodLines = new WindowCounter(1, { now: settings.now });
 
   function limitOf(request: FastifyRequest): Limit | null {
     const route = request.routeOptions.url;
@@ -563,9 +576,10 @@ export function registerRateLimits(
 
   /**
    * Counts one call of `key` toward `limit` and writes the three headers;
-   * the refusal that passes the flood threshold writes `FLOOD_LINE`, on the
-   * listener's own logger rather than the request's, so that the line holds
-   * the address, the counter and the count and nothing of the request.
+   * the refusal that passes the flood threshold writes `FLOOD_LINE` unless
+   * `floodLines` has had one from `key` in its window, on the listener's own
+   * logger rather than the request's, so that the line holds the address,
+   * the counter and the count and nothing of the request.
    */
   function hit(request: FastifyRequest, reply: FastifyReply, limit: Limit, key: string): Verdict {
     const verdict = limit.counter.hit(key);
@@ -577,7 +591,7 @@ export function registerRateLimits(
 
     if (verdict.allowed) {
       counted.set(request, { counter: limit.counter, windowStart: verdict.windowStart });
-    } else if (passesFloodThreshold(verdict)) {
+    } else if (passesFloodThreshold(verdict) && floodLines.hit(key).allowed) {
       app.log.warn({ address: key, counter: limit.logName, refused: verdict.refused }, FLOOD_LINE);
     }
 
@@ -698,6 +712,7 @@ export function registerRateLimits(
   app.addHook('onClose', async () => {
     sessionCreates.counter.close();
     apiCalls.counter.close();
+    floodLines.close();
   });
 
   return {
