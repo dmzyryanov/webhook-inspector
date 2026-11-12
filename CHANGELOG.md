@@ -98,7 +98,8 @@ The rules (issue #97, D184):
   steps: first an entry whose Notice paragraph names the change and the day
   it applies, `YYYY-MM-DD`, with a dated line saying the same in the page's
   changes section (`Changes to the terms`, `Changes to this policy`); then,
-  on or after that day, the entry that makes the change. Every other change
+  on or after that day, the entry that makes the change and takes the dated
+  line out, its Notice entry keeping the announcement (#215). Every other change
   to either page — for the Privacy Policy, what only the browser keeps, a
   correction, keeping less — applies when published, with its own entry, and
   needs no Notice paragraph. More data means more data about people, senders
@@ -124,6 +125,23 @@ The rules (issue #97, D184):
   or does not open with a bold headline, and a frontend test fails when the
   published text names an issue, a decision, a repository path or an
   infrastructure object.
+
+## 1.19.40
+
+2026-11-12
+
+**The server's log now records the address of a sender that sends far more
+requests than the limits allow, at most once a minute, as 1.0.11 announced.**
+When the calls one address has had refused in a minute pass its limit itself
+— it has asked for more than twice what it may, 120 session creations or 2,400
+other calls of the API or the MCP server in one minute — the server's log
+records that address once for the minute, an IPv6 address by its `/64`, with
+which limit refused it and how many calls it had refused. An address within
+its limits, or over them by less than that, is never recorded. That log stays
+on the server until the server is next updated and is not backed up or sent
+anywhere. The Privacy Policy's `Logs` says so in its first and last lines, and
+the announcement of the change, now made, has left `Changes to this policy`.
+Every answer is as before. (#215, D224)
 
 ## 1.19.39
 

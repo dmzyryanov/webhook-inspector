@@ -30,7 +30,11 @@ import { mailtoOf, OPERATOR_TEXTS, type OperatorWithTexts } from './operator.ts'
  * applies when published (D224, D259), and the second dated announcement in
  * `Changes to this policy`, worded on 2026-10-24 with the day the
  * contact address's mail moves to Yandex 360, a new provider (issue #275,
- * D224); each page
+ * D224), and the first and the last line of `Logs` as worded on 2026-10-18,
+ * the change the first announcement named, made on or after its day: the
+ * server's log records an address that sends far more requests than the
+ * limits allow, the announcement leaving `Changes to this policy` with it
+ * (issue #215, D224); each page
  * is one constant, and `legal-copy.test.ts` pins both byte for byte;
  * `legal-facts.test.ts` holds every number in them, and the facts of the
  * proxy's line, to their sources.
@@ -211,7 +215,7 @@ export function privacyPage(operator: OperatorWithTexts): LegalPage {
     heading: 'What QA\u00a0Tools keeps, and for how\u00a0long',
     introduction:
       'Everything QA\u00a0Tools stores, who can see it, where it is kept and when it is deleted. This page describes the service as it works today, and changes when it\u00a0does.',
-    updated: 'Last updated 25 October 2026',
+    updated: 'Last updated 12 November 2026',
     sections: [
       {
         label: 'What a session keeps',
@@ -251,10 +255,10 @@ export function privacyPage(operator: OperatorWithTexts): LegalPage {
       {
         label: 'Logs',
         lines: [
-          "The server's log records each request's method, URL and time, but not the sender's IP\u00a0address.",
+          "The server's log records each request's method, URL and time, but not the sender's IP\u00a0address, except as the last line below\u00a0says.",
           'The URL includes the first eight characters of the session id and any query\u00a0string.',
           "The proxy in front of the server records a sender's IP\u00a0address in its error log when a connection fails, for example when the sender drops it mid-request. That log stays on the server until the proxy restarts; it is not backed up or sent\u00a0anywhere.",
-          'Limits keep an IP\u00a0address in memory for up to a minute, or while its connection stays open, and write it\u00a0nowhere.',
+          "Limits keep an IP\u00a0address in memory for up to a minute, or while its connection stays open. When an address sends far more requests than the limits allow, the server's log records that address, at most once a minute. That log stays on the server until the server is next updated and is not backed up or sent\u00a0anywhere.",
         ],
       },
       {
@@ -292,7 +296,6 @@ export function privacyPage(operator: OperatorWithTexts): LegalPage {
         label: 'Changes to this policy',
         lines: [
           'Changes that make QA\u00a0Tools keep more data, keep it longer or share it with anyone new are announced here at least 14\u00a0days before they apply, unless the law requires them sooner. Other changes apply when\u00a0published.',
-          "From 2 November 2026, the server's log records the IP\u00a0address of a sender that sends far more requests than the limits allow, at most once a\u00a0minute.",
           'From 8 November 2026, mail to the contact address is received by Yandex\u00a0360, in Russia, instead of Apple iCloud\u00a0Mail.',
         ],
       },

@@ -36,9 +36,11 @@ const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
  * announces ahead, a dated line of its changes section (issue #214, D224), is
  * held to the changelog entry whose Notice paragraph names the same day: that
  * entry is dated at least the notice period before it. Every such line is
- * held so: on `/privacy`, 2 November 2026's log line to 1.0.11, and the
- * contact address's mail moving to Yandex 360 (issue #275) to the entry that
- * announced it. The 90 days a day's
+ * held so: on `/privacy`, the contact address's mail moving to Yandex 360
+ * (issue #275) to the entry that announced it; 2 November 2026's log line,
+ * held to 1.0.11, left the section with the change it announced (issue
+ * #215), whose line of `Logs` is held to the window and to the backend's
+ * output. The 90 days a day's
  * sender networks are kept (issue #165, D254) are read from the statement of
  * the pg_cron job that removes them, which must remove nothing else.
  */
@@ -185,7 +187,7 @@ describe('the numbers of the Terms of Use and the Privacy Policy, against their 
     assert.ok(MAX_RECEIVE_CONNECTIONS_PER_ADDRESS > 0 && MAX_REALTIME_CONNECTIONS_PER_ADDRESS > 0);
     assert.ok(
       section(PRIVACY_PAGE, 'Logs').includes(
-        `Limits keep an IP${NBSP}address in memory for up to a minute, or while its connection stays open, and write it${NBSP}nowhere.`,
+        `Limits keep an IP${NBSP}address in memory for up to a minute, or while its connection stays open. `,
       ),
     );
     // Production runs the defaults: the chart sets neither variable that
@@ -202,6 +204,34 @@ describe('the numbers of the Terms of Use and the Privacy Policy, against their 
         template,
       );
     }
+  });
+
+  it("states the server's log of a flooding address: at most once a minute, the limits' window, in the backend's own output (#215)", () => {
+    // One line a window for each address and counter, which the backend's
+    // `rate-limit-flood.test.ts` holds, and the window a minute.
+    assert.equal(RATE_LIMIT_WINDOW_SECONDS, 60, 'the window is no longer a minute');
+    assert.ok(
+      section(PRIVACY_PAGE, 'Logs').includes(
+        `When an address sends far more requests than the limits allow, the server's log records that address, at most once a minute. That log stays on the server until the server is next updated and is not backed up or sent${NBSP}anywhere.`,
+      ),
+    );
+
+    // Written to the process's output, which the node keeps as the pod's log
+    // until the pod is replaced: production gives no other destination. The
+    // nightly backup that holds no log and the absence of any collector of
+    // logs are held for the proxy's line below, for every pod alike.
+    const server = read('../../../backend/src/server.ts');
+
+    assert.equal(
+      [
+        ...server.matchAll(
+          /stream: createRedactingStream\(options\.logDestination \?\? process\.stdout\)/g,
+        ),
+      ].length,
+      1,
+      "the backend's log is no longer its process's output",
+    );
+    assert.doesNotMatch(read('../../../backend/src/index.ts'), /logDestination/);
   });
 
   it('states the nightly backups, kept up to 3 days longer (the chart’s backup.keep, D176, D190)', () => {
@@ -482,7 +512,8 @@ describe('the numbers of the Terms of Use and the Privacy Policy, against their 
     ] as const) {
       // A changes section's first line is its rule; every line after it
       // announces a change: `From <day> <Month> <year>, ` and what changes;
-      // `/privacy` has two (issues #214 and #275).
+      // `/privacy` has one (issue #275), #214's having left with its change
+      // (issue #215).
       for (const line of section(page, label).split('\n').slice(1)) {
         const [, date = '', month = '', year = '', change = ''] =
           /^From ([1-9]|[12]\d|3[01]) ([A-Z][a-z]+) (20\d\d), (.+)$/.exec(line) ?? [];
