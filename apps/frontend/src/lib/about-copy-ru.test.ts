@@ -347,3 +347,89 @@ describe('the Russian about page text of a build without the operator’s texts 
     });
   });
 });
+
+/**
+ * The Russian eyebrow and second paragraph of a page built without the
+ * operator's texts (issue #464), agreed with the English on 2026-11-12: the
+ * service's name where production's page names QA Tools, the one-letter `О`
+ * joined to it, and every other word and joint as they are, as
+ * `about-copy.test.ts` holds the English.
+ */
+describe('the Russian eyebrow and paragraph on AI agents of a build without the operator’s texts (issue #464)', () => {
+  const CONTACT_ONLY = parseOperator({ CONTACT_EMAIL: 'hello@inspector.example' });
+  const COPY_PARAGRAPH = approved(
+    `Код пишут ИИ-агенты, и NBSP сервис сделан в NBSP том числе для них: агент может работать с NBSP Webhook Inspector через MCP-сервер ${APP_ORIGIN}/mcp.`,
+  );
+
+  /** Every text a copy's page lays out, label by label. */
+  const copyTexts = (page: ReturnType<typeof aboutRussian>) => [
+    page.eyebrow,
+    page.heading,
+    ...page.story.map(aboutParagraphText),
+    ...page.facts.flatMap((fact) => [fact.label, ...fact.lines]),
+  ];
+
+  it('names the service in the eyebrow, its one-letter word joined to it', () => {
+    assert.equal(ABOUT_TEXT_RU.eyebrowWithoutTexts, approved('О NBSP WEBHOOK INSPECTOR'));
+    assert.equal(ABOUT_TEXT_RU.eyebrowWithoutTexts, `О${NBSP}WEBHOOK INSPECTOR`);
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      assert.equal(aboutRussian(operator).eyebrow, `О${NBSP}WEBHOOK INSPECTOR`);
+    }
+  });
+
+  it('names the service in the paragraph on AI agents, every other word, joint and part as production’s', () => {
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      const story = aboutRussian(operator).story;
+
+      assert.equal(aboutParagraphText(story[0] ?? []), COPY_PARAGRAPH);
+      assert.deepEqual(story[0], ABOUT_TEXT_RU.madeForAgentsWithoutTexts);
+    }
+
+    const production = aboutParagraphText(ABOUT_TEXT_RU.madeForAgents);
+
+    assert.equal(production.split(`QA${NBSP}Tools`).length - 1, 1);
+    assert.equal(production.replace(`QA${NBSP}Tools`, 'Webhook Inspector'), COPY_PARAGRAPH);
+    assert.deepEqual(
+      ABOUT_TEXT_RU.madeForAgentsWithoutTexts.slice(1),
+      ABOUT_TEXT_RU.madeForAgents.slice(1),
+    );
+    assert.deepEqual(ABOUT_TEXT_RU.madeForAgentsWithoutTexts[1], {
+      kind: 'code',
+      text: MCP_SERVER_URL,
+    });
+  });
+
+  it('leaves QA Tools out of the copy’s page and keeps the rules of where its lines may end', () => {
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      for (const text of copyTexts(aboutRussian(operator))) {
+        assert.doesNotMatch(text, /QA[\s\u00a0]*TOOLS/i, text);
+        assert.deepEqual(lineBreakProblems(text), [], text);
+        assert.doesNotMatch(text, /[^\x20-\x7e\u0410-\u044f\u0401\u0451\u00a0\u2011\u2014]/, text);
+      }
+    }
+
+    const joined = copyTexts(aboutRussian(NO_OPERATOR))
+      .flatMap((text) => [...text.matchAll(/[^\s\u00a0]+(?:\u00a0[^\s\u00a0]+)+/g)])
+      .map((match) => match[0].replaceAll(NBSP, '_'));
+
+    assert.deepEqual(joined, [
+      'О_WEBHOOK',
+      'тестировщика_—',
+      'и_сервис',
+      'в_том',
+      'с_Webhook',
+      'тестирует_и_проверяет.',
+      'и_Fastify,',
+      'кластер_Kubernetes_(k3s).',
+      'и_сторонней_аналитики.',
+      'и_никому_не_передаются.',
+    ]);
+  });
+
+  it('keeps production’s eyebrow and paragraph in a build with the operator’s texts', () => {
+    assert.equal(ABOUT_TEXT_RU.eyebrow, approved('О NBSP QA NBSP TOOLS'));
+    assert.equal(ABOUT_RU.eyebrow, ABOUT_TEXT_RU.eyebrow);
+    assert.deepEqual(ABOUT_RU.story[1], ABOUT_TEXT_RU.madeForAgents);
+  });
+});

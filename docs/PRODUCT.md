@@ -109,7 +109,10 @@ what to build: such a copy titles them `About Webhook Inspector` and
 `О Webhook Inspector`, describes them as `How Webhook Inspector is built and
 what happens to your data.` and `Как устроен Webhook Inspector и что
 происходит с вашими данными.`, and its `How it's built` keeps its first and
-last lines.
+last lines. Since issue #464 it covers their eyebrow and their paragraph on
+AI agents too, which name QA Tools: such a copy's eyebrows read
+`ABOUT WEBHOOK INSPECTOR` and `О WEBHOOK INSPECTOR`, and the paragraph says
+an AI agent can work with Webhook Inspector through its MCP server.
 
 ## Footer
 
@@ -309,7 +312,13 @@ person on who decides what to build, keeping the other two, and its title is `Ab
 neither QA Tools nor who runs or pays for it. Its Russian version is the same:
 `О Webhook Inspector`, `Как устроен Webhook Inspector и что происходит с
 вашими данными.`, and `Как это сделано` without its line beginning `Я решаю`.
-This site's pages are unchanged.
+Since issue #464, in the owner's words of 2026-11-12, its eyebrow is
+`ABOUT WEBHOOK INSPECTOR`, in Russian `О WEBHOOK INSPECTOR`, and its paragraph
+on AI agents names Webhook Inspector where this site's names QA Tools, every
+other word as it is: `an AI agent can work with Webhook Inspector through its
+MCP server`, in Russian `агент может работать с Webhook Inspector через
+MCP-сервер`. So no text of such a page names QA Tools, its tab title
+included. This site's pages are unchanged.
 
 Since v1.13.0 (issue #170, D255) the page has a Russian version,
 `https://qa-tools.ru/ru/about`, in the owner's words, approved word for word:

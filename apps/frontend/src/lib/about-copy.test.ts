@@ -4,6 +4,7 @@ import {
   ABOUT_DESCRIPTION,
   ABOUT_DESCRIPTION_WITHOUT_TEXTS,
   ABOUT_EYEBROW,
+  ABOUT_EYEBROW_WITHOUT_TEXTS,
   ABOUT_FACTS,
   ABOUT_HEADING,
   ABOUT_STORY,
@@ -18,6 +19,7 @@ import {
 import { CONTACT_ADDRESS, CONTACT_MAILTO } from './contact.ts';
 import { LEGAL_PAGES } from './legal-copy.ts';
 import { NO_OPERATOR, parseOperator } from './operator.ts';
+import { PRODUCTION_OPERATOR } from '../testing/production-operator.ts';
 import { APP_ORIGIN } from '../../scripts/site-origin.mjs';
 
 /**
@@ -250,5 +252,80 @@ describe('the about page text of a build without the operator’s texts (issue #
       title: ABOUT_TITLE_WITHOUT_TEXTS,
       description: ABOUT_DESCRIPTION_WITHOUT_TEXTS,
     });
+  });
+});
+
+/**
+ * The eyebrow and the second paragraph of a page built without the
+ * operator's texts (issue #464), as agreed on 2026-11-12: the service's name
+ * where production's page names QA Tools, every other word as it is, so that
+ * a copy's page names the copy from its tab to its body.
+ */
+describe('the eyebrow and the paragraph on AI agents of a build without the operator’s texts (issue #464)', () => {
+  const CONTACT_ONLY = parseOperator({ CONTACT_EMAIL: 'hello@inspector.example' });
+  const PRODUCTION_PARAGRAPH = `It is written by AI agents and made for them too: an AI agent can work with QA Tools through its MCP server, ${APP_ORIGIN}/mcp.`;
+  const COPY_PARAGRAPH = `It is written by AI agents and made for them too: an AI agent can work with Webhook Inspector through its MCP server, ${APP_ORIGIN}/mcp.`;
+
+  it('names the service in the eyebrow, in capitals as production’s is', () => {
+    assert.equal(ABOUT_EYEBROW_WITHOUT_TEXTS, 'ABOUT WEBHOOK INSPECTOR');
+    assert.equal(ABOUT_TEXT_EN.eyebrowWithoutTexts, ABOUT_EYEBROW_WITHOUT_TEXTS);
+    assert.equal(
+      ABOUT_EYEBROW_WITHOUT_TEXTS,
+      ABOUT_TITLE_WITHOUT_TEXTS.toUpperCase(),
+      'the eyebrow reads as the copy’s title does',
+    );
+
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      assert.equal(aboutEnglish(operator).eyebrow, 'ABOUT WEBHOOK INSPECTOR');
+    }
+  });
+
+  it('names the service in the paragraph on AI agents, every other word and part as production’s', () => {
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      const story = aboutEnglish(operator).story;
+
+      assert.equal(aboutParagraphText(story[0] ?? []), COPY_PARAGRAPH);
+      assert.deepEqual(story[0], ABOUT_TEXT_EN.madeForAgentsWithoutTexts);
+    }
+
+    // Production's paragraph with its one QA Tools replaced, and nothing else.
+    assert.equal(aboutParagraphText(ABOUT_TEXT_EN.madeForAgents), PRODUCTION_PARAGRAPH);
+    assert.equal(PRODUCTION_PARAGRAPH.split('QA Tools').length - 1, 1);
+    assert.equal(PRODUCTION_PARAGRAPH.replace('QA Tools', 'Webhook Inspector'), COPY_PARAGRAPH);
+    // The same three runs, the MCP address code between the words and the full stop.
+    assert.deepEqual(
+      ABOUT_TEXT_EN.madeForAgentsWithoutTexts.slice(1),
+      ABOUT_TEXT_EN.madeForAgents.slice(1),
+    );
+    assert.deepEqual(ABOUT_TEXT_EN.madeForAgentsWithoutTexts[1], {
+      kind: 'code',
+      text: MCP_SERVER_URL,
+    });
+  });
+
+  it('leaves QA Tools out of the eyebrow and every paragraph and fact of the copy’s page', () => {
+    for (const operator of [NO_OPERATOR, CONTACT_ONLY]) {
+      const page = aboutEnglish(operator);
+
+      for (const text of [
+        page.eyebrow,
+        page.heading,
+        ...page.story.map(aboutParagraphText),
+        ...page.facts.flatMap((fact) => [fact.label, ...fact.lines]),
+      ]) {
+        assert.doesNotMatch(text, /QA[\s\u00a0]*TOOLS/i, text);
+        // ASCII and the joints only, as production's texts.
+        assert.doesNotMatch(text, /[^\x20-\x7e\u00a0\u2011]/, text);
+        assert.doesNotMatch(text, / [\u00a0\u2011]|[\u00a0\u2011] /, text);
+      }
+    }
+  });
+
+  it('keeps production’s eyebrow and paragraph in a build with the operator’s texts', () => {
+    assert.equal(ABOUT_TEXT_EN.eyebrow, ABOUT_EYEBROW);
+    assert.equal(ABOUT_EYEBROW, 'ABOUT QA TOOLS');
+    assert.equal(aboutEnglish(PRODUCTION_OPERATOR).eyebrow, 'ABOUT QA TOOLS');
+    assert.equal(aboutParagraphText(ABOUT_STORY[1] ?? []), PRODUCTION_PARAGRAPH);
+    assert.deepEqual(aboutEnglish(PRODUCTION_OPERATOR).story[1], ABOUT_TEXT_EN.madeForAgents);
   });
 });
