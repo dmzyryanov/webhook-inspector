@@ -27,10 +27,13 @@ import { mailtoOf, OPERATOR, type Operator } from './operator.ts';
  * in the operator's first person, and the page's title and meta
  * description, which name QA Tools: a build without the texts keeps the
  * fact's other two lines, and its head names the service, Webhook
- * Inspector, and the two facts the page keeps. The rest describes the
- * service itself and is always there. `composeAbout()` makes that choice
- * for both languages, from the parts each writes (`AboutText`), so the two
- * pages leave out the same places.
+ * Inspector, and the two facts the page keeps. So are, since issue #464,
+ * the eyebrow and the second paragraph's name of the service, QA Tools
+ * with the texts and Webhook Inspector without them, so that a copy's page
+ * names the copy from its tab to its body. The rest describes the service
+ * itself and is always there. `composeAbout()` makes that choice for both
+ * languages, from the parts each writes (`AboutText`), so the two pages
+ * leave out the same places.
  *
  * `ABOUT_EN` gathers them into the page's object, of the type its Russian
  * twin `ABOUT_RU` (`about-copy-ru.ts`, issue #170, D255) shares, so one
@@ -87,7 +90,7 @@ export interface AboutCopy {
   readonly title: string;
   readonly description: string;
   readonly url: string;
-  /** The eyebrow above the title, in capitals as the home page's is. */
+  /** The eyebrow above the title, in capitals as the home page's is; the build's operator's (`composeAbout`). */
   readonly eyebrow: string;
   readonly heading: string;
   /** The story: three paragraphs, those the build has (`composeAbout`). */
@@ -118,24 +121,39 @@ export const ABOUT_TITLE_WITHOUT_TEXTS = 'About Webhook Inspector';
 export const ABOUT_DESCRIPTION_WITHOUT_TEXTS =
   'How Webhook Inspector is built and what happens to your data.';
 
-/** The eyebrow above the title, written in capitals as the home page's is. */
+/**
+ * The eyebrow above the title, written in capitals as the home page's is:
+ * with the operator's texts, production's, naming QA Tools, and without
+ * them naming the service, as the page's title then does (issue #464).
+ */
 export const ABOUT_EYEBROW = 'ABOUT QA TOOLS';
+export const ABOUT_EYEBROW_WITHOUT_TEXTS = 'ABOUT WEBHOOK INSPECTOR';
 
 export const ABOUT_HEADING = 'Made by a tester, for\u00a0testers';
 
 /**
- * One language's head, story and facts, by part, as `composeAbout()` puts
- * them together for a build's operator (issues #369, #380).
+ * One language's head, eyebrow, story and facts, by part, as
+ * `composeAbout()` puts them together for a build's operator (issues #369,
+ * #380, #464).
  */
 export interface AboutText {
   /** The head with the operator's texts, naming QA Tools: the one the page's template is written with. */
   readonly head: AboutHead;
   /** The head without them, naming the service (issue #380). */
   readonly headWithoutTexts: AboutHead;
+  /** The eyebrow with the operator's texts, naming QA Tools. */
+  readonly eyebrow: string;
+  /** The eyebrow without them, naming the service (issue #464). */
+  readonly eyebrowWithoutTexts: string;
   /** The first paragraph, who runs the service: the operator's text. */
   readonly whoRunsIt: readonly AboutPart[];
-  /** The second, how it is made and for whom, ending in the MCP address: always there. */
+  /**
+   * The second, how it is made and for whom, ending in the MCP address:
+   * always there, naming QA Tools with the operator's texts.
+   */
   readonly madeForAgents: readonly AboutPart[];
+  /** The second paragraph without them, the service's name in place of QA Tools and every other word kept (issue #464). */
+  readonly madeForAgentsWithoutTexts: readonly AboutPart[];
   /** The third, around the contact address, there when the build names one. */
   readonly writeTo: (mail: AboutPart) => readonly AboutPart[];
   /**
@@ -149,15 +167,15 @@ export interface AboutText {
 }
 
 /**
- * A page's head, story and facts for `operator`: every part when it shows
- * its texts and names its contact address, as production's build does, and
- * the parts about the service alone, under the head that names it, when it
- * does neither.
+ * A page's head, eyebrow, story and facts for `operator`: every part when it
+ * shows its texts and names its contact address, as production's build
+ * does, and the parts about the service alone, under the head and the
+ * eyebrow that name it, when it does neither.
  */
 export function composeAbout(
   text: AboutText,
   operator: Operator,
-): Pick<AboutCopy, 'title' | 'description' | 'story' | 'facts'> {
+): Pick<AboutCopy, 'title' | 'description' | 'eyebrow' | 'story' | 'facts'> {
   const contact = operator.contactEmail;
   const built = text.howItIsBuilt;
   const howItIsBuilt: AboutFact = {
@@ -171,9 +189,10 @@ export function composeAbout(
   return {
     title: head.title,
     description: head.description,
+    eyebrow: operator.texts ? text.eyebrow : text.eyebrowWithoutTexts,
     story: [
       ...(operator.texts ? [text.whoRunsIt] : []),
-      text.madeForAgents,
+      operator.texts ? text.madeForAgents : text.madeForAgentsWithoutTexts,
       ...(contact === null
         ? []
         : [text.writeTo({ kind: 'mail', text: contact, href: mailtoOf(contact) })]),
@@ -184,13 +203,15 @@ export function composeAbout(
   };
 }
 
-/** The English head, story and facts, word for word as approved. */
+/** The English head, eyebrow, story and facts, word for word as approved. */
 export const ABOUT_TEXT_EN: AboutText = {
   head: { title: ABOUT_TITLE, description: ABOUT_DESCRIPTION },
   headWithoutTexts: {
     title: ABOUT_TITLE_WITHOUT_TEXTS,
     description: ABOUT_DESCRIPTION_WITHOUT_TEXTS,
   },
+  eyebrow: ABOUT_EYEBROW,
+  eyebrowWithoutTexts: ABOUT_EYEBROW_WITHOUT_TEXTS,
   whoRunsIt: [
     {
       kind: 'text',
@@ -201,6 +222,14 @@ export const ABOUT_TEXT_EN: AboutText = {
     {
       kind: 'text',
       text: 'It is written by AI agents and made for them too: an AI agent can work with QA Tools through its MCP server, ',
+    },
+    { kind: 'code', text: MCP_SERVER_URL },
+    { kind: 'text', text: '.' },
+  ],
+  madeForAgentsWithoutTexts: [
+    {
+      kind: 'text',
+      text: 'It is written by AI agents and made for them too: an AI agent can work with Webhook Inspector through its MCP server, ',
     },
     { kind: 'code', text: MCP_SERVER_URL },
     { kind: 'text', text: '.' },
@@ -244,9 +273,9 @@ export const ABOUT_TEXT_EN: AboutText = {
   },
 };
 
-/** The English page, `/about`, for `operator`'s build (issues #369, #380). */
+/** The English page, `/about`, for `operator`'s build (issues #369, #380, #464). */
 export function aboutEnglish(operator: Operator = OPERATOR): AboutCopy {
-  const { title, description, story, facts } = composeAbout(ABOUT_TEXT_EN, operator);
+  const { title, description, eyebrow, story, facts } = composeAbout(ABOUT_TEXT_EN, operator);
 
   return {
     lang: 'en',
@@ -254,7 +283,7 @@ export function aboutEnglish(operator: Operator = OPERATOR): AboutCopy {
     title,
     description,
     url: ABOUT_URL,
-    eyebrow: ABOUT_EYEBROW,
+    eyebrow,
     heading: ABOUT_HEADING,
     story,
     facts,

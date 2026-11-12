@@ -651,18 +651,24 @@ describe('the pages of a build with no operator settings', () => {
       const whole = full[index] as AboutCopy;
 
       // The second paragraph and the first and third facts: the service's own,
-      // the first without its line in the operator's first person (#380).
-      assert.deepEqual(story(page), [story(whole)[1]]);
+      // the first without its line in the operator's first person (#380),
+      // the paragraph naming the service where production's names QA Tools
+      // (#464).
+      assert.deepEqual(story(page), [
+        (story(whole)[1] as string).replace(/QA\sTools/, 'Webhook Inspector'),
+      ]);
       assert.deepEqual(labels(page), [labels(whole)[0], labels(whole)[2]]);
       assert.deepEqual(page.facts[0]?.lines, [whole.facts[0]?.lines[0], whole.facts[0]?.lines[2]]);
       assert.deepEqual(page.facts[1], whole.facts[2]);
       assert.ok(page.story.flat().every((part) => part.kind !== 'mail'));
-      // Its title and description name the service (#380); the rest is the same.
+      // Its title, description and eyebrow name the service (#380, #464);
+      // the rest is the same.
       assert.notEqual(page.title, whole.title);
       assert.notEqual(page.description, whole.description);
+      assert.notEqual(page.eyebrow, whole.eyebrow);
       assert.deepEqual(
-        { ...page, title: '', description: '', story: [], facts: [] },
-        { ...whole, title: '', description: '', story: [], facts: [] },
+        { ...page, title: '', description: '', eyebrow: '', story: [], facts: [] },
+        { ...whole, title: '', description: '', eyebrow: '', story: [], facts: [] },
       );
     }
 
@@ -3365,6 +3371,35 @@ describe('a build with example origins and no operator settings (issue #369, cri
         assert.ok(fact.includes(line), `${path}: ${line}`);
       }
       assert.doesNotMatch(html, left, path);
+    }
+  });
+
+  it('names the service in both about pages’ eyebrow and paragraph on AI agents, byte for byte (issue #464)', () => {
+    for (const [path, eyebrow, story] of [
+      [
+        'about/index.html',
+        'ABOUT WEBHOOK INSPECTOR',
+        '<p>It is written by AI agents and made for them too: an AI agent can work with Webhook Inspector through its MCP <span class="keep">server, <code>https://inspector.example/mcp</code>.</span></p>',
+      ],
+      [
+        'ru/about/index.html',
+        'О\u00a0WEBHOOK INSPECTOR',
+        '<p>Код пишут ИИ-агенты, и\u00a0сервис сделан в\u00a0том числе для них: агент может работать с\u00a0Webhook Inspector через <span class="keep">MCP-сервер <code>https://inspector.example/mcp</code>.</span></p>',
+      ],
+    ] as const) {
+      const html = built(path);
+      const eyebrows = [...html.matchAll(/<p class="eyebrow">([^<]*)<\/p>/g)].map(
+        (match) => match[1],
+      );
+      const stories = [...html.matchAll(/<div class="story">([\s\S]*?)<\/div>/g)].map(
+        (match) => match[1],
+      );
+
+      assert.deepEqual(eyebrows, [eyebrow], path);
+      assert.deepEqual(stories, [story], path);
+      for (const text of [eyebrow, story]) {
+        assert.doesNotMatch(text, /QA\s*TOOLS/i, path);
+      }
     }
   });
 
