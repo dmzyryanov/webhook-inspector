@@ -390,8 +390,8 @@ describe('the Privacy Policy text (Scope 3)', () => {
       {
         label: 'Logs',
         lines: [
-          // The first and the last line as worded on 2026-10-18 (issue #215,
-          // Decision 2), made on or after the day 1.0.11 announced.
+          // The first and the last line as worded on 2026-10-18, made on or
+          // after the day 1.0.11 announced (issue #215).
           approved(
             "The server's log records each request's method, URL and time, but not the sender's IP NBSP address, except as the last line below NBSP says.",
           ),
@@ -543,10 +543,10 @@ describe('the Privacy Policy text (Scope 3)', () => {
   });
 
   // The first change announced ahead (issue #214, D224), made on or after
-  // the day it named (issue #215): Decision 2's two lines of `Logs`, the first
-  // and the last, the two between unchanged; the dated line that announced
-  // it leaves `Changes to this policy`, whose rule stays.
-  it("states the server log's line on a flooding address in the owner's words, on or after the announced day, and announces it no longer", () => {
+  // the day it named (issue #215): the first and the last line of `Logs` as
+  // worded on 2026-10-18, the two between unchanged; the dated line that
+  // announced it leaves `Changes to this policy`, whose rule stays.
+  it("states the server log's line on a flooding address byte for byte, on or after the announced day, and announces it no longer", () => {
     const FIRST_LINE =
       "The server's log records each request's method, URL and time, but not the sender's IP address, except as the last line below says.";
     const LAST_LINE =
