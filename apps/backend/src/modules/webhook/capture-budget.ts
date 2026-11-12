@@ -935,7 +935,8 @@ export function captureAdmission(
           return;
         }
 
-        // The address is never logged because of a limit (D201 point 7).
+        // A capture refused here names no address: the receive host's limits
+        // write none (D201 point 7, D210).
         if (admission.outcome === 'line-full') {
           request.log.warn({ weight, waitWeight, lineUsed: budget.lineUsed }, REFUSED_LINE_FULL);
 

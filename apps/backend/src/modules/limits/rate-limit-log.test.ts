@@ -7,6 +7,12 @@
  * `500`, an answer of `/mcp` given for its own reason while its count is over,
  * a page no route has, and the router's refusals, which no limit counts.
  *
+ * The one line a refusal can write is the limits' own, at `warn`, once its
+ * address's refusals in a window pass the limit itself (#215,
+ * `rate-limit-flood.test.ts`): every address here is refused no more than
+ * its limit, but in the test that counts thousands of refusals, where that
+ * line is written once and nothing else.
+ *
  * And a call let through is logged at once (#222): its `incoming request` is
  * written as soon as its count lets it through, not held until its answer, so
  * a call held by `wait` - on the list or `/mcp`'s `wait_for_request` - is in
@@ -34,7 +40,7 @@ import { buildServer, type ServerOptions } from '../../server.ts';
 import { attachListener } from '../../testing/servers.ts';
 import { RealtimeHub } from '../realtime/hub.ts';
 import { createLargeBodyPlaces } from '../sessions/large-bodies.ts';
-import type { RateLimitSettings } from './rate-limit.ts';
+import { FLOOD_LINE, type RateLimitSettings } from './rate-limit.ts';
 
 type Injected = Awaited<ReturnType<FastifyInstance['inject']>>;
 
@@ -288,9 +294,9 @@ async function readUntilClosed(socket: net.Socket): Promise<string> {
 
 describe('the request log of a call a limit refuses (#189)', () => {
   it('writes no line for a creation refused over its count, with a body or none, and both for one let through', async () => {
-    const server = logged({ sessionCreates: 2, apiCalls: 100 });
+    const server = logged({ sessionCreates: 3, apiCalls: 100 });
 
-    for (let index = 1; index <= 2; index += 1) {
+    for (let index = 1; index <= 3; index += 1) {
       const created = await call(server, { method: 'POST', url: '/api/sessions' });
 
       assert.equal(created.response.statusCode, 201);
@@ -332,9 +338,9 @@ describe('the request log of a call a limit refuses (#189)', () => {
   });
 
   it('writes no line for a call refused over the other calls, on any route of /api, routed or not', async () => {
-    const server = logged({ sessionCreates: 60, apiCalls: 3 });
+    const server = logged({ sessionCreates: 60, apiCalls: 7 });
 
-    for (let index = 1; index <= 3; index += 1) {
+    for (let index = 1; index <= 7; index += 1) {
       const read = await call(server, { method: 'GET', url: `/api/sessions/${UNKNOWN_ID}` });
 
       assertLogged(read.lines, 404, `read ${index}`);
@@ -386,13 +392,16 @@ describe('the request log of a call a limit refuses (#189)', () => {
   });
 
   it('writes no line for a refusal whose body is drained, nor for one whose client leaves during the drain (D143)', async () => {
-    const server = logged({ sessionCreates: 1, apiCalls: 100 });
+    const server = logged({ sessionCreates: 2, apiCalls: 100 });
 
     await server.app.listen({ host: '127.0.0.1', port: 0 });
-    assert.equal(
-      (await call(server, { method: 'POST', url: '/api/sessions' })).response.statusCode,
-      201,
-    );
+
+    for (let index = 1; index <= 2; index += 1) {
+      assert.equal(
+        (await call(server, { method: 'POST', url: '/api/sessions' })).response.statusCode,
+        201,
+      );
+    }
 
     const before = server.lines().length;
     const head =
@@ -432,7 +441,7 @@ describe('the request log of a call a limit refuses (#189)', () => {
 
   it('writes no line for /mcp calls a count refuses - a tool error, a 429 - and logs those it answers for their own reason', async () => {
     const address = '198.51.100.31';
-    const server = logged({ sessionCreates: 1, apiCalls: 2 });
+    const server = logged({ sessionCreates: 1, apiCalls: 4 });
     const created = await call(server, toolCall(address, 'create_session', {}));
 
     assert.equal(created.response.statusCode, 200);
@@ -454,7 +463,7 @@ describe('the request log of a call a limit refuses (#189)', () => {
     );
     assert.deepEqual(overCreations.lines, [], 'create_session refused wrote a line');
 
-    for (let index = 1; index <= 2; index += 1) {
+    for (let index = 1; index <= 4; index += 1) {
       assertLogged((await call(server, toolsList(address))).lines, 200, `tools/list ${index}`);
     }
 
@@ -517,7 +526,7 @@ describe('the request log of a call a limit refuses (#189)', () => {
     assertLogged(failed.lines, 500, 'a 500', ['Unhandled error']);
   });
 
-  it('writes no line for 100, 1,000 and 10,000 refusals in a row, nor for 500 pipelined on one connection', async () => {
+  it('writes no line for 100, 1,000 and 10,000 refusals in a row, nor for 500 pipelined on one connection, but the one flood line of the window', async () => {
     const server = logged({ sessionCreates: 1, apiCalls: 1_000_000 });
 
     assert.equal(
@@ -535,7 +544,16 @@ describe('the request log of a call a limit refuses (#189)', () => {
       }
 
       await settle();
-      assert.equal(server.lines().length, before, `${count} refusals wrote lines`);
+      // The window's second refusal passed the limit itself, and wrote the
+      // one line naming the address (#215); the window's clock never moves.
+      assert.deepEqual(
+        server
+          .lines()
+          .slice(before)
+          .map((line) => line.msg),
+        count === 100 ? [FLOOD_LINE] : [],
+        `${count} refusals wrote lines`,
+      );
 
       // And the next call let through is logged whole, as the first was.
       assertLogged(

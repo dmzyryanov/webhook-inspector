@@ -4,7 +4,9 @@
  * answer of a limited route and refused `429` / `1015` with `Retry-After`
  * before any database work; counted by address, an IPv6 one by its `/64`;
  * never applied to the receiver, the realtime connection or the probes; and
- * leaving no address in a log line or a statement.
+ * leaving no address in a statement, nor in a log line for an address
+ * refused no more than its limit (`rate-limit-flood.test.ts` has the one line
+ * that names an address, #215).
  *
  * The limits run at their production numbers here. The window's clock is the
  * test's own, so "once `Retry-After` has passed" takes no minute.
@@ -703,7 +705,9 @@ describe('what the limits never touch (D201)', () => {
 });
 
 describe('what the limits leave behind (D201)', () => {
-  it("writes the client's address in no log line and no statement", async () => {
+  // Refused as many times as its limit allows calls, each count: more than
+  // that would pass the threshold whose line names the address (#215).
+  it('writes the address of a client refused up to its limit in no log line and no statement', async () => {
     const address = '198.51.100.73';
     let log = '';
     const clock = manualClock();
@@ -715,7 +719,7 @@ describe('what the limits leave behind (D201)', () => {
         },
       }),
       trustedProxyCidrs: ['10.42.0.0/24'],
-      rateLimits: { sessionCreates: 1, apiCalls: 2, now: clock.now },
+      rateLimits: { sessionCreates: 2, apiCalls: 2, now: clock.now },
     });
 
     servers.push(app);
@@ -727,6 +731,7 @@ describe('what the limits leave behind (D201)', () => {
     for (const request of [
       { method: 'POST', url: '/api/sessions' },
       { method: 'POST', url: '/api/sessions' },
+      { method: 'POST', url: '/api/sessions' },
       {
         method: 'POST',
         url: '/api/sessions',
@@ -736,6 +741,7 @@ describe('what the limits leave behind (D201)', () => {
       { method: 'GET', url: `/api/sessions/${UNKNOWN_ID}` },
       { method: 'GET', url: `/api/sessions/${UNKNOWN_ID}/requests` },
       { method: 'GET', url: `/api/sessions/${UNKNOWN_ID}/requests` },
+      { method: 'GET', url: `/api/sessions/${UNKNOWN_ID}` },
     ] as const) {
       const response = await app.inject({ ...from, ...request });
 
@@ -746,7 +752,7 @@ describe('what the limits leave behind (D201)', () => {
       }
     }
 
-    assert.deepEqual(answers, [201, 429, 429, 404, 404, 429]);
+    assert.deepEqual(answers, [201, 201, 429, 429, 404, 404, 429, 429]);
     assert.match(log, /request completed/, 'the log was not captured');
     assert.ok(!log.includes(address), 'a log line holds the address');
     assert.ok(
