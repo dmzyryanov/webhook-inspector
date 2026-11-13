@@ -153,7 +153,8 @@ export function RequestDetail({
         )}
       >
         {/* A comparison takes the exchange's place, its row included, until it
-            is closed (A2, D186). The exchange is remounted then, on Request. */}
+            is closed (frame A2 of the Figma page `Webhook Inspector · Compare
+            requests`, D186). The exchange is remounted then, on Request. */}
         {comparison !== null ? (
           <CompareView
             key={comparison.chosenItem.id}

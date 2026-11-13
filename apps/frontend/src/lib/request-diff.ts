@@ -20,6 +20,9 @@
  * instead of freezing the tab, and the view says so with both sizes.
  *
  * Pure: no DOM, no React. `CompareView.tsx` renders this model.
+ *
+ * The frames cited below, A2, A3 and A6, are frames of the Figma page
+ * `Webhook Inspector · Compare requests`, which draws the comparison.
  */
 import { diffArrays } from 'diff';
 import type { RequestDetails } from '@webhook-inspector/shared';
@@ -69,8 +72,8 @@ export const CONTEXT_LINES = 3;
 /**
  * An unchanged run folds only where more than this many lines would be hidden
  * beyond its context: folding one, two or three lines would replace them with
- * a row as tall as they are (A2 keeps the four closing lines after its
- * change, and folds five before it).
+ * a row as tall as they are (Figma frame A2 keeps the four closing lines after
+ * its change, and folds five before it).
  */
 export const MIN_FOLDED_LINES = 4;
 
@@ -318,8 +321,8 @@ export function compareText(
  * One change: the lines removed and the lines added in its place. The i-th
  * removed line is paired with the i-th added one, and inside each pair the
  * changed characters are underlined. As many removed as added are drawn in
- * pairs, `−` over its `+` (A6); otherwise every `−` comes before every `+`
- * (A2).
+ * pairs, `−` over its `+` (Figma frame A6); otherwise every `−` comes before
+ * every `+` (Figma frame A2).
  */
 function changedLines(removed: readonly string[], added: readonly string[]): DiffLine[] {
   const pairs = Math.min(removed.length, added.length);
@@ -395,7 +398,8 @@ export function foldLines(lines: readonly DiffLine[]): DiffRow[] {
 /**
  * A line as tokens: a run of letters and digits, a run of white space, or any
  * other single character. Words rather than characters, so `4200` against
- * `"42.00"` underlines both values whole rather than the odd `.` (A2).
+ * `"42.00"` underlines both values whole rather than the odd `.` (Figma
+ * frame A2).
  */
 export function lineTokens(line: string): string[] {
   return line.match(/[\p{L}\p{N}_]+|\s+|[^\p{L}\p{N}_\s]/gu) ?? [];
@@ -405,7 +409,7 @@ export function lineTokens(line: string): string[] {
  * The changed characters of a pair of lines, removed line first. Tokens are
  * compared by jsdiff; where one word replaced one word, only their differing
  * middle is underlined, so `1790412115` against `1790412001` marks `115` and
- * `001` (A6). Past the inline limits nothing is underlined.
+ * `001` (Figma frame A6). Past the inline limits nothing is underlined.
  */
 export function inlineRanges(
   before: string,
@@ -482,7 +486,7 @@ export function inlineRanges(
 /**
  * Two changed runs with only one or two punctuation characters between them
  * are underlined as one: `4200,"currency":"eur",` reads as the one change it
- * is, not as five fragments around unchanged quotes (A3).
+ * is, not as five fragments around unchanged quotes (Figma frame A3).
  */
 function joinAcrossPunctuation(text: string, ranges: readonly InlineRange[]): InlineRange[] {
   const joined: InlineRange[] = [];

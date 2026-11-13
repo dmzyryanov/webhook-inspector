@@ -53,9 +53,10 @@ const SIDES = 'px-5 max-md:px-4 md:max-lg:px-6';
 
 /**
  * The comparison of the open request with one chosen in the list (issue #75,
- * D186; Figma A2, A3, A5-A7 and D1-D4): `Comparing` · `Change` · `Close ×` in
- * place of the `Request` · `Response` row, the two requests marked `−` and
- * `+`, the views with a dot on each that differs, and one column of lines.
+ * D186; frames A2, A3, A5-A7 and D1-D4 of the Figma page `Webhook Inspector ·
+ * Compare requests`): `Comparing` · `Change` · `Close ×` in place of the
+ * `Request` · `Response` row, the two requests marked `−` and `+`, the views
+ * with a dot on each that differs, and one column of lines.
  *
  * Rendered inside the detail panel's `RenderBoundary` (D169): a comparison
  * that cannot be drawn costs the panel, not the page.
@@ -353,8 +354,8 @@ function SizeOf({
 }
 
 /**
- * The one column of lines (A2): unchanged lines plain, removed lines on
- * `#fcecec` with `−`, added lines on `#e8f5ee` with `+`, the changed
+ * The one column of lines (Figma frame A2): unchanged lines plain, removed
+ * lines on `#fcecec` with `−`, added lines on `#e8f5ee` with `+`, the changed
  * characters underlined in a darker tone, and folded runs as
  * `N unchanged lines · Show`. Every line wraps; the box never scrolls (D149).
  * `Show` opens that fold in place, for as long as the view is shown.
@@ -426,7 +427,8 @@ function DiffLineRow({ row }: { row: Exclude<DiffRow, { kind: 'fold' }> }) {
       </span>
       {/* At least one line tall, so an empty line - the blank line between a
           raw request's head and its body, an empty line in a body - keeps its
-          row, as the plain views draw it (A3). */}
+          row, as the plain views draw it and as Figma frame A3 draws the Raw
+          comparison. */}
       <span
         data-testid="diff-text"
         className="min-h-5 min-w-0 flex-1 whitespace-pre-wrap text-ink-body wrap-anywhere"
