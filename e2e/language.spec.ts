@@ -266,8 +266,9 @@ test.describe('E2E-17 — a browser that asks for Russian', () => {
       await expect(language.getByRole('button', { name }), name).toHaveCSS('cursor', 'pointer');
     }
 
-    // The band: the shorter Russian line and the Russian links, one 34 px
-    // line at 1440 px (A-R1).
+    // The band: the shorter Russian line and the Russian links, one 34 px line
+    // at 1440 px (frame A-R1 of the Figma page `Webhook Inspector · Language
+    // switch (#108)`).
     const footer = page.getByRole('contentinfo');
 
     expect(await footer.evaluate((element) => element.textContent)).toBe(

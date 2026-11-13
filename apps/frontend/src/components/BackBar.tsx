@@ -12,19 +12,22 @@ interface BackBarProps {
   /** Where focus goes when a request opens in the push flow (D157). */
   buttonRef?: Ref<HTMLButtonElement>;
   /**
-   * The phone's `⋯`, which opens the request actions (C4, D182). It renders
-   * nothing from 768 px up, where `Actions ▾` is in the detail panel.
+   * The phone's `⋯`, which opens the request actions (frame C4 of the Figma
+   * page `Webhook Inspector · Request actions`, D182). It renders nothing from
+   * 768 px up, where `Actions ▾` is in the detail panel.
    */
   actions?: ReactNode;
   className?: string;
 }
 
 /**
- * The bar over a request opened in the push flow, below 1024 px (3A, 6C, 7C,
- * D157): the way back to the list, what arrived meanwhile, and where the
- * request stands in the list. On a phone it ends in `⋯`, 4 px after the
- * position, its glyph 16 px from the edge: the bar's right padding is 2 px
- * there, and the 44 px target's own 14 px make up the rest (C4, D182).
+ * The bar over a request opened in the push flow, below 1024 px (frames 3A, 6C
+ * and 7C of the Figma page `Webhook Inspector · Tablet and phone`, D157): the
+ * way back to the list, what arrived meanwhile, and where the request stands in
+ * the list. On a phone it ends in `⋯`, 4 px after the position, its glyph 16 px
+ * from the edge: the bar's right padding is 2 px there, and the 44 px target's
+ * own 14 px make up the rest (frame C4 of the Figma page `Webhook Inspector ·
+ * Request actions`, D182).
  *
  * `‹ Requests` takes the same step as the browser's or the OS's Back gesture:
  * both close the request and leave the page on its list. Its accessible name

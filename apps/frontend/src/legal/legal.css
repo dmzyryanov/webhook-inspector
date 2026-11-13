@@ -3,7 +3,8 @@
  * D217): the frames T1 (1440, `760:15`), T2 (768, `760:131`), T3 (375,
  * `760:238`), P1 (`760:346`), P2 (`760:466`) and P3 (`760:577`) of the Figma
  * page `Webhook Inspector · Terms and Privacy (#112)`. They are /about's
- * approved D1 frames with the same header, type, column and rows, so this
+ * approved frames of direction D1 of the Figma page `Webhook Inspector · About
+ * page (#131)`, with the same header, type, column and rows, so this
  * stylesheet starts from /about's, which brings Inter and the header and the
  * footer band every static page shares, and adds what the two pages draw
  * differently: an introduction with a date line under it in place of the

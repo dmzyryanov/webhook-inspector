@@ -7,8 +7,9 @@ import type { PastedAccess } from './request-link.ts';
 
 /**
  * The check behind `Open` on `Session not found` (issue #228, D259 point 6):
- * R7's sentence only for a value that is no key or link and for a session the
- * server says is missing or gone; another failure told apart, since the key
+ * the sentence of frame R7 of the Figma page `Webhook Inspector · Private
+ * sessions (#228)` only for a value that is no key or link and for a session
+ * the server says is missing or gone; another failure told apart, since the key
  * may be right; one check at a time; and no answer heeded once the field has
  * left the page.
  */

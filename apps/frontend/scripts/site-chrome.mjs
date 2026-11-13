@@ -1,8 +1,9 @@
 /**
  * The header and the footer band of the static pages, `/changelog` (D184),
  * `/about` (D211), `/terms` and `/privacy` (D217), written as HTML at build
- * time. They draw what the application draws in `AppHeader.tsx` (B′ of D209)
- * and `AppFooter.tsx` (D177, D211, D217), from the same constants, so the two
+ * time. They draw what the application draws in `AppHeader.tsx` (direction B′
+ * of the Figma page `Webhook Inspector · Status page link (#99)`, D209) and
+ * `AppFooter.tsx` (D177, D211, D217), from the same constants, so the two
  * cannot drift apart in their words or addresses;
  * `src/static-pages/site-chrome.css` styles them as the application's
  * Tailwind classes do.
@@ -128,7 +129,8 @@ function current(link, page) {
 }
 
 /**
- * The header every page carries (B′, D209). `page` is the path of the page
+ * The header every page carries (direction B′ of the Figma page `Webhook
+ * Inspector · Status page link (#99)`, D209). `page` is the path of the page
  * drawn, so that `Changelog` is its current page on `/changelog`, and `lang`
  * its language (D255): in Russian the links read as the application's do and
  * `Webhook Inspector` leads to `/ru/`, while every link keeps its address.

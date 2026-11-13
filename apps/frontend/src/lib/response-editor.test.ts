@@ -253,7 +253,10 @@ describe('evaluateEditorDraft', () => {
     }
   });
 
-  /** 204, 205 and 304 take no body: the refusal is reported on the body field (D5). */
+  /**
+   * 204, 205 and 304 take no body: the refusal is reported on the body field
+   * (frame D5 of the Figma page `Webhook Inspector · Editable response settings`).
+   */
   it('refuses 204, 205 and 304 while a body is set, on the body', () => {
     for (const status of ['204', '205', '304']) {
       const evaluation = evaluateEditorDraft({
@@ -267,7 +270,10 @@ describe('evaluateEditorDraft', () => {
     }
   });
 
-  /** Picking Default hides the custom fields and keeps them (D6). */
+  /**
+   * Picking Default hides the custom fields and keeps them (frame D6 of the
+   * Figma page `Webhook Inspector · Editable response settings`).
+   */
   it('sends the mode alone for Default, whatever the hidden fields hold', () => {
     for (const form of [
       formFromResponse(KEPT),
@@ -286,7 +292,9 @@ describe('the body field and the automatic headers note (D179)', () => {
   it('names no format in the label, and the template box took the hint’s line (#236)', () => {
     assert.equal(BODY_FIELD_LABEL, 'Body · Optional');
     // `Returned exactly as entered` is gone from both languages: the unticked
-    // `Fill in placeholders from the request` says it now, on that line (T1).
+    // `Fill in placeholders from the request` says it now, on that line (frame
+    // T1 of the Figma page `Webhook Inspector · Response body templates (#236)
+    // — approved A`).
     for (const m of [en, ru]) {
       assert.equal('bodyHint' in m.editor, false, m.lang);
     }

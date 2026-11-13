@@ -14,14 +14,18 @@ import {
 interface DeleteAllDialogProps {
   /** Every request the session holds, filtered or not: all of them go. */
   count: number;
-  /** How many of them the list filter hides; the dialog names them (2J, D180). */
+  /**
+   * How many of them the list filter hides; the dialog names them (frame 2J of
+   * the Figma page `Webhook Inspector · Request list filter`, D180).
+   */
   hidden?: number;
   onConfirm: () => void;
 }
 
 /**
  * Bulk deletion is the destructive action and must be confirmed (D029). On a
- * phone it stays a centred dialog, with two half-width actions (2C, D157).
+ * phone it stays a centred dialog, with two half-width actions (frame 2C of the
+ * Figma page `Webhook Inspector · Tablet and phone`, D157).
  */
 export function DeleteAllDialog({ count, hidden = 0, onConfirm }: DeleteAllDialogProps) {
   const m = useMessages();

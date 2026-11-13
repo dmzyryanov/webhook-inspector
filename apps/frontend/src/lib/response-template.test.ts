@@ -476,7 +476,8 @@ describe('the opt-in in the form (#236, criteria 1 and 3)', () => {
       validateResponseForm(bad, ru).errors.body,
       'Неизвестная подстановка {{request.foo}}.',
     );
-    // Unticked, `{{` stays plain text (T1).
+    // Unticked, `{{` stays plain text (frame T1 of the Figma page `Webhook
+    // Inspector · Response body templates (#236) — approved A`).
     assert.deepEqual(validateResponseForm({ ...bad, template: false }).errors, {});
 
     const draft = evaluateEditorDraft({ mode: 'custom', form: bad });

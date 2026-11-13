@@ -24,8 +24,9 @@ import { Input } from './ui/input.tsx';
  * makes the block taller and never the page wider.
  *
  * Below 1024 px the type steps down and the block takes the column's width:
- * 520 px on a tablet (7F), the screen less 16 px each side on a phone (6A,
- * 6B, D157).
+ * 520 px on a tablet (frame 7F of the Figma page `Webhook Inspector · Tablet
+ * and phone`), the screen less 16 px each side on a phone (frames 6A and 6B of
+ * that page, D157).
  *
  * The footer band closes both screens, as every page (frames A7–A12 of the
  * Figma page `Webhook Inspector · Privacy footer`, D177).
@@ -78,7 +79,8 @@ export function PageNotFound() {
  * private session opened without its key is refused as a missing one is
  * (D245 point 6), so it shows this very screen, in every state: nothing on it
  * tells the two apart. Both offer the field that opens a session with a link
- * with access or its key (R6-R8, D259).
+ * with access or its key (frames R6-R8 of the Figma page `Webhook Inspector ·
+ * Private sessions (#228)`, D259).
  */
 export function SessionNotFound({
   sessionId,
@@ -101,8 +103,9 @@ export function SessionNotFound({
 }
 
 /**
- * `Open with a link with access or a key…` under `Go to home page` (R6), a
- * quiet link that opens the field in its place (R7, R8): a hint, the field and
+ * `Open with a link with access or a key…` under `Go to home page` (frame R6 of
+ * the Figma page `Webhook Inspector · Private sessions (#228)`), a quiet link
+ * that opens the field in its place (frames R7 and R8): a hint, the field and
  * `Open` on one row from 375 px, the field filling the rest; at 320 px `Open`
  * may wrap under it, and nothing scrolls sideways.
  *
@@ -112,7 +115,7 @@ export function SessionNotFound({
  * only a session that opens keeps its key - held in this tab and stored - and
  * is then opened: this page afresh, or the link's session, at the request it
  * names. A value that is no key or link, or a session the server says is
- * missing or gone, changes nothing and says R7's sentence under the field,
+ * missing or gone, changes nothing and says frame R7's sentence under the field,
  * which is then marked invalid; a failure that says nothing about the key -
  * `429`, a server error, no connection - changes nothing either and says the
  * session page's own failure, leaving the field unmarked. Empty does nothing.
@@ -254,13 +257,16 @@ function OpenWithAccess({ sessionId, onReopen }: { sessionId: string; onReopen: 
         <p
           id={errorId}
           role="alert"
-          // One line at 1440 px, as R7 draws it, wider than the field's row.
+          // One line at 1440 px, as frame R7 of the Figma page `Webhook
+          // Inspector · Private sessions (#228)` draws it, wider than the
+          // field's row.
           className="mt-2.5 w-[520px] max-w-[calc(100vw-32px)] text-center text-[12px] leading-[17px] text-danger"
         >
           {failure === 'refused'
             ? m.access.pasteFailed
             : // The key may be right: the session page's own failure, which
-              // says so, rather than R7's sentence.
+              // says so, rather than the sentence frame R7 of the Figma page
+              // `Webhook Inspector · Private sessions (#228)` draws.
               m.session.errorLines.join(' ')}
         </p>
       ) : null}

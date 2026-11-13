@@ -437,7 +437,11 @@ export const en = {
     noRecordNote:
       'There is no stored response for this request. Its request data is still available.',
     queueStep: (step: number, total: number): string => `Queue step ${step} of ${total}`,
-    /** The response rule that answered, as it was then: `Rule 1 · POST /orders` (D246, R8). */
+    /**
+     * The response rule that answered, as it was then: `Rule 1 · POST /orders`
+     * (D246, frame R8 of the Figma page `Webhook Inspector · Response rules
+     * (#134) — A APPROVED 2026-10-19`).
+     */
     rule: (place: number, method: string | null, path: string): string =>
       `Rule ${place} · ${method ?? 'Any'} ${path}`,
     pending: 'Pending',

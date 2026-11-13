@@ -52,7 +52,9 @@ const DANGER_LINK = `${LINK_SHAPE} text-danger`;
 
 /**
  * The Response rules section of the quick switch, under the Response queue
- * section and drawn as it is (issue #226; R2, R3, R7, RT1, RP1, RP5).
+ * section and drawn as it is (issue #226; frames R2, R3, R7, RT1, RP1 and RP5
+ * of the Figma page `Webhook Inspector · Response rules (#134) — A APPROVED
+ * 2026-10-19`).
  *
  * Its heading row - the title, `3 rules` on the right while the session has
  * rules, the example chips while it has none (not on a phone), and a chevron
@@ -219,7 +221,9 @@ export function ResponseRulesSection({
                     {rule.path}
                   </span>
                   <span className="shrink-0 whitespace-nowrap text-ink-muted">→ {rule.answer}</span>
-                  {/* After the answer, as T13 and T14 mark a template (issue #236). */}
+                  {/* After the answer, as frames T13 and T14 of the Figma page
+                      `Webhook Inspector · Response body templates (#236) —
+                      approved A` mark a template (issue #236). */}
                   {rule.template ? <TemplateTag /> : null}
                 </li>
               ))}
@@ -300,7 +304,11 @@ export function ResponseRulesSection({
   );
 }
 
-/** `POST /orders` `GET /status`, the grey example beside the title (R2); not on a phone (RP1). */
+/**
+ * `POST /orders` `GET /status`, the grey example beside the title (frame R2 of
+ * the Figma page `Webhook Inspector · Response rules (#134) — A APPROVED
+ * 2026-10-19`); not on a phone (frame RP1).
+ */
 function ExampleChips() {
   return (
     <span aria-hidden="true" className="flex min-w-0 items-center gap-1 max-md:hidden">

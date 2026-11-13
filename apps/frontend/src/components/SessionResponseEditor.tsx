@@ -44,7 +44,10 @@ interface SessionResponseEditorProps {
   state: SessionResponseState;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** What the quick switch had chosen when its link opened this, if anything (D2). */
+  /**
+   * What the quick switch had chosen when its link opened this, if anything
+   * (frame D2 of the Figma page `Webhook Inspector · Editable response settings`).
+   */
   carry: QuickCarry | undefined;
   /** The page's response revision, read as a call starts (D152, D205). */
   responseRevision: () => number;
@@ -60,21 +63,23 @@ interface SessionResponseEditorProps {
 }
 
 /**
- * Session response settings, as a form (D1-D8, D150). There is no read-only
- * view any more: the modal opens straight into the form, from the quick
- * switch's `Edit headers and body…`.
+ * Session response settings, as a form (frames D1-D8 of the Figma page `Webhook
+ * Inspector · Editable response settings`, D150). There is no read-only view
+ * any more: the modal opens straight into the form, from the quick switch's
+ * `Edit headers and body…`.
  *
  * The fields are the ones the landing page's create form had, checked by the
  * validator and with the wording it used (D158), and the backend checks a
  * change with the function it checks a creation with (D101). Errors are shown
- * as the fields are edited and Save is unavailable while any stands (D4).
+ * as the fields are edited and Save is unavailable while any stands (frame D4).
  * While a save is in flight nothing closes the modal - Escape and a click on
  * the overlay are ignored and Cancel is disabled - so a failure is shown with
- * every change still in place (D8).
+ * every change still in place (frame D8).
  *
  * On a phone it is a full-screen sheet with Cancel and Save pinned to the
- * bottom, its fields one under another (5D-5F); from 768 px up it is the
- * desktop dialog (7E, D157).
+ * bottom, its fields one under another (frames 5D-5F of the Figma page `Webhook
+ * Inspector · Tablet and phone`); from 768 px up it is the desktop dialog
+ * (frame 7E of that page, D157).
  */
 export function SessionResponseEditor({
   sessionId,
@@ -197,7 +202,8 @@ function EditorPanel({
         return;
       }
 
-      // Everything typed stays where it was (D8).
+      // Everything typed stays where it was (frame D8 of the Figma page
+      // `Webhook Inspector · Editable response settings`).
       setFailure({ error });
     } finally {
       onSavingChange(false);
@@ -253,7 +259,8 @@ function EditorPanel({
           </div>
         ) : (
           <>
-            {/* Said under the mode control while Custom is picked (D2). */}
+            {/* Said under the mode control while Custom is picked (frame D2 of
+                the Figma page `Webhook Inspector · Editable response settings`). */}
             <p className="mt-2 text-[12px] leading-[17px] text-ink-muted">
               {m.editor.defaultAnswerNote}
             </p>

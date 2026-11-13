@@ -311,7 +311,8 @@ test.describe('E2E-09 — a link to one request', () => {
     const toast = page.getByTestId('toast');
 
     // Deleted, or pushed out of the newest 1000: the list, nothing open, and
-    // the toast with the info icon, at every width (S1, S2).
+    // the toast with the info icon, at every width (frames S1 and S2 of the
+    // Figma page `Webhook Inspector · Request actions`).
     for (const { width, height } of [
       { width: 1440, height: 1024 },
       { width: 375, height: 812 },

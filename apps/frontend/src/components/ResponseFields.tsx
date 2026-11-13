@@ -24,14 +24,17 @@ interface ResponseFieldsProps {
    */
   fieldId: (key: string) => string;
   /**
-   * Where the hints under the status and delay labels show: always, as in
-   * the session response editor (D2), or on a phone only, as in a step of
-   * the response queue (D1, M4).
+   * Where the hints under the status and delay labels show: always, as in the
+   * session response editor (frame D2 of the Figma page `Webhook Inspector ·
+   * Editable response settings`), or on a phone only, as in a step of the
+   * response queue (frames D1 and M4 of the Figma page `Webhook Inspector ·
+   * Response queue (#106) — chosen, review 2`).
    */
   hints?: 'always' | 'phone';
   /**
    * Whether the note about the automatic headers and the line about bodiless
-   * statuses leave the tablet's narrower step editor (T2).
+   * statuses leave the tablet's narrower step editor (frame T2 of the Figma
+   * page `Webhook Inspector · Response queue (#106) — chosen, review 2`).
    */
   compactOnTablet?: boolean;
 }
@@ -179,7 +182,8 @@ export function ResponseFields({
                       invalid={rowErrors?.value !== undefined}
                       onChange={(value) => editHeader(index, 'value', value)}
                     />
-                    {/* On a phone a 44 px `×` (5D); the accessible
+                    {/* On a phone a 44 px `×` (frame 5D of the Figma page
+                        `Webhook Inspector · Tablet and phone`); the accessible
                         name is the same. */}
                     <Button
                       type="button"
@@ -247,7 +251,9 @@ export function ResponseFields({
           }}
           onSelect={(event) => rememberSelection(event.currentTarget)}
         />
-        {/* A template's placeholder is named in monospace (T12). */}
+        {/* A template's placeholder is named in monospace (frame T12 of the
+            Figma page `Webhook Inspector · Response body templates (#236) —
+            approved A`). */}
         {errors.body ? (
           <FieldError>
             <CodeText text={errors.body} />
@@ -321,7 +327,10 @@ interface HeaderInputProps {
   onChange: (value: string) => void;
 }
 
-/** One header field. Only the first row carries the visible column names (D2). */
+/**
+ * One header field. Only the first row carries the visible column names (frame
+ * D2 of the Figma page `Webhook Inspector · Editable response settings`).
+ */
 function HeaderInput({ id, index, field, value, invalid, onChange }: HeaderInputProps) {
   const m = useMessages();
 

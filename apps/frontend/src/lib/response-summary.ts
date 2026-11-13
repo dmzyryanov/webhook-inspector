@@ -75,15 +75,17 @@ export interface ResponseHeaderLines {
   note: string | null;
   /**
    * The step of the response queue that answered, `Queue step 2 of 7`, or
-   * `null` when the session response did (D205, U7, M5). It is drawn as a tag
-   * inside the state line, before its time.
+   * `null` when the session response did (D205, frames U7 and M5 of the Figma
+   * page `Webhook Inspector · Response queue (#106) — chosen, review 2`). It is
+   * drawn as a tag inside the state line, before its time.
    */
   queueStep: string | null;
   /**
-   * The response rule that answered, as it was when it answered, `Rule 1 ·
-   * POST /orders`, or `null` when none did (D246, R8, RP4). Drawn where the
-   * queue's step is, as a tag inside the state line, before its time: a rule
-   * and a step never answer the same request.
+   * The response rule that answered, as it was when it answered, `Rule 1 · POST
+   * /orders`, or `null` when none did (D246, frames R8 and RP4 of the Figma
+   * page `Webhook Inspector · Response rules (#134) — A APPROVED 2026-10-19`).
+   * Drawn where the queue's step is, as a tag inside the state line, before its
+   * time: a rule and a step never answer the same request.
    */
   rule: string | null;
   /**
@@ -94,7 +96,10 @@ export interface ResponseHeaderLines {
   stateParts: { lead: string; time: string | null };
 }
 
-/** `Queue step 2 of 7` (U7). */
+/**
+ * `Queue step 2 of 7` (frame U7 of the Figma page `Webhook Inspector · Response
+ * queue (#106) — chosen, review 2`).
+ */
 export function formatQueueStep(
   step: QueueStep | null | undefined,
   m: Messages = en,
@@ -103,10 +108,11 @@ export function formatQueueStep(
 }
 
 /**
- * `Rule 1 · POST /orders`, `Rule 3 · Any /items/*` (R8): the rule a request
- * recorded, with what it matched on then, which a later change of the rules
- * leaves as it was. `null` for none, and for a record from a backend before
- * 1.3.0, which has no `rule` at all.
+ * `Rule 1 · POST /orders`, `Rule 3 · Any /items/*` (frame R8 of the Figma page
+ * `Webhook Inspector · Response rules (#134) — A APPROVED 2026-10-19`): the
+ * rule a request recorded, with what it matched on then, which a later change
+ * of the rules leaves as it was. `null` for none, and for a record from a
+ * backend before 1.3.0, which has no `rule` at all.
  */
 export function formatRecordedRule(
   rule: RecordedRule | null | undefined,

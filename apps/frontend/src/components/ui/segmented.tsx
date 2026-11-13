@@ -8,8 +8,10 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   /**
-   * `sm` in the quick switch (C1), `md` in the full editor (D2), `check` for
-   * the algorithm of `Check signature…` (B1-B5, D197).
+   * `sm` in the quick switch (frame C1 of the Figma page `Webhook Inspector ·
+   * Editable response settings`), `md` in the full editor (frame D2 of that
+   * page), `check` for the algorithm of `Check signature…` (frames B1-B5 of the
+   * Figma page `Webhook Inspector · Check signature`, D197).
    */
   size: 'sm' | 'md' | 'check';
 }
@@ -63,9 +65,11 @@ export function SegmentedControl<T extends string>({
       className={cn(
         'inline-flex shrink-0 rounded-[7px] bg-panel-note',
         // Below 1024 px the options are touch targets (D157): the quick
-        // switch's pill grows to 36 px (5B), and the full editor's to 44 px,
-        // across the whole sheet on a phone (5D). The algorithm's is 32 px on
-        // the desktop and 40 px below 1024 px, across the sheet on a phone.
+        // switch's pill grows to 36 px (frame 5B of the Figma page `Webhook
+        // Inspector · Tablet and phone`), and the full editor's to 44 px,
+        // across the whole sheet on a phone (frame 5D of that page). The
+        // algorithm's is 32 px on the desktop and 40 px below 1024 px, across
+        // the sheet on a phone.
         size === 'sm'
           ? 'gap-0.5 p-0.5 max-lg:p-[3px]'
           : size === 'md'
@@ -107,7 +111,8 @@ export function SegmentedControl<T extends string>({
                 ? 'bg-white text-ink shadow-[0_1px_2px_rgba(31,36,46,0.12)]'
                 : 'text-ink-muted hover:text-ink',
               // The algorithm's chosen option is semibold and the others
-              // regular, and its shadow a shade darker (B1).
+              // regular, and its shadow a shade darker (frame B1 of the Figma
+              // page `Webhook Inspector · Check signature`).
               size === 'check' &&
                 (checked ? 'font-semibold shadow-[0_1px_2px_rgba(31,36,46,0.14)]' : 'font-normal'),
             )}

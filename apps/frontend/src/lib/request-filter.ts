@@ -418,7 +418,8 @@ export function splitByRanges(
 
 /**
  * The header's count while the filter has a value: `3 of 8 / 1000` on the
- * desktop and tablet, `3 of 8` on a phone, where the limit is dropped (2B, 2E).
+ * desktop and tablet, `3 of 8` on a phone, where the limit is dropped (frames
+ * 2B and 2E of the Figma page `Webhook Inspector · Request list filter`).
  */
 export function formatFilterCount(shown: number, total: number, m: Messages = en): string {
   return m.filter.count(shown, total);
@@ -426,7 +427,8 @@ export function formatFilterCount(shown: number, total: number, m: Messages = en
 
 /**
  * The sentence of the Delete all dialog. It names every request the session
- * holds, and, under a filter that hides some, how many of them (2J).
+ * holds, and, under a filter that hides some, how many of them (frame 2J of the
+ * Figma page `Webhook Inspector · Request list filter`).
  */
 export function formatDeleteAllDescription(
   total: number,

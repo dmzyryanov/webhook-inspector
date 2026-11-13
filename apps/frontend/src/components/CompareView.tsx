@@ -27,7 +27,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.tsx';
 export type ChosenDetails =
   | { status: 'loading' }
   | { status: 'loaded'; details: RequestDetails }
-  /** Deleted, evicted by the 1000 limit (D006) or not found: D4. */
+  /**
+   * Deleted, evicted by the 1000 limit (D006) or not found: frame D4 of the
+   * Figma page `Webhook Inspector · Compare requests`.
+   */
   | { status: 'gone' }
   | { status: 'failed' };
 
@@ -48,7 +51,10 @@ interface CompareViewProps {
   onRetry: () => void;
 }
 
-/** A phone's and a tablet's sides, as the request half's (3A, 7C). */
+/**
+ * A phone's and a tablet's sides, as the request half's (frames 3A and 7C of
+ * the Figma page `Webhook Inspector · Tablet and phone`).
+ */
 const SIDES = 'px-5 max-md:px-4 md:max-lg:px-6';
 
 /**
@@ -257,7 +263,10 @@ interface PendingProps {
   onRetry: () => void;
 }
 
-/** The chosen request while it loads, once it is gone (D4), or when it could not be loaded. */
+/**
+ * The chosen request while it loads, once it is gone (frame D4 of the Figma
+ * page `Webhook Inspector · Compare requests`), or when it could not be loaded.
+ */
 function Pending({ item, chosen, onChange, onRetry }: PendingProps) {
   const m = useMessages();
   const name = `${item.method} ${shortId(item.id)}`;
@@ -285,7 +294,10 @@ function Pending({ item, chosen, onChange, onRetry }: PendingProps) {
 interface ViewBodyProps {
   name: CompareViewName;
   comparison: ViewComparison;
-  /** No view differs: D1's line above every view. */
+  /**
+   * No view differs: the line of frame D1 of the Figma page `Webhook Inspector
+   * · Compare requests` above every view.
+   */
   identical: boolean;
   open: RequestDetails;
   chosenItem: RequestListItem;

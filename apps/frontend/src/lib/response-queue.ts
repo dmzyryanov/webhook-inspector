@@ -1,8 +1,11 @@
 /**
  * The response queue in the interface (D205; Figma page `Webhook Inspector ·
- * Response queue (#106) — chosen, review 2`): the section at the bottom of
- * the quick switch, the `· N queued` of the endpoint label, the Response
- * queue dialog and its toasts.
+ * Response queue (#106) — chosen, review 2`): the section at the bottom of the
+ * quick switch, the `· N queued` of the endpoint label, the Response queue
+ * dialog and its toasts. The frames its comments cite by a bare label - U2 to
+ * U9, D1, E1 to E3, T2, M3, M4 and P1.1 to P1.4, the ending L1 and the step
+ * list V1 with its K2b markers - are frames of that page; a frame of another
+ * page says which.
  *
  * Every one of these is a decision about text or about which steps show,
  * rather than about layout, so it lives here, away from the DOM, where a unit
@@ -92,10 +95,11 @@ export function formatStepChip(
 }
 
 /**
- * A step in the quick switch's section: its chip, and a `· Template` part
- * after it when the step is a template, as it shows `· 2 s` (issue #236,
- * T13): `201 · Template`, `503 · 2 s · Template`. The dialog's step list and
- * the endpoint button are unchanged.
+ * A step in the quick switch's section: its chip, and a `· Template` part after
+ * it when the step is a template, as it shows `· 2 s` (issue #236, frame T13 of
+ * the Figma page `Webhook Inspector · Response body templates (#236) — approved
+ * A`): `201 · Template`, `503 · 2 s · Template`. The dialog's step list and the
+ * endpoint button are unchanged.
  */
 export function formatSectionStepChip(
   step: Pick<ResponseConfig, 'status' | 'delayMs'> & { template?: boolean },
@@ -640,7 +644,10 @@ export function queueErrorsWithRefusal(
 /** The two calls the dialog makes. */
 export type QueueCall = 'save' | 'remove';
 
-/** What a failed queue call does to the dialog (E2), as a failed change does (D8). */
+/**
+ * What a failed queue call does to the dialog (E2), as a failed change does
+ * (frame D8 of the Figma page `Webhook Inspector · Editable response settings`).
+ */
 export type QueueFailure = { kind: 'unavailable' } | ({ kind: 'shown' } & ShownQueueFailure);
 
 export function describeQueueFailure(

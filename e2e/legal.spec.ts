@@ -30,8 +30,9 @@ if (TERMS_PAGE === undefined) {
  * in full; that its header is every page's, with no current page, and its
  * footer marks its own link as the current page; that at 1440, 768, 375 and
  * 320 px nothing scrolls sideways and no line of the title, the introduction
- * or the sections' lines holds a single word, and at the approved frames' widths
- * (T1–T3, P1–P3) the column, its padding, the label rail and the footer band
+ * or the sections' lines holds a single word, and at the approved frames'
+ * widths (T1–T3 and P1–P3 of the Figma page `Webhook Inspector · Terms and
+ * Privacy (#112)`) the column, its padding, the label rail and the footer band
  * are the frames'; that it reaches no origin but its own; that `stability
  * policy` lands on the Stability section of /docs; and that the application's
  * footer leads to both in the same tab. Where each line wraps is not held

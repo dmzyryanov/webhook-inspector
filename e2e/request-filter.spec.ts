@@ -15,8 +15,10 @@ const BODY_TOKEN = 'tok-48213-zq';
  * holds a token is found by typing it, with nothing highlighted, and a
  * shorter word asks the server nothing.
  *
- * The Figma frames the search's steps cite, A1, A4.3, A4.5 and A4.6, are
- * frames of the Figma page `Webhook Inspector · Body and header search`.
+ * The Figma frames the search's steps cite, A1, A4.3, A4.5 and A4.6, are frames
+ * of the Figma page `Webhook Inspector · Body and header search`; those the
+ * filter's steps cite, 2B, 2C, 2F, 2G and 2J, are frames of the Figma page
+ * `Webhook Inspector · Request list filter`.
  */
 test('The list filter narrows the rows, finds a body on the server, and clears again', async ({
   page,
@@ -51,7 +53,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
 
   await expect(heading).toBeVisible();
 
-  // The icon opens an empty, focused field in place of the heading (2F).
+  // The icon opens an empty, focused field in place of the heading (Figma
+  // frame 2F).
   await page.getByRole('button', { name: 'Filter requests' }).click();
 
   const field = page.getByRole('searchbox', { name: 'Filter requests' });
@@ -108,7 +111,7 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(requestRow(page, stripeOne)).toBeVisible();
   await expect(requestRow(page, stripeTwo)).toBeVisible();
   await expect(page.getByTestId('filter-count')).toHaveText('2 of 4 / 1000');
-  // A path the rows do not show has nothing to highlight (2B).
+  // A path the rows do not show has nothing to highlight (Figma frame 2B).
   await expect(page.locator('mark')).toHaveCount(0);
 
   // The server is asked by itself, once typing has stopped: one POST, the
@@ -122,7 +125,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(page.getByTestId('search-notice')).toHaveCount(0);
   await expect(page.getByTestId('filter-count')).toHaveText('2 of 4 / 1000');
 
-  // Delete all names the total and what the filter hides (2J); cancelled here.
+  // Delete all names the total and what the filter hides (Figma frame 2J);
+  // cancelled here.
   await page.getByRole('button', { name: 'Delete all' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Delete all requests?' });
@@ -167,7 +171,7 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
     expect(`${call.path}${call.search}`.toLowerCase()).not.toContain(BODY_TOKEN);
   }
 
-  // Nothing matches: never `Waiting for the first request` (2G).
+  // Nothing matches: never `Waiting for the first request` (Figma frame 2G).
   await field.fill('stripe DELETE');
   await expect(page.getByText('No requests match “stripe DELETE”')).toBeVisible();
   await expect(page.getByText('Waiting for the first request')).toHaveCount(0);
@@ -178,7 +182,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(field).toHaveValue('POST stripe');
   await expect(requestRow(page, root)).toHaveCount(0);
   await expect(requestRow(page, stripeOne)).toBeVisible();
-  // Matches in what the row shows are highlighted: the method (2C).
+  // Matches in what the row shows are highlighted: the method (Figma frame
+  // 2C).
   await expect(page.locator('mark', { hasText: 'POST' })).toHaveCount(2);
 
   // And the status, inside the pill of an answer the session gave (D207).

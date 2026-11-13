@@ -70,7 +70,10 @@ import { Button } from './ui/button.tsx';
 import { Dialog, DialogTrigger } from './ui/dialog.tsx';
 import { SegmentedControl } from './ui/segmented.tsx';
 
-/** The disabled look the design gives Apply and Save (C1, C7, D4, D7). */
+/**
+ * The disabled look the design gives Apply and Save (frames C1, C7, D4 and D7
+ * of the Figma page `Webhook Inspector · Editable response settings`).
+ */
 export const DISABLED_ACTION =
   'disabled:border disabled:border-disabled-line disabled:bg-disabled disabled:text-disabled-ink disabled:opacity-100';
 
@@ -123,7 +126,8 @@ interface SessionResponseSwitchProps {
 }
 
 /**
- * The endpoint-card button and the quick switch it opens (C1-C8, D150): the
+ * The endpoint-card button and the quick switch it opens (frames C1-C8 of the
+ * Figma page `Webhook Inspector · Editable response settings`, D150): the
  * frequent change - Default or Custom, a status, a delay - in one popover, with
  * the full editor one link away.
  *
@@ -132,14 +136,14 @@ interface SessionResponseSwitchProps {
  * usable while it is open. Its content unmounts when it closes, so every
  * opening starts from the session as it is then. While a change is being
  * applied nothing closes it, so the answer - a failure included, with the
- * choice it keeps (C8) - always has a surface to be shown on.
+ * choice it keeps (frame C8) - always has a surface to be shown on.
  *
  * On a phone the button spans the card and the popover is a bottom sheet over
  * a scrim; a tap on the scrim is a click outside and closes it. The sheet is
  * rendered outside the page there, and the page under the scrim is made inert
  * while it is open, so it is neither tabbable nor read out behind the sheet.
- * On a tablet it stays the desktop's popover, with 44 px touch targets (5B,
- * 7B, D157).
+ * On a tablet it stays the desktop's popover, with 44 px touch targets (frames
+ * 5B and 7B of the Figma page `Webhook Inspector · Tablet and phone`, D157).
  */
 export function SessionResponseSwitch({
   sessionId,
@@ -363,7 +367,8 @@ function QuickSwitchPanel({
   // A change that failed: Apply, disabled while it was in flight, may have
   // dropped the focus it held to the page's body, where a click outside
   // during the call leaves it too; it goes back to Apply, which now reads
-  // `Try again` (C8; issue #143, D206). Focus the viewer put on a control
+  // `Try again` (frame C8 of the Figma page `Webhook Inspector · Editable
+  // response settings`; issue #143, D206). Focus the viewer put on a control
   // meanwhile stays.
   useLayoutEffect(() => {
     if (failure !== null && focusLost(applyButton.current)) {
@@ -391,7 +396,9 @@ function QuickSwitchPanel({
   // The queue went while the section asked to remove it - removed by another
   // viewer, or by this one whose answer was lost: the question goes with it
   // and does not come back with a queue saved later, and a failed removal's
-  // message with it, whichever came first (E3, as the dialog's footer).
+  // message with it, whichever came first (frame E3 of the Figma page
+  // `Webhook Inspector · Response queue (#106) — chosen, review 2`, as the
+  // dialog's footer).
   const removable = canRemoveQueue(state);
 
   if (confirmingRemoval && !removable) {
@@ -485,7 +492,8 @@ function QuickSwitchPanel({
         return;
       }
 
-      // The choice stays exactly as it was made (C8).
+      // The choice stays exactly as it was made (frame C8 of the Figma page
+      // `Webhook Inspector · Editable response settings`).
       setFailure({ error });
     } finally {
       onApplyingChange(false);
@@ -494,7 +502,9 @@ function QuickSwitchPanel({
   }
 
   /**
-   * `Run again` (U8): starts the saved queue from step 1 without sending it.
+   * `Run again` (frame U8 of the Figma page `Webhook Inspector · Response
+   * queue (#106) — chosen, review 2`): starts the saved queue from step 1
+   * without sending it.
    * In flight it holds the popover open as Apply does, and a failure is said
    * under the section's links, the queue left as it was - unless the page has
    * taken a `session.updated` starting the queue from step 1 since the call
@@ -534,7 +544,11 @@ function QuickSwitchPanel({
     }
   }
 
-  /** `Remove queue`: the section asks once, with no earlier failure shown (E3). */
+  /**
+   * `Remove queue`: the section asks once, with no earlier failure shown
+   * (frame E3 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`).
+   */
   function askToRemove(): void {
     setRemoveFailure(null);
     setRestartFailed(false);
@@ -680,8 +694,9 @@ function QuickSwitchPanel({
                   </Chip>
                 ) : (
                   // Unavailable rather than disabled, so that it still takes
-                  // hover and focus and can say why (C6: 204, 205 and 304
-                  // are refused while a body is set).
+                  // hover and focus and can say why (frame C6 of the Figma
+                  // page `Webhook Inspector · Editable response settings`:
+                  // 204, 205 and 304 are refused while a body is set).
                   <Chip
                     key={status}
                     selected={false}
@@ -758,7 +773,9 @@ function QuickSwitchPanel({
               {describeUntouched(kept, m)}
             </p>
             {/* A template is marked right of the link, at no extra height,
-                white on this grey box (issue #236, T13, T14). */}
+                white on this grey box (issue #236, frames T13 and T14 of the
+                Figma page `Webhook Inspector · Response body templates (#236)
+                — approved A`). */}
             <div className="mt-1 flex items-center justify-between gap-2">
               <button
                 type="button"
@@ -786,7 +803,8 @@ function QuickSwitchPanel({
         </div>
       )}
 
-      {/* On a phone the line sits over a full-width Apply (5B). */}
+      {/* On a phone the line sits over a full-width Apply (frame 5B of the
+          Figma page `Webhook Inspector · Tablet and phone`). */}
       <div className="mt-4 flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
         <p
           className={cn(
@@ -807,7 +825,9 @@ function QuickSwitchPanel({
       </div>
 
       {/* After the session response and its Apply, below a line, in Default
-          and Custom alike (P1, D205); it collapses to its heading row (D206). */}
+          and Custom alike (placement P1 of the Figma page `Webhook Inspector
+          · Response queue (#106) — chosen, review 2`, D205); it collapses to
+          its heading row (D206). */}
       <ResponseQueueSection
         state={state}
         busy={busy}
@@ -823,7 +843,9 @@ function QuickSwitchPanel({
         removedNote={removedHere ? m.queue.removed : null}
       />
 
-      {/* Under the queue's, drawn as it is (issue #226, R2, R3, R7). */}
+      {/* Under the queue's, drawn as it is (issue #226, frames R2, R3 and R7
+          of the Figma page `Webhook Inspector · Response rules (#134) — A
+          APPROVED 2026-10-19`). */}
       <ResponseRulesSection
         state={state}
         busy={busy}

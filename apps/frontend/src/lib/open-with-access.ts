@@ -1,7 +1,8 @@
 /**
- * The check behind `Open` in the field of `Session not found` (R6-R8, issue
- * #228, D259 point 6), kept here rather than in the component because this is
- * the part of the frontend that is unit-tested (D025, D061).
+ * The check behind `Open` in the field of `Session not found` (frames R6-R8 of
+ * the Figma page `Webhook Inspector · Private sessions (#228)`, issue #228,
+ * D259 point 6), kept here rather than in the component because this is the
+ * part of the frontend that is unit-tested (D025, D061).
  *
  * The field asks the server once, `GET /api/sessions/<id>` with the key, and
  * only the answer that the session is missing or gone - `404` / `1001` or
@@ -20,8 +21,9 @@ export type PasteOutcome =
   /** Nothing but spaces: the field takes focus again, and nothing is said. */
   | { kind: 'empty' }
   /**
-   * R7's sentence: a value that is no key or link with access, or one whose
-   * session the server says is missing or gone - a wrong key included.
+   * The sentence of frame R7: a value that is no key or link with access, or
+   * one whose session the server says is missing or gone - a wrong key
+   * included.
    */
   | { kind: 'refused' }
   /** The server was not reached or failed to answer: the key may be right. */

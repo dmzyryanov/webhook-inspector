@@ -51,11 +51,12 @@ export function keptCustomResponse(state: {
 /**
  * The label of the endpoint-card button: the mode, the bare status and the
  * delay only when there is one - `Default · 200`, `Custom · 201 · 500 ms`
- * (D107, D150) - and the steps of the response queue still to answer,
- * `Custom · 200 · 6 queued`, dropped once none is left (D205, U6, U7) - and
- * the response rules the session holds after it, `Custom · 200 · 6 queued ·
- * 3 rules` (D246, issue #226). A custom session answering `200`
- * is never presented as a default one.
+ * (D107, D150) - and the steps of the response queue still to answer, `Custom ·
+ * 200 · 6 queued`, dropped once none is left (D205, frames U6 and U7 of the
+ * Figma page `Webhook Inspector · Response queue (#106) — chosen, review 2`) -
+ * and the response rules the session holds after it, `Custom · 200 · 6 queued ·
+ * 3 rules` (D246, issue #226). A custom session answering `200` is never
+ * presented as a default one.
  *
  * The status is the number alone. A reason phrase would push the button wide
  * enough to squeeze the receive URL it shares a row with.
@@ -109,7 +110,8 @@ export function formatDelaySummary(delayMs: number, m: Messages = en): string {
 }
 
 /**
- * What the default answers, in the design's words (C4, D6), in English; the
+ * What the default answers, in the design's words (frames C4 and D6 of the
+ * Figma page `Webhook Inspector · Editable response settings`), in English; the
  * switch says the dictionary's `response.defaultSummary`.
  */
 export const DEFAULT_RESPONSE_SUMMARY = en.response.defaultSummary;
@@ -132,7 +134,8 @@ export function describeKeptResponse(custom: ResponseConfig, m: Messages = en): 
 
 /**
  * The quick switch's line under the default when a custom response is kept
- * (C4): picking the default keeps the custom response (D151).
+ * (frame C4 of the Figma page `Webhook Inspector · Editable response
+ * settings`): picking the default keeps the custom response (D151).
  */
 export function formatKeptNote(custom: ResponseConfig, m: Messages = en): string {
   return m.response.keptNote(describeKeptResponse(custom, m));
@@ -140,12 +143,14 @@ export function formatKeptNote(custom: ResponseConfig, m: Messages = en): string
 
 /**
  * The full editor's line under the default when a custom response is kept
- * (D6), in English; the editor says the dictionary's.
+ * (frame D6 of the Figma page `Webhook Inspector · Editable response
+ * settings`), in English; the editor says the dictionary's.
  */
 export const EDITOR_KEPT_NOTE = en.response.editorKeptNote;
 
 /**
- * The toast after the quick switch applied a change (C3): what the session now
+ * The toast after the quick switch applied a change (frame C3 of the Figma page
+ * `Webhook Inspector · Editable response settings`): what the session now
  * answers, and that only requests captured from now on get it. It says what is
  * configured, never what a sender received (D103).
  */
@@ -155,7 +160,10 @@ export function formatAppliedToast(response: ResponseConfig | null, m: Messages 
     : m.response.applied(response.status, response.delayMs);
 }
 
-/** The toast after the full editor saved (D3), in English. */
+/**
+ * The toast after the full editor saved (frame D3 of the Figma page `Webhook
+ * Inspector · Editable response settings`), in English.
+ */
 export const SAVED_TOAST = en.response.saved;
 
 /**
@@ -591,9 +599,10 @@ export function sameResponseState(
 }
 
 /**
- * The response state a toast about this viewer's own change describes (U6,
- * U9), from the page as it was when the answer to a call started at
- * `startedAt` arrived, and that answer's `state` (D205).
+ * The response state a toast about this viewer's own change describes (frames
+ * U6 and U9 of the Figma page `Webhook Inspector · Response queue (#106) —
+ * chosen, review 2`), from the page as it was when the answer to a call started
+ * at `startedAt` arrived, and that answer's `state` (D205).
  *
  * - The answer taken: the answer, which is then what the page shows.
  * - Set aside, and the last `session.updated` the page took, taken since the
@@ -670,11 +679,12 @@ export type OwnAnswerTaker = (
 ) => SessionResponseState;
 
 /**
- * Whether a settings surface stays open when something asks it to close
- * (C7-C8, D7-D8). While a change is being saved it does: Escape, a click
- * outside and the button that opened it are all ignored, so the answer - and a
- * failure in particular, with the choices it keeps - still has a surface to be
- * shown on. Cancel is disabled for the same reason.
+ * Whether a settings surface stays open when something asks it to close (frames
+ * C7-C8 and D7-D8 of the Figma page `Webhook Inspector · Editable response
+ * settings`). While a change is being saved it does: Escape, a click outside
+ * and the button that opened it are all ignored, so the answer - and a failure
+ * in particular, with the choices it keeps - still has a surface to be shown
+ * on. Cancel is disabled for the same reason.
  */
 export function staysOpen(requestedOpen: boolean, saving: boolean): boolean {
   return requestedOpen || saving;

@@ -182,7 +182,8 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
 
   /**
    * The ids the list held when the open request was opened. Whatever the list
-   * holds beyond them arrived since, and the Back bar counts it (6C, D157).
+   * holds beyond them arrived since, and the Back bar counts it (frame 6C of
+   * the Figma page `Webhook Inspector · Tablet and phone`, D157).
    */
   const [knownAtOpen, setKnownAtOpen] = useState<ReadonlySet<string>>(() => new Set());
   /** Where the list was scrolled when a request covered it in the push flow. */
@@ -529,9 +530,10 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
   const comparing = comparison?.phase === 'comparing' && selectedId !== null ? comparison : null;
   const openItem = requests.find((item) => item.id === selectedId) ?? details;
   /*
-   * The chosen request is gone once the list no longer holds it - deleted
-   * here or by another viewer, cleared, or pushed out by the 1000 limit
-   * (D006) - or once the server says it has no such request (D4).
+   * The chosen request is gone once the list no longer holds it - deleted here
+   * or by another viewer, cleared, or pushed out by the 1000 limit (D006) - or
+   * once the server says it has no such request (frame D4 of the Figma page
+   * `Webhook Inspector · Compare requests`).
    */
   const chosenShown: ChosenDetails | null =
     comparing === null

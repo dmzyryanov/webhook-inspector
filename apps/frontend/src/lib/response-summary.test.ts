@@ -424,7 +424,11 @@ describe('describeResponse: the status in the heading', () => {
   });
 });
 
-/** The step of the response queue that answered, as the Response tab names it (U7, M5, D205). */
+/**
+ * The step of the response queue that answered, as the Response tab names it
+ * (frames U7 and M5 of the Figma page `Webhook Inspector · Response queue
+ * (#106) — chosen, review 2`, D205).
+ */
 describe('describeResponse: the queue step', () => {
   it('names the step, and cuts the state line before its time for the tag', () => {
     const lines = describeResponse(

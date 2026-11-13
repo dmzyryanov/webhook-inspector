@@ -66,7 +66,8 @@ describe('the privacy footer', () => {
         'или сессия не истечёт (до 7\u00a0дней простоя); в копиях \u2014 ещё до 3\u00a0дней.',
     );
     // The whole footer as it reads below 1024 px, `About · Terms · Privacy`
-    // before `Contact:` (D211, D217; frames F1–F3).
+    // before `Contact:` (D211, D217; frames F1–F3 of the Figma page `Webhook
+    // Inspector · About page (#131)`).
     assert.equal(
       PRIVACY_FOOTER_TEXT,
       'Captured requests \u2014 headers, body and the sender\u0027s IP \u2014 are kept until you ' +

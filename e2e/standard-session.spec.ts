@@ -160,7 +160,8 @@ test('a standard session captures a request and opens each selection on Request 
   // face's normal line height, so the heights are held to half a pixel, as
   // E2E-03 holds a phone row. The band is the approved frames' 34 and 51 px;
   // at 375 px, where the frames' 102 px - `EN | RU` joining the links, a line
-  // more than the 85 px before it (A-P1, D222) - is a line more again with the
+  // more than the 85 px before it (frame A-P1 of the Figma page `Webhook
+  // Inspector · Language switch (#108)`, D222) - is a line more again with the
   // words of 1.15.16 (D265), only its fit is asserted: measured in Chromium on
   // 2026-10-25 it is 119 px from 376 px down and 102 px at 377, closer than
   // 9 px. Nothing scrolls sideways down to 320 px.

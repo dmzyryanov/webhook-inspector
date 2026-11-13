@@ -21,9 +21,11 @@ import { CopyCodeButton } from './CopyCodeButton.tsx';
 import { SegmentedControl } from './ui/segmented.tsx';
 
 /*
- * The title of the popover and of the phone's sheet (B1-B5) is the
- * dictionary's `signature.title`; the request action that opens it (C2, C5 of
- * `Webhook Inspector · Request actions`) is `actions.checkSignature`.
+ * The title of the popover and of the phone's sheet (frames B1-B5 of the Figma
+ * page `Webhook Inspector · Check signature`) is the dictionary's
+ * `signature.title`; the request action that opens it (frames C2 and C5 of the
+ * Figma page `Webhook Inspector · Request actions`) is
+ * `actions.checkSignature`.
  */
 
 /**
@@ -39,10 +41,11 @@ const ALGORITHM_OPTIONS = SIGNATURE_ALGORITHMS.map((algorithm) => ({
 }));
 
 /**
- * A field's frame (B1, B4, B3): 32 px on the desktop and 44 px below 1024 px,
+ * A field's frame (frames B1, B4 and B3 of the Figma page `Webhook Inspector ·
+ * Check signature`): 32 px on the desktop and 44 px below 1024 px,
  * `line-strong`, the text 13 px and 16 px on a phone, where iOS Safari would
  * otherwise zoom into it (D157). Focused, the border turns accent and 1.5 px
- * (S2).
+ * (the state S2 of that page).
  */
 const FIELD =
   'h-8 w-full rounded-[6px] border border-line-strong bg-white px-[10px] text-[13px] leading-[18px] text-ink ' +

@@ -1,8 +1,9 @@
 /**
- * A response as a template in the response editor (issue #236, D251; Figma
- * page `Webhook Inspector · Response body templates (#236) — approved A`):
- * what `Insert placeholder ▾` offers and inserts, the editor's check of a
- * template, and the words that check says.
+ * A response as a template in the response editor (issue #236, D251; Figma page
+ * `Webhook Inspector · Response body templates (#236) — approved A`): what
+ * `Insert placeholder ▾` offers and inserts, the editor's check of a template,
+ * and the words that check says. The frames its comments cite by a bare label -
+ * T2, T6, T7 and T12 to T14 - are frames of that page.
  *
  * The grammar is not restated here: a body is read by
  * `@webhook-inspector/shared/response-template`, the very module the server checks a

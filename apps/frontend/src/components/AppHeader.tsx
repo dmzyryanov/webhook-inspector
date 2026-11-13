@@ -19,8 +19,9 @@ import { MoveBanner } from './MoveBanner.tsx';
  * `Webhook Inspector · Header name (#322)`). On the right the links the
  * build draws, at most `Changelog`, `Status ↗` and the link to the API
  * reference (see the last paragraph), a 1 × 16 px divider between each pair,
- * at every width, a phone included (direction B′ of the Figma page
- * `Webhook Inspector · Status page link (#99)`, D209, amending D184's L2′).
+ * at every width, a phone included (direction B′ of the Figma page `Webhook
+ * Inspector · Status page link (#99)`, D209, amending D184's header, row L2′ of
+ * the Figma page `Webhook Inspector · Changelog`).
  * The links are 16 px apart from 768 px and 12 px below. Below 375 px the
  * wordmark gives way to the 24 px Q mark, so the row fits: at 320 px it is
  * 24 + 244.5 px of the 288 the padding leaves. `/changelog`, a static page, draws the same header in

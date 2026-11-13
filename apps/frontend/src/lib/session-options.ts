@@ -132,7 +132,10 @@ export interface TriggerValues {
   address: string;
   /** Ink and Medium once the window or the address differs; muted otherwise (D249). */
   chosen: boolean;
-  /** The lock after the values, for a private session (R1). */
+  /**
+   * The lock after the values, for a private session (frame R1 of the Figma
+   * page `Webhook Inspector · Private sessions (#228)`).
+   */
   private: boolean;
 }
 

@@ -32,20 +32,22 @@ interface ToastProps {
 }
 
 /**
- * The session page's one toast: a dark bar centred at the bottom of the
- * window, gone after a few seconds. It confirms a saved response change (C3,
- * D3) and a copy made from the request actions, and says when a copy was
- * refused or a linked request is no longer there (Figma `Webhook Inspector ·
- * Request actions`, C3, S1, S2; D182). The page shows one at a time: a new
- * one replaces the one on screen. `App` draws one more, over whichever page
+ * The session page's one toast: a dark bar centred at the bottom of the window,
+ * gone after a few seconds. It confirms a saved response change (frames C3 and
+ * D3 of the Figma page `Webhook Inspector · Editable response settings`) and a
+ * copy made from the request actions, and says when a copy was refused or a
+ * linked request is no longer there (frames C3, S1 and S2 of the Figma page
+ * `Webhook Inspector · Request actions`; D182). The page shows one at a time: a
+ * new one replaces the one on screen. `App` draws one more, over whichever page
  * a move link opened, to say what the link brought (issue #321, D276).
  *
  * A polite live region, so the change is announced without taking focus from
  * wherever the viewer went next. A response change reports what is now
  * configured, never that a sender received anything (D103).
  *
- * On a phone it spans the screen 16 px from each edge and from the bottom,
- * with the same words (5C, D157).
+ * On a phone it spans the screen 16 px from each edge and from the bottom, with
+ * the same words (frame 5C of the Figma page `Webhook Inspector · Tablet and
+ * phone`, D157).
  */
 export function Toast({ message, onDismiss }: ToastProps) {
   const m = useMessages();

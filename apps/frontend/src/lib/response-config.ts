@@ -224,8 +224,9 @@ export function validateResponseForm(
   const hasBody = bodyText !== '';
 
   // Refused rather than dropped later: the reply would not carry the body the
-  // session was configured with (D101). Stated on the body and naming the status
-  // that forbids it, in the words frame D5 gives the settings editor (D150).
+  // session was configured with (D101). Stated on the body and naming the
+  // status that forbids it, in the words frame D5 of the Figma page `Webhook
+  // Inspector · Editable response settings` gives the settings editor (D150).
   if (status !== null && STATUSES_WITHOUT_BODY.includes(status) && hasBody) {
     errors.body = m.config.bodyForbidden(status);
   }

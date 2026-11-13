@@ -106,13 +106,14 @@ test('Delete all clears the session on the server and the emptiness survives a r
 });
 
 /**
- * Issue #55, D157, frame 2A″: on a phone (375 and 393 px) a row is 76 px, line
- * 1 holds the method, the short id and the full time, line 2 the status,
- * address and size, and the `×` is a 44 × 44 target in the row's bottom-right
- * corner, starting below line 1, its glyph ending where the time ends, 16 px
- * from the row's edge. A tap on the row outside it opens the request; a tap on
- * it deletes at once (D029). 320 px does not scroll sideways, 768 px keeps the
- * tablet's 64 px row with the `×` in a column of its own (7B), and 1440 px the
+ * Issue #55, D157, frame 2A″ of the Figma page `Webhook Inspector · Tablet and
+ * phone`: on a phone (375 and 393 px) a row is 76 px, line 1 holds the method,
+ * the short id and the full time, line 2 the status, address and size, and the
+ * `×` is a 44 × 44 target in the row's bottom-right corner, starting below
+ * line 1, its glyph ending where the time ends, 16 px from the row's edge. A
+ * tap on the row outside it opens the request; a tap on it deletes at once
+ * (D029). 320 px does not scroll sideways, 768 px keeps the tablet's 64 px row
+ * with the `×` in a column of its own (frame 7B of that page), and 1440 px the
  * desktop's 57 px row with its 30 px mark over the top-right corner (D030).
  * Nothing here compares pixels; the desktop's identity with the previous
  * version is checked by screenshot when the row changes.
