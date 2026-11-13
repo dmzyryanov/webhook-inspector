@@ -14,6 +14,9 @@ const BODY_TOKEN = 'tok-48213-zq';
  * words in the request's body and never in its URL: a webhook whose body
  * holds a token is found by typing it, with nothing highlighted, and a
  * shorter word asks the server nothing.
+ *
+ * The Figma frames the search's steps cite, A1, A4.3, A4.5 and A4.6, are
+ * frames of the Figma page `Webhook Inspector · Body and header search`.
  */
 test('The list filter narrows the rows, finds a body on the server, and clears again', async ({
   page,
@@ -114,7 +117,7 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   expect(apiCalls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
     `POST ${searchPath}`,
   ]);
-  // A fast search shows neither a spinner nor a notice (A1).
+  // A fast search shows neither a spinner nor a notice (Figma frame A1).
   await expect(page.getByTestId('filter-spinner')).toHaveCount(0);
   await expect(page.getByTestId('search-notice')).toHaveCount(0);
   await expect(page.getByTestId('filter-count')).toHaveText('2 of 4 / 1000');
@@ -130,7 +133,7 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   // A token only a body holds: the request is found on the server, and
-  // nothing in its row is highlighted (A1, D191).
+  // nothing in its row is highlighted (Figma frame A1, D191).
   await field.fill(BODY_TOKEN);
   await expect(requestRow(page, withToken)).toBeVisible();
 
@@ -152,7 +155,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(page.locator('mark')).toHaveText(['POST']);
 
   // Raw is matched case-sensitively: the same token in capitals is nowhere,
-  // and the empty result says that headers and bodies were searched (A4.5).
+  // and the empty result says that headers and bodies were searched (Figma
+  // frame A4.5).
   await field.fill(BODY_TOKEN.toUpperCase());
   await expect(page.getByText(`No requests match “${BODY_TOKEN.toUpperCase()}”`)).toBeVisible();
   await expect(page.getByText('Headers and bodies were searched too.')).toBeVisible();
@@ -222,8 +226,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(requestRow(page, root)).toBeVisible();
 
   // Headers and bodies not searched: the notice says why and offers Retry,
-  // and the rows the list fields match stay under it (A4.3). The route is
-  // answered here as a backend without it answers, during a rollout.
+  // and the rows the list fields match stay under it (Figma frame A4.3). The
+  // route is answered here as a backend without it answers, during a rollout.
   await page.route(`**${searchPath}`, (route) =>
     route.fulfill({
       status: 404,
@@ -241,7 +245,8 @@ test('The list filter narrows the rows, finds a body on the server, and clears a
   await expect(requestRow(page, stripeTwo)).toBeVisible();
   await expect(page.getByTestId('filter-count')).toHaveText('2 of 5 / 1000');
 
-  // With no list-field match the reason and Retry are in the empty result (A4.6).
+  // With no list-field match the reason and Retry are in the empty result
+  // (Figma frame A4.6).
   await field.fill(BODY_TOKEN);
   await expect(page.getByText(`No requests match “${BODY_TOKEN}”`)).toBeVisible();
   await expect(page.getByText('Headers and bodies not searched: the search failed.')).toBeVisible();

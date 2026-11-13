@@ -98,10 +98,11 @@ interface RequestListProps {
   onDelete: (id: string) => void;
   onClear: () => void;
   /**
-   * Picking a request to compare the open one with (A1, A4, D186), or `null`.
-   * The header says so and offers `Cancel` in place of Delete all, no row
-   * shows `×`, and the open row says `open` and cannot be chosen; a click on
-   * any other row is `onSelect`, which chooses it.
+   * Picking a request to compare the open one with (frames A1 and A4 of the
+   * Figma page `Webhook Inspector · Compare requests`, D186), or `null`. The
+   * header says so and offers `Cancel` in place of Delete all, no row shows
+   * `×`, and the open row says `open` and cannot be chosen; a click on any
+   * other row is `onSelect`, which chooses it.
    */
   picking: ListPicking | null;
   /** The open (`−`) and chosen (`+`) rows while a comparison is shown, or `null`. */
@@ -114,7 +115,10 @@ interface RequestListProps {
   className?: string;
 }
 
-/** What the list header says while picking (A1, A4). */
+/**
+ * What the list header says while picking (frames A1 and A4 of the Figma page
+ * `Webhook Inspector · Compare requests`).
+ */
 export interface ListPicking {
   /** The open request, which cannot be chosen. */
   openId: string;
@@ -216,15 +220,17 @@ export function RequestList({
 
       {/* Shown only when headers and bodies were not searched, and gone with
           the next search that succeeds; the rows under it are the list-field
-          matches (A4.3, A4.4, A4.8). With no such row the reason is in the
-          empty result instead (A4.6). */}
+          matches (frames A4.3, A4.4 and A4.8 of the Figma page `Webhook
+          Inspector · Body and header search`). With no such row the reason is
+          in the empty result instead (frame A4.6). */}
       {notSearched !== null && requests.length > 0 ? (
         <SearchNotice reason={notSearched} onRetry={search.onRetry} />
       ) : null}
 
       {requests.length === 0 && filtered && search.status === 'pending' ? (
         // No list field matches, and what the headers and bodies hold is
-        // still to come: not yet `No requests match` (A4.2).
+        // still to come: not yet `No requests match` (frame A4.2 of the Figma
+        // page `Webhook Inspector · Body and header search`).
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <p role="status" className="text-[13px] text-ink-muted">
             {m.filter.searching}
@@ -238,8 +244,9 @@ export function RequestList({
             {m.list.noMatch(query.trim())}
           </p>
           {/* One line more than #70's empty result, and only when a word was
-              searchable: that headers and bodies were searched too (A4.5,
-              A4.9), or why they were not (A4.6). */}
+              searchable: that headers and bodies were searched too (frames
+              A4.5 and A4.9 of the Figma page `Webhook Inspector · Body and
+              header search`), or why they were not (frame A4.6). */}
           {notSearched !== null ? (
             <p role="status" className="max-w-[300px] text-[13px] text-notice-text">
               <NotSearchedText reason={notSearched} />
@@ -247,7 +254,9 @@ export function RequestList({
           ) : search.status === 'searched' ? (
             <p className="text-[13px] text-ink-muted">{m.filter.searchedToo}</p>
           ) : null}
-          {/* 20 px between the two labels, inside their 44 px targets (A4.6). */}
+          {/* 20 px between the two labels, inside their 44 px targets (frame
+              A4.6 of the Figma page `Webhook Inspector · Body and header
+              search`). */}
           <div className="flex items-center justify-center -space-x-1">
             {notSearched !== null && canRetrySearch(notSearched) ? (
               <EmptyResultAction onClick={search.onRetry}>{m.list.retry}</EmptyResultAction>
@@ -298,7 +307,8 @@ export function RequestList({
 /**
  * `Headers and bodies not searched:` and its reason. The reason is a whole
  * part: it continues the line where it fits there whole, and otherwise starts
- * a new one (A4.6, A4.8).
+ * a new one (frames A4.6 and A4.8 of the Figma page `Webhook Inspector · Body
+ * and header search`).
  */
 function NotSearchedText({ reason }: { reason: NotSearchedReason }) {
   const m = useMessages();
@@ -313,8 +323,9 @@ function NotSearchedText({ reason }: { reason: NotSearchedReason }) {
 
 /**
  * The notice at the top of the list, under the header: amber, with an `!`
- * disc, the reason, and Retry where another attempt can change it (A4.3, A4.4,
- * A4.8). Announced politely, as a status and not an alert: the list-field
+ * disc, the reason, and Retry where another attempt can change it (frames
+ * A4.3, A4.4 and A4.8 of the Figma page `Webhook Inspector · Body and header
+ * search`). Announced politely, as a status and not an alert: the list-field
  * filter still works. Retry's target is the notice's whole height and reaches
  * its right edge, while its text stays where the frames draw it.
  */
@@ -349,7 +360,11 @@ function SearchNotice({ reason, onRetry }: { reason: NotSearchedReason; onRetry:
   );
 }
 
-/** An action under the empty result: Retry, Clear filter (2G, A4.5, A4.6). */
+/**
+ * An action under the empty result: Retry, Clear filter (frame 2G of the Figma
+ * page `Webhook Inspector · Request list filter`, and frames A4.5 and A4.6 of
+ * `Webhook Inspector · Body and header search`).
+ */
 function EmptyResultAction({ onClick, children }: { onClick: () => void; children: string }) {
   return (
     <button
@@ -392,9 +407,10 @@ interface ListHeaderProps {
  * Delete all follows the count (7B, D157).
  *
  * The field also searches headers and bodies, on the server (D191), and its
- * placeholder says so, in the words a phone has room for (A4.1, A4.7). While
+ * placeholder says so, in the words a phone has room for (frames A4.1 and
+ * A4.7 of the Figma page `Webhook Inspector · Body and header search`). While
  * such a search has run for over 300 ms, a 12 px spinner takes the count's
- * place (A4.2); it is announced as the count is, politely.
+ * place (frame A4.2); it is announced as the count is, politely.
  */
 function ListHeader({
   shown,
@@ -427,7 +443,8 @@ function ListHeader({
       )}
     >
       {/* While picking, the heading and the count give way to what the list
-          is for now (A1, A4); the filter field still takes their place. */}
+          is for now (frames A1 and A4 of the Figma page `Webhook Inspector ·
+          Compare requests`); the filter field still takes their place. */}
       {pickingTitle ? (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <p className="text-[15px] font-semibold leading-[18px] text-ink">{m.list.compareWith}</p>
@@ -638,7 +655,8 @@ function RequestRow({
         // A selected row is by definition one the viewer has opened, so the two
         // backgrounds cannot collide. An unread row keeps its shading on hover;
         // the design's hover belongs to the plain row. While picking, a hovered
-        // candidate is tinted, unread or not (A1).
+        // candidate is tinted, unread or not (frame A1 of the Figma page
+        // `Webhook Inspector · Compare requests`).
         selected ? 'bg-row-selected' : unread ? 'bg-row-unread' : 'bg-white hover:bg-canvas',
         picking === 'candidate' && 'lg:hover:bg-row-pick-hover',
       )}
@@ -649,7 +667,8 @@ function RequestRow({
         type="button"
         data-request-id={request.id}
         // The open row cannot be chosen while picking; it stays focusable and
-        // says why, rather than vanishing from the keyboard's path (A1).
+        // says why, rather than vanishing from the keyboard's path (frame A1 of
+        // the Figma page `Webhook Inspector · Compare requests`).
         aria-disabled={picking === 'open' ? true : undefined}
         onClick={picking === 'open' ? undefined : onSelect}
         className="flex h-[57px] w-full flex-col justify-center px-4 text-left max-lg:min-w-0 max-lg:flex-1 max-lg:overflow-hidden max-md:h-[75px] md:max-lg:h-16 md:max-lg:pr-0 md:max-lg:pl-5"
@@ -736,7 +755,8 @@ function RequestRow({
       </span>
 
       {picking === null ? null : (
-        /* While picking there is no `×` (A1, A4). The open row says `open`
+        /* While picking there is no `×` (frames A1 and A4 of the Figma page
+           `Webhook Inspector · Compare requests`). The open row says `open`
            where the desktop's `×` was, at the end of a phone's line 2, and in
            the tablet's `×` column; a hovered or focused candidate shows
            `Compare` there on the desktop. */

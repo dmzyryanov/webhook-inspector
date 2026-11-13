@@ -11,6 +11,10 @@ import { createSessionViaApi, receiveUrlOf, requestRow, storedRequestId } from '
  * the chosen one `+`, `Change` picks again, `Close` returns to the open
  * request, a deleted chosen request says it is gone, and identical requests say
  * so — at 1440 px and at 375 px, with nothing scrolling sideways at 320 px.
+ *
+ * The steps below name the frames of that Figma page they check: A1 and A4,
+ * picking at 1440 and 375 px; A2, A3 and A5, the comparison at 1440, 768 and
+ * 375 px; D1, identical requests; D4, a chosen request that is gone.
  */
 
 interface Sent {
@@ -74,8 +78,8 @@ test.describe('E2E-11 — comparing two requests', () => {
     await expect(menu.getByRole('menuitem').last()).toHaveText('Compare with…');
     await compareItem.click();
 
-    // A1: the header, `Cancel` in place of Delete all, no `×` on any row, and
-    // the open row cannot be chosen.
+    // Figma frame A1: the header, `Cancel` in place of Delete all, no `×` on
+    // any row, and the open row cannot be chosen.
     await expect(picker).toContainText('Compare with…');
     // What the page shows, not its text: the phone's wording is display: none.
     await expect(picker).toContainText(`Choose a request for POST ${short(first)}`, {
@@ -135,8 +139,8 @@ test.describe('E2E-11 — comparing two requests', () => {
       .toEqual([`GET /api/sessions/${sessionId}/requests/${second}`]);
     await page.getByRole('button', { name: 'Clear filter' }).first().click();
 
-    // A2: the open request `−` and `open`, the chosen one `+`, each with its
-    // method, short id and size; both rows marked in the list.
+    // Figma frame A2: the open request `−` and `open`, the chosen one `+`, each
+    // with its method, short id and size; both rows marked in the list.
     const openLine = page.getByTestId('compared-open');
     const chosenLine = page.getByTestId('compared-chosen');
 
@@ -189,7 +193,8 @@ test.describe('E2E-11 — comparing two requests', () => {
     );
 
     // The blank line between the head and the body keeps a line's height, as
-    // in the plain `Raw` view (A3): every row is at least 20 px tall.
+    // in the plain `Raw` view and in Figma frame A3, the `Raw` comparison:
+    // every row is at least 20 px tall.
     const rowHeights = await shown.locator('[data-diff]').evaluateAll((rows) =>
       rows.map((row) => ({
         empty: row.querySelector('[data-testid="diff-text"]')?.textContent === '',
@@ -239,7 +244,7 @@ test.describe('E2E-11 — comparing two requests', () => {
     await expect(page.getByTestId('compare-bar')).toHaveCount(0);
     await expect(page.getByTestId('mark-added')).toHaveCount(0);
 
-    // D4: the chosen request deleted while compared.
+    // Figma frame D4: the chosen request deleted while compared.
     await actions.click();
     await compareItem.click();
     await requestRow(page, second).click();
@@ -255,7 +260,7 @@ test.describe('E2E-11 — comparing two requests', () => {
     await page.getByRole('button', { name: 'Choose another' }).click();
     await expect(picker).toBeVisible();
 
-    // D1: an identical request.
+    // Figma frame D1: an identical request.
     const third = await send(request, sessionId, { amount: '4200', attempt: '3' });
 
     await requestRow(page, third).click();
@@ -292,7 +297,7 @@ test.describe('E2E-11 — comparing two requests', () => {
     await expect(sheet.getByRole('button').last()).toHaveText('Compare with…');
     await sheet.getByRole('button', { name: 'Compare with…', exact: true }).click();
 
-    // A4: the list screen in picking mode.
+    // Figma frame A4: the list screen in picking mode.
     await expect(picker).toBeVisible();
     await expect(picker).toContainText(`Tap a request for ${short(first)}`, { useInnerText: true });
     await expect(picker).not.toContainText('Choose a request for', { useInnerText: true });
@@ -312,7 +317,7 @@ test.describe('E2E-11 — comparing two requests', () => {
     await expect(backBar).toBeVisible();
     await expect(page.getByTestId('detail-method')).toBeVisible();
 
-    // A5: a tapped row shows the comparison in the detail screen.
+    // Figma frame A5: a tapped row shows the comparison in the detail screen.
     await more.click();
     await sheet.getByRole('button', { name: 'Compare with…', exact: true }).click();
     await requestRow(page, second).click();

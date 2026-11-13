@@ -260,7 +260,8 @@ function SessionView({ sessionId, onReopen }: SessionViewProps) {
     listSection,
   });
   const picking = comparison?.phase === 'picking' && selectedId !== null;
-  // Below 1024 px picking is the list screen, over the open request (A4, D186).
+  // Below 1024 px picking is the list screen, over the open request (frame A4
+  // of the Figma page `Webhook Inspector · Compare requests`, D186).
   const view = picking ? 'list' : pushView(selectedId);
 
   /*

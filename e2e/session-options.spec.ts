@@ -10,7 +10,9 @@ import {
 
 /**
  * E2E-20 — the new session's options on the home page (issue #216, D249;
- * Figma `Webhook Inspector · New session options`, direction A).
+ * Figma `Webhook Inspector · New session options`, direction A, page
+ * `819:23`, whose frames A1–A3 and S1 at 1440 px and P1–P5 on a phone name
+ * the steps below).
  *
  * What a creation sends with each choice, the trigger's wording and the line
  * on the session card are unit-tested (`session-options.test.ts`,
@@ -142,7 +144,7 @@ test.describe('E2E-20 — the new session’s options', () => {
 
     await page.goto('/');
 
-    // A1: both values in sight, muted, and the tile's own hint.
+    // Figma frame A1: both values in sight, muted, and the tile's own hint.
     await expect(trigger(page)).toHaveAccessibleName('New session options: 7 days · IP stored');
     expect(await tone(trigger(page).getByText('7 days', { exact: true }))).toEqual({
       color: MUTED,
@@ -159,7 +161,8 @@ test.describe('E2E-20 — the new session’s options', () => {
     await expect(page.getByText(TODAY, { exact: true })).toBeVisible();
     await expect(page.getByText('IP NOT STORED')).toHaveCount(0);
 
-    // A2: the menu, its choices by role and name; choosing does not close it.
+    // Figma frame A2: the menu, its choices by role and name; choosing does
+    // not close it.
     await page.goto('/');
     await trigger(page).click();
     await expect(menu(page)).toBeVisible();
@@ -183,7 +186,8 @@ test.describe('E2E-20 — the new session’s options', () => {
     await expect(menu(page)).toBeVisible();
     await expect(storeIp).toHaveAttribute('aria-checked', 'false');
 
-    // A3: Escape closes it and focus returns; the values in ink, the hint replaced.
+    // Figma frame A3: Escape closes it and focus returns; the values in ink,
+    // the hint replaced.
     await page.keyboard.press('Escape');
     await expect(menu(page)).toBeHidden();
     await expect(trigger(page)).toBeFocused();
@@ -200,7 +204,8 @@ test.describe('E2E-20 — the new session’s options', () => {
     expect(chosen.postData()).toBe('{"expiresAfterIdleSeconds":3600,"storeSourceIp":false}');
     expect(chosen.headers()['content-type']).toBe('application/json');
 
-    // S1: the card states the rule and the marker, on one line from 768 px.
+    // Figma frame S1: the card states the rule and the marker, on one line
+    // from 768 px.
     const sessionId = await sessionIdFromPage(page);
     const read = await page.request.get(`/api/sessions/${sessionId}`);
     const session = (await read.json()) as Record<string, unknown>;
@@ -516,7 +521,7 @@ test.describe('E2E-20 — the new session’s options', () => {
       throw new Error('375 px: the tile or the trigger is not drawn');
     }
 
-    // P1: a line 8 px under the whole tile, right-aligned with it.
+    // Figma frame P1: a line 8 px under the whole tile, right-aligned with it.
     expect(Math.abs(triggerBox.y - (tileBox.y + tileBox.height) - 8)).toBeLessThanOrEqual(0.5);
     expect(
       Math.abs(triggerBox.x + triggerBox.width - (tileBox.x + tileBox.width)),
@@ -524,7 +529,7 @@ test.describe('E2E-20 — the new session’s options', () => {
     expect(Math.round(triggerBox.height)).toBe(18);
     await expect(tile(page)).toHaveAccessibleName('Generate URL');
 
-    // P2: the sheet; choosing does not close it.
+    // Figma frame P2: the sheet; choosing does not close it.
     await trigger(page).click();
 
     const sheet = page.getByRole('dialog', { name: 'New session options' });
@@ -577,7 +582,7 @@ test.describe('E2E-20 — the new session’s options', () => {
     });
     await expect(sheet).toBeHidden();
 
-    // P3: the card's marker is a line of its own below 768 px.
+    // Figma frame P3: the card's marker is a line of its own below 768 px.
     await generate(page, sent);
 
     const marker = page.getByText('IP NOT STORED', { exact: true });
@@ -594,7 +599,7 @@ test.describe('E2E-20 — the new session’s options', () => {
     expect(Math.abs(markerBox.x - lineBox.x)).toBeLessThanOrEqual(0.5);
     expect(markerBox.y).toBeGreaterThan(lineBox.y + 5);
 
-    // P5: the longest values, in Russian, at 320 px.
+    // Figma frame P5: the longest values, in Russian, at 320 px.
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto('/ru/');
 

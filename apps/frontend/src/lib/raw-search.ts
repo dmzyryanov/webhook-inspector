@@ -41,20 +41,31 @@ export type NotSearchedReason = 'timeout' | 'busy' | 'failed' | RawSearchRefusal
 
 /*
  * The texts in English; the list pane draws the dictionary's `filter` (D222).
+ * The frames cited with them, A4.1 to A4.9, are frames of the Figma page
+ * `Webhook Inspector · Body and header search`, where each text is drawn.
  */
 
-/** The placeholder of the filter field: desktop and tablet, and a phone (A4.1, A4.7). */
+/**
+ * The placeholder of the filter field: desktop and tablet, and a phone (Figma
+ * frames A4.1 and A4.7).
+ */
 export const FILTER_PLACEHOLDER = en.filter.placeholder;
 export const FILTER_PLACEHOLDER_PHONE = en.filter.placeholderPhone;
 
-/** The list's text while Raw is being searched and no list field matches (A4.2). */
+/**
+ * The list's text while Raw is being searched and no list field matches
+ * (Figma frame A4.2).
+ */
 export const SEARCHING_TEXT = en.filter.searching;
-/** The line the empty result adds once Raw was searched (A4.5, A4.9). */
+/** The line the empty result adds once Raw was searched (Figma frames A4.5, A4.9). */
 export const SEARCHED_TOO_TEXT = en.filter.searchedToo;
 /** What every not-searched text opens with; the reason follows as a whole part. */
 export const NOT_SEARCHED_LEAD = en.filter.notSearchedLead;
 
-/** The reason, as the notice and the empty state finish the sentence (A4.3, A4.4). */
+/**
+ * The reason, as the notice and the empty state finish the sentence (Figma
+ * frames A4.3 and A4.4).
+ */
 export function notSearchedReasonText(reason: NotSearchedReason, m: Messages = en): string {
   switch (reason) {
     case 'timeout':

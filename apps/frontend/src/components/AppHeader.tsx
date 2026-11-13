@@ -151,7 +151,10 @@ export function AppHeader({ operator = OPERATOR }: { operator?: Operator }) {
 /**
  * The drawn `↗` after a link that opens a new tab: the Inter subsets the page
  * loads have no U+2197 (D158). A 10 px box, as wide as the glyph it stands
- * for, so `API docs ↗` keeps A1's 71 px and `Status ↗` is the frames' 56.
+ * for, so `API docs ↗` keeps the 71 px it has in frames A1 (`418:12`,
+ * `418:44`) of the Figma page `Webhook Inspector · Polish and API docs link`,
+ * and `Status ↗` the 56 px it has in direction B′ of the Figma page
+ * `Webhook Inspector · Status page link (#99)`.
  */
 function NewTabArrow() {
   return (
