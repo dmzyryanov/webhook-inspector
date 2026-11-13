@@ -612,6 +612,54 @@ describe('the head a build writes (issue #380)', () => {
   });
 });
 
+describe('the body a build writes without the operator’s texts (issue #464)', () => {
+  const copyBody = renderAboutBody(aboutEnglish(NO_OPERATOR));
+  const copyRussianBody = renderAboutBody(aboutRussian(NO_OPERATOR));
+
+  /** A body's eyebrow, `<p class="eyebrow">…</p>`, and its story, `<div class="story">…</div>`, each found once. */
+  const eyebrowAndStory = (html: string) => [
+    [...html.matchAll(/<p class="eyebrow">[^<]*<\/p>/g)].map((match) => match[0]),
+    [...html.matchAll(/<div class="story">[\s\S]*?<\/div>/g)].map((match) => match[0]),
+  ];
+
+  it('names the service in the eyebrow and the paragraph on AI agents of both pages, byte for byte', () => {
+    assert.deepEqual(eyebrowAndStory(copyBody), [
+      ['<p class="eyebrow">ABOUT WEBHOOK INSPECTOR</p>'],
+      [
+        `<div class="story"><p>It is written by AI agents and made for them too: an AI agent can work with Webhook Inspector through its MCP <span class="keep">server, <code>${MCP_SERVER_URL}</code>.</span></p></div>`,
+      ],
+    ]);
+    assert.deepEqual(eyebrowAndStory(copyRussianBody), [
+      ['<p class="eyebrow">О\u00a0WEBHOOK INSPECTOR</p>'],
+      [
+        `<div class="story"><p>Код пишут ИИ-агенты, и\u00a0сервис сделан в\u00a0том числе для них: агент может работать с\u00a0Webhook Inspector через <span class="keep">MCP-сервер <code>${MCP_SERVER_URL}</code>.</span></p></div>`,
+      ],
+    ]);
+
+    for (const html of [copyBody, copyRussianBody]) {
+      assert.doesNotMatch(element('main', html), /QA\s*TOOLS/i);
+    }
+  });
+
+  it('keeps production’s eyebrow and paragraph on AI agents with the texts, in both pages', () => {
+    assert.equal(eyebrowAndStory(body)[0]?.[0], '<p class="eyebrow">ABOUT QA TOOLS</p>');
+    assert.equal(
+      eyebrowAndStory(russianBody)[0]?.[0],
+      '<p class="eyebrow">О\u00a0QA\u00a0TOOLS</p>',
+    );
+    assert.ok(
+      body.includes(
+        `<p>It is written by AI agents and made for them too: an AI agent can work with QA Tools through its MCP <span class="keep">server, <code>${MCP_SERVER_URL}</code>.</span></p>`,
+      ),
+    );
+    assert.ok(
+      russianBody.includes(
+        `<p>Код пишут ИИ-агенты, и\u00a0сервис сделан в\u00a0том числе для них: агент может работать с\u00a0QA\u00a0Tools через <span class="keep">MCP-сервер <code>${MCP_SERVER_URL}</code>.</span></p>`,
+      ),
+    );
+  });
+});
+
 describe('which page a template is', () => {
   it('writes /about into about/index.html and /ru/about into ru/about/index.html', () => {
     assert.deepEqual(ABOUT_PAGES, [ABOUT_EN, ABOUT_RU]);

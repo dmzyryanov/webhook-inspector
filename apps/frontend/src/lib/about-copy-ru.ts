@@ -35,7 +35,13 @@ import { OPERATOR, type Operator } from './operator.ts';
  * платит` and `Проверка безопасности` and, since issue #380, the line of
  * `Как это сделано` in the first person without the operator's texts, under
  * a head that names the service, approved with the English on 2026-11-10;
- * the third paragraph without a contact address.
+ * the third paragraph without a contact address. Since issue #464 such a
+ * page's eyebrow and second paragraph name the service too, approved with
+ * the English on 2026-11-12: `О WEBHOOK INSPECTOR`, its one-letter `О`
+ * joined to the next word, and `Webhook Inspector` in place of `QA Tools`,
+ * every other word and joint as they are. `QA Tools` is the name the rules
+ * above keep whole; the service's name keeps its ordinary space, as the
+ * copy's title and description write it.
  */
 export const ABOUT_TEXT_RU: AboutText = {
   head: {
@@ -46,6 +52,8 @@ export const ABOUT_TEXT_RU: AboutText = {
     title: 'О Webhook Inspector',
     description: 'Как устроен Webhook Inspector и что происходит с вашими данными.',
   },
+  eyebrow: 'О\u00a0QA\u00a0TOOLS',
+  eyebrowWithoutTexts: 'О\u00a0WEBHOOK INSPECTOR',
   whoRunsIt: [
     {
       kind: 'text',
@@ -56,6 +64,14 @@ export const ABOUT_TEXT_RU: AboutText = {
     {
       kind: 'text',
       text: 'Код пишут ИИ-агенты, и\u00a0сервис сделан в\u00a0том числе для них: агент может работать с\u00a0QA\u00a0Tools через MCP-сервер ',
+    },
+    { kind: 'code', text: MCP_SERVER_URL },
+    { kind: 'text', text: '.' },
+  ],
+  madeForAgentsWithoutTexts: [
+    {
+      kind: 'text',
+      text: 'Код пишут ИИ-агенты, и\u00a0сервис сделан в\u00a0том числе для них: агент может работать с\u00a0Webhook Inspector через MCP-сервер ',
     },
     { kind: 'code', text: MCP_SERVER_URL },
     { kind: 'text', text: '.' },
@@ -96,9 +112,9 @@ export const ABOUT_TEXT_RU: AboutText = {
   },
 };
 
-/** The Russian page, `/ru/about`, for `operator`'s build (issues #369, #380). */
+/** The Russian page, `/ru/about`, for `operator`'s build (issues #369, #380, #464). */
 export function aboutRussian(operator: Operator = OPERATOR): AboutCopy {
-  const { title, description, story, facts } = composeAbout(ABOUT_TEXT_RU, operator);
+  const { title, description, eyebrow, story, facts } = composeAbout(ABOUT_TEXT_RU, operator);
 
   return {
     lang: 'ru',
@@ -106,7 +122,7 @@ export function aboutRussian(operator: Operator = OPERATOR): AboutCopy {
     title,
     description,
     url: `${APP_ORIGIN}/ru/about`,
-    eyebrow: 'О\u00a0QA\u00a0TOOLS',
+    eyebrow,
     heading: 'От тестировщика\u00a0— тестировщикам',
     story,
     facts,
@@ -130,8 +146,10 @@ export const ABOUT_RU_APPROVED_AGAINST =
  * The SHA-256 of the English text of a page built without the operator's
  * texts (`aboutCopyText(aboutEnglish(NO_OPERATOR))` for production's
  * origins, hex), which the Russian of such a page was approved against on
- * 2026-11-10 (issue #380): its head and the parts it keeps. It holds that
- * page to D255's rule as the value above holds production's.
+ * 2026-11-10 (issue #380), its head and the parts it keeps, and again on
+ * 2026-11-12 (issue #464), its eyebrow and second paragraph naming the
+ * service. It holds that page to D255's rule as the value above holds
+ * production's.
  */
 export const ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST =
-  'd70e56e4fa87a551c66d7159ea8671df2a6610b1b561dfc2ba97e0eaed276e8b';
+  'a18e45ab9e2224049284973e2eaa39ad4c9b64468dd6e5a34ced24ed92fc10ba';

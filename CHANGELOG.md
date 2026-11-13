@@ -126,9 +126,9 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
-## 1.19.40
+## 1.19.41
 
-2026-11-12
+2026-11-13
 
 **The server's log now records the address of a sender that sends far more
 requests than the limits allow, at most once a minute, as 1.0.11 announced.**
@@ -145,6 +145,19 @@ on the server until the server is next updated and is not backed up or sent
 anywhere. The Privacy Policy's `Logs` says so in its first and last lines, and
 the announcement of the change, now made, has left `Changes to this policy`.
 Every answer is as before. (#215, D224)
+
+## 1.19.40
+
+2026-11-12
+
+**Nothing changes on this site; a copy of the inspector built from its source
+now names itself, not this site, in its about pages' eyebrow and in their
+paragraph on AI agents.** A copy built without this site's texts heads its
+about page `ABOUT WEBHOOK INSPECTOR`, in Russian `О WEBHOOK INSPECTOR`, where
+this site's reads `ABOUT QA TOOLS`, and says that an AI agent can work with
+Webhook Inspector through its MCP server where this site's names QA Tools,
+every other word as it is. This site's about pages are exactly as before.
+(#464)
 
 ## 1.19.39
 

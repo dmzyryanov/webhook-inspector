@@ -109,7 +109,10 @@ what to build: such a copy titles them `About Webhook Inspector` and
 `О Webhook Inspector`, describes them as `How Webhook Inspector is built and
 what happens to your data.` and `Как устроен Webhook Inspector и что
 происходит с вашими данными.`, and its `How it's built` keeps its first and
-last lines.
+last lines. Since 1.19.40 (issue #464) it covers their eyebrow and their paragraph on
+AI agents too, which name QA Tools: such a copy's eyebrows read
+`ABOUT WEBHOOK INSPECTOR` and `О WEBHOOK INSPECTOR`, and the paragraph says
+an AI agent can work with Webhook Inspector through its MCP server.
 
 ## Footer
 
@@ -309,7 +312,13 @@ person on who decides what to build, keeping the other two, and its title is `Ab
 neither QA Tools nor who runs or pays for it. Its Russian version is the same:
 `О Webhook Inspector`, `Как устроен Webhook Inspector и что происходит с
 вашими данными.`, and `Как это сделано` without its line beginning `Я решаю`.
-This site's pages are unchanged.
+Since v1.19.40 (issue #464), in the owner's words of 2026-11-12, its eyebrow is
+`ABOUT WEBHOOK INSPECTOR`, in Russian `О WEBHOOK INSPECTOR`, and its paragraph
+on AI agents names Webhook Inspector where this site's names QA Tools, every
+other word as it is: `an AI agent can work with Webhook Inspector through its
+MCP server`, in Russian `агент может работать с Webhook Inspector через
+MCP-сервер`. So no text of such a page names QA Tools, its tab title
+included. This site's pages are unchanged.
 
 Since v1.13.0 (issue #170, D255) the page has a Russian version,
 `https://qa-tools.ru/ru/about`, in the owner's words, approved word for word:
@@ -416,7 +425,7 @@ JavaScript and load nothing from another site.
     connection stays open (since v0.57.1, D227), and when an address sends far
     more requests than the limits allow the server's log records that address,
     at most once a minute, a log that stays on the server until the server is
-    next updated and is neither backed up nor sent anywhere (since v1.19.40,
+    next updated and is neither backed up nor sent anywhere (since v1.19.41,
     the owner's words of 2026-10-18, the change v1.0.11 announced, #215,
     D224).
   - **In your browser** — no cookies,
@@ -436,9 +445,9 @@ JavaScript and load nothing from another site.
     that makes QA Tools keep more data, keep it longer or share it with anyone
     new is announced on the page at least 14 days before it applies, unless the
     law requires it sooner; other changes apply when published. From v1.0.11
-    to v1.19.39 it announced the first such change: from 2 November 2026 the
+    to v1.19.40 it announced the first such change: from 2 November 2026 the
     server's log records the IP address of a sender that sends far more
-    requests than the limits allow, at most once a minute (D224); v1.19.40
+    requests than the limits allow, at most once a minute (D224); v1.19.41
     made the change, in `Logs`, and took the announcement out with it, the
     page describing the service as it works (#215). Since v1.15.14 it
     announces the second, a new provider: from 8 November 2026 mail to the

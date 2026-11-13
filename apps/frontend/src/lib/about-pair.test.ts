@@ -220,20 +220,41 @@ describe('the two about pages', () => {
       assert.notEqual(russian.title, ABOUT_RU.title);
       assert.notEqual(english.description, ABOUT_EN.description);
       assert.notEqual(russian.description, ABOUT_RU.description);
-      // The eyebrow, the heading and the address are the same in every build.
+      // The heading and the address are the same in every build; the
+      // eyebrow names the service in both, where production's names QA
+      // Tools (issue #464).
       for (const [page, whole] of [
         [english, ABOUT_EN],
         [russian, ABOUT_RU],
       ] as const) {
         assert.deepEqual(
-          [page.lang, page.path, page.url, page.eyebrow, page.heading],
-          [whole.lang, whole.path, whole.url, whole.eyebrow, whole.heading],
+          [page.lang, page.path, page.url, page.heading],
+          [whole.lang, whole.path, whole.url, whole.heading],
+        );
+        assert.notEqual(page.eyebrow, whole.eyebrow, page.lang);
+        assert.match(whole.eyebrow, /QA\sTOOLS$/, page.lang);
+        assert.match(page.eyebrow, /WEBHOOK INSPECTOR$/, page.lang);
+      }
+      // The paragraph on AI agents in both, its one name of the service
+      // replaced and nothing else.
+      for (const [page, whole] of [
+        [english, ABOUT_EN],
+        [russian, ABOUT_RU],
+      ] as const) {
+        const [copyWords, ...copyRest] = page.story[0] ?? [];
+        const [wholeWords, ...wholeRest] = whole.story[1] ?? [];
+
+        assert.deepEqual(copyRest, wholeRest, page.lang);
+        assert.equal(
+          wholeWords?.text.replace(/QA\sTools/, 'Webhook Inspector'),
+          copyWords?.text,
+          page.lang,
         );
       }
     }
   });
 
-  it('follows the English text of a page without the operator’s texts the Russian was approved against (issue #380)', () => {
+  it('follows the English text of a page without the operator’s texts the Russian was approved against (issues #380, #464)', () => {
     const english = aboutEnglish(NO_OPERATOR);
 
     assert.equal(
@@ -255,6 +276,9 @@ describe('the two about pages', () => {
         ),
       },
       { ...english, heading: english.heading.replace('tester', 'QA engineer') },
+      // Production's eyebrow, or production's paragraph on AI agents, on the copy's page.
+      { ...english, eyebrow: ABOUT_EN.eyebrow },
+      { ...english, story: [ABOUT_EN.story[1] ?? [], ...english.story.slice(1)] },
     ]) {
       assert.notEqual(sha256(aboutCopyText(page)), ABOUT_RU_WITHOUT_TEXTS_APPROVED_AGAINST);
     }

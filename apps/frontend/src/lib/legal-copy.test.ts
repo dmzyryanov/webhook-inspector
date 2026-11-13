@@ -319,8 +319,8 @@ describe('the Privacy Policy text (Scope 3)', () => {
     // what only the browser keeps applies when published (D224). The
     // announcement of the contact address's mail moving to Yandex 360 moved
     // it to 25 October (issue #275, D224), and the log line on a flooding
-    // address, the change 1.0.11 announced, to 12 November (issue #215, D224).
-    assert.equal(PRIVACY_PAGE.updated, 'Last updated 12 November 2026');
+    // address, the change 1.0.11 announced, to 13 November (issue #215, D224).
+    assert.equal(PRIVACY_PAGE.updated, 'Last updated 13 November 2026');
   });
 
   it('states the ten sections, each line its own, byte for byte', () => {

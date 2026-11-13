@@ -215,7 +215,7 @@ export function privacyPage(operator: OperatorWithTexts): LegalPage {
     heading: 'What QA\u00a0Tools keeps, and for how\u00a0long',
     introduction:
       'Everything QA\u00a0Tools stores, who can see it, where it is kept and when it is deleted. This page describes the service as it works today, and changes when it\u00a0does.',
-    updated: 'Last updated 12 November 2026',
+    updated: 'Last updated 13 November 2026',
     sections: [
       {
         label: 'What a session keeps',
