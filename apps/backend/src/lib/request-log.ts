@@ -18,8 +18,11 @@
  * sending session creations far over its limit had the backend write two
  * lines for each of hundreds of refusals a second, its 0.5 CPU used up and
  * its liveness probe unanswered (the incident of 2026-10-15); the lines were
- * measured at about a tenth of a refusal's CPU (D201's note). The address
- * is not logged either way (D201 point 7).
+ * measured at about a tenth of a refusal's CPU (D201's note). No line of
+ * the request log names the client's address either way: it names the peer
+ * the process talks to (D117), and the one line that names an address is
+ * the limits' own, written once a window for an address refused past the
+ * limit itself (#215, `modules/limits/rate-limit.ts`).
  *
  * Every line of a listener passes `writes` first, from the logger's
  * `logMethod` hook (`createApp`), keyed by the request's own logger, which

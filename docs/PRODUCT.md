@@ -415,14 +415,19 @@ JavaScript and load nothing from another site.
     rest indefinitely (the owner's line of 2026-10-20, published at once: it
     keeps less, D254). **Logs** — the
     server's log records each request's method, URL and time, not the sender's
-    IP; the URL includes the first eight characters of the session id, not the
-    whole id (since v0.55.1, D217); the proxy in front of the server records a
-    sender's IP address in its error log when a connection fails, for example
-    when the sender drops it mid-request, and that log stays on the server until
-    the proxy restarts, neither backed up nor sent anywhere (since v0.57.5, a
-    correction, D231); limits hold an address in memory for up to a minute, or
-    while its connection stays open, and write it nowhere (since v0.57.1,
-    D227).
+    IP but as the section's last line says; the URL includes the first eight
+    characters of the session id, not the whole id (since v0.55.1, D217); the
+    proxy in front of the server records a sender's IP address in its error
+    log when a connection fails, for example when the sender drops it
+    mid-request, and that log stays on the server until the proxy restarts,
+    neither backed up nor sent anywhere (since v0.57.5, a correction, D231);
+    limits hold an address in memory for up to a minute, or while its
+    connection stays open (since v0.57.1, D227), and when an address sends far
+    more requests than the limits allow the server's log records that address,
+    at most once a minute, a log that stays on the server until the server is
+    next updated and is neither backed up nor sent anywhere (since v1.19.41,
+    the owner's words of 2026-10-18, the change v1.0.11 announced, #215,
+    D224).
   - **In your browser** — no cookies,
     ads, analytics or other third-party scripts; local storage keeps the
     sessions opened, the access keys of private sessions (since v1.15.0,
@@ -439,14 +444,17 @@ JavaScript and load nothing from another site.
   - **Changes to this policy** — a change
     that makes QA Tools keep more data, keep it longer or share it with anyone
     new is announced on the page at least 14 days before it applies, unless the
-    law requires it sooner; other changes apply when published. Since v1.0.11 it
-    announces the first such change: from 2 November 2026 the server's log
-    records the IP address of a sender that sends far more requests than the
-    limits allow, at most once a minute (D224). Since v1.15.14 it announces the
-    second, a new provider: from 8 November 2026 mail to the contact address is
-    received by Yandex 360, in Russia, instead of Apple iCloud Mail (issue #275,
-    D224); until then `Where it is stored` names iCloud, and #151 makes the
-    switch on or after that day. **Contact** — as on `/terms`.
+    law requires it sooner; other changes apply when published. From v1.0.11
+    to v1.19.40 it announced the first such change: from 2 November 2026 the
+    server's log records the IP address of a sender that sends far more
+    requests than the limits allow, at most once a minute (D224); v1.19.41
+    made the change, in `Logs`, and took the announcement out with it, the
+    page describing the service as it works (#215). Since v1.15.14 it
+    announces the second, a new provider: from 8 November 2026 mail to the
+    contact address is received by Yandex 360, in Russia, instead of Apple
+    iCloud Mail (issue #275, D224); until then `Where it is stored` names
+    iCloud, and #151 makes the switch on or after that day. **Contact** — as
+    on `/terms`.
 
 The exact wording, approved by the owner on 2026-10-09, with two lines of the
 Privacy Policy amended on 2026-10-10 (D222, #155) and, for the governing law,
@@ -454,7 +462,8 @@ the notice of a change, the data processing agreement and the `Logs` line on
 limits (D224, D227), on 2026-10-11, a `Logs` line on the proxy's error log
 added on 2026-10-12 (D231), the first dated announcement of a change,
 approved on 2026-10-18 (D224, #214), the second, approved on 2026-10-24
-(D224, #275), and the line of a session created with
+(D224, #275), the first and the last `Logs` line of the change the first
+announced, approved on 2026-10-18 (D224, #215), and the line of a session created with
 the sender's IP turned off, approved on 2026-10-18 (D243, #166), is in
 `apps/frontend/src/lib/legal-copy.ts`, joined by no-break spaces so that no
 line ends with a single word at any width from 320 px, and pinned by a test;
@@ -472,7 +481,8 @@ notice — a new version of the Terms of Use, or a Privacy Policy that keeps
 more, keeps longer or shares with anyone new — ships in two steps: first an
 announcement, a dated line in the page's changes section and a changelog
 entry with a **Notice:** paragraph, which reaches the breaking feed; then, at
-least 14 days later, the change itself (D224). v0.56.0 itself applied when
+least 14 days later, the change itself, which takes the dated line out, the
+changelog keeping the announcement (D224, #215). v0.56.0 itself applied when
 published, since it only adds to the user's rights. Neither page claims
 compliance with any law, which the build checks. Every contact address is a
 mail link; `stability policy` links to the Stability section of `/docs`;

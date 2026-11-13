@@ -14,6 +14,7 @@ import { withinBound } from '../../testing/timing.ts';
 import {
   addressKey,
   DEFAULT_RATE_LIMITS,
+  passesFloodThreshold,
   SWEEP_SPACING_MS,
   UNREADABLE_ADDRESS,
   WindowCounter,
@@ -93,6 +94,7 @@ describe('a window counter', () => {
         remaining: 60 - call,
         resetSeconds: 60,
         windowStart: 5_000.25,
+        refused: 0,
       });
     }
 
@@ -102,6 +104,7 @@ describe('a window counter', () => {
       remaining: 0,
       resetSeconds: 60,
       windowStart: 5_000.25,
+      refused: 1,
     });
   });
 
@@ -206,6 +209,7 @@ describe('a window counter', () => {
       remaining: 1,
       resetSeconds: 60,
       windowStart: 5_000.25 + MINUTE,
+      refused: 0,
     });
     assert.equal(counter.hit('a').allowed, true);
     assert.equal(counter.hit('a').allowed, false);
@@ -227,6 +231,7 @@ describe('a window counter', () => {
       remaining: 0,
       resetSeconds: 30,
       windowStart: 5_000.25 + 30_000,
+      refused: 1,
     });
   });
 
@@ -264,6 +269,101 @@ describe('a window counter', () => {
     for (const limit of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       assert.throws(() => new WindowCounter(limit), /positive integer/, String(limit));
     }
+  });
+});
+
+describe("a window's refusals and the flood threshold (#215)", () => {
+  it('passes once a window, at the refusal past the limit itself: the 121st creation and the 2,401st call of the production limits', () => {
+    for (const limit of [SESSION_CREATE_LIMIT, API_CALL_LIMIT]) {
+      const clock = manualClock();
+      const counter = new WindowCounter(limit, { now: clock.now });
+      const passedAt: number[] = [];
+
+      for (let call = 1; call <= 12 * limit; call += 1) {
+        const verdict = counter.hit('203.0.113.7');
+
+        assert.equal(verdict.refused, Math.max(0, call - limit), `call ${call} of ${limit}`);
+
+        if (passesFloodThreshold(verdict)) {
+          passedAt.push(call);
+        }
+      }
+
+      // More than twice what the window allows has been asked for.
+      assert.deepEqual(passedAt, [2 * limit + 1], `limit ${limit}`);
+    }
+
+    assert.deepEqual([2 * SESSION_CREATE_LIMIT + 1, 2 * API_CALL_LIMIT + 1], [121, 2_401]);
+  });
+
+  it('passes for no call let through and no refusal up to the limit, however the window is crossed', () => {
+    const clock = manualClock();
+    const counter = new WindowCounter(2, { now: clock.now });
+    const passes = () => passesFloodThreshold(counter.hit('a'));
+
+    // Two windows, each its limit let through and its limit refused, the
+    // second starting the moment the first ends: four refusals in a minute
+    // across the edge, never more than two in one window.
+    for (let window = 0; window < 2; window += 1) {
+      for (let call = 0; call < 4; call += 1) {
+        assert.equal(passes(), false, `window ${window}, call ${call}`);
+      }
+
+      clock.advance(MINUTE);
+    }
+
+    // The next window's third refusal passes, and the window passes no more.
+    assert.deepEqual(Array.from({ length: 10 }, passes), [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    clock.advance(MINUTE - 1);
+    assert.equal(passes(), false, 'the window has a millisecond left');
+    clock.advance(1);
+
+    // A new window counts its refusals from none.
+    assert.deepEqual(Array.from({ length: 6 }, passes), [false, false, false, false, true, false]);
+  });
+
+  it("counts each key's refusals on its own, one pass each for 100,000 keys and one for a key refused 1,000,000 times", () => {
+    const clock = manualClock();
+    const counter = new WindowCounter(1, { now: clock.now });
+
+    // A key refused the limit, its first refusal, never passes, whatever
+    // another key does beside it.
+    assert.equal(counter.hit('quiet').allowed, true);
+    assert.equal(passesFloodThreshold(counter.hit('quiet')), false);
+
+    for (const keys of [10, 1_000, 100_000]) {
+      let passed = 0;
+
+      for (let index = 0; index < keys; index += 1) {
+        for (let call = 0; call < 5; call += 1) {
+          passed += passesFloodThreshold(counter.hit(ipv4(index + keys))) ? 1 : 0;
+        }
+      }
+
+      assert.equal(passed, keys, `${keys} keys`);
+      clock.advance(MINUTE);
+    }
+
+    let passed = 0;
+
+    for (let call = 0; call < 1_000_000; call += 1) {
+      passed += passesFloodThreshold(counter.hit('loud')) ? 1 : 0;
+    }
+
+    assert.equal(passed, 1);
+    // Every call but the first was refused, and this one is too.
+    assert.equal(counter.hit('loud').refused, 1_000_000);
   });
 });
 

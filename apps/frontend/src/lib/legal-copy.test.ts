@@ -40,7 +40,12 @@ const PRIVACY_PAGE = privacyPage(PRODUCTION_OPERATOR);
  * 2026-10-20, published at once for the same reason. Since issue #275 (D224),
  * the second dated line of `Changes to this policy`, as worded on
  * 2026-10-24: mail to the contact address moves to Yandex 360, a new provider,
- * so the move is announced 14 days before it applies.
+ * so the move is announced 14 days before it applies. Since issue #215
+ * (D224), the change the first dated line announced, made on or after its
+ * day: the first and the last line of `Logs` as worded on 2026-10-18, the
+ * server's log recording an address that sends far more requests than the
+ * limits allow, and the dated line gone from `Changes to this policy`, the
+ * page saying the change as it now is.
  * `legal-page.test.ts` shows the pages write these constants
  * as they are; `legal-facts.test.ts` holds their numbers, and the facts of the
  * proxy's line, to their sources.
@@ -56,9 +61,9 @@ const NBH = String.fromCharCode(0x2011);
 const approved = (text: string) => text.replaceAll(' NBSP ', NBSP).replaceAll(' NBH ', NBH);
 
 /**
- * The day the change `/privacy` announces applies (issue #214, D224): the
- * delivery's UTC day plus 14, the day the changelog entry's Notice paragraph
- * names, which `legal-facts.test.ts` holds to that entry.
+ * The day 1.0.11's announcement named for the server's log to record a
+ * flooding address (issue #214, D224): the change it announced is made on or
+ * after it, on the page's date (issue #215).
  */
 const ANNOUNCED_DAY = '2 November 2026';
 
@@ -313,8 +318,9 @@ describe('the Privacy Policy text (Scope 3)', () => {
     // your browser` on 22 October (issue #228, D259), published at once:
     // what only the browser keeps applies when published (D224). The
     // announcement of the contact address's mail moving to Yandex 360 moved
-    // it to 25 October (issue #275, D224).
-    assert.equal(PRIVACY_PAGE.updated, 'Last updated 25 October 2026');
+    // it to 25 October (issue #275, D224), and the log line on a flooding
+    // address, the change 1.0.11 announced, to 13 November (issue #215, D224).
+    assert.equal(PRIVACY_PAGE.updated, 'Last updated 13 November 2026');
   });
 
   it('states the ten sections, each line its own, byte for byte', () => {
@@ -384,8 +390,10 @@ describe('the Privacy Policy text (Scope 3)', () => {
       {
         label: 'Logs',
         lines: [
+          // The first and the last line as worded on 2026-10-18, made on or
+          // after the day 1.0.11 announced (issue #215).
           approved(
-            "The server's log records each request's method, URL and time, but not the sender's IP NBSP address.",
+            "The server's log records each request's method, URL and time, but not the sender's IP NBSP address, except as the last line below NBSP says.",
           ),
           approved(
             'The URL includes the first eight characters of the session id and any query NBSP string.',
@@ -394,7 +402,7 @@ describe('the Privacy Policy text (Scope 3)', () => {
             "The proxy in front of the server records a sender's IP NBSP address in its error log when a connection fails, for example when the sender drops it mid-request. That log stays on the server until the proxy restarts; it is not backed up or sent NBSP anywhere.",
           ),
           approved(
-            'Limits keep an IP NBSP address in memory for up to a minute, or while its connection stays open, and write it NBSP nowhere.',
+            "Limits keep an IP NBSP address in memory for up to a minute, or while its connection stays open. When an address sends far more requests than the limits allow, the server's log records that address, at most once a minute. That log stays on the server until the server is next updated and is not backed up or sent NBSP anywhere.",
           ),
         ],
       },
@@ -436,9 +444,6 @@ describe('the Privacy Policy text (Scope 3)', () => {
         lines: [
           approved(
             'Changes that make QA NBSP Tools keep more data, keep it longer or share it with anyone new are announced here at least 14 NBSP days before they apply, unless the law requires them sooner. Other changes apply when NBSP published.',
-          ),
-          approved(
-            `From ${ANNOUNCED_DAY}, the server's log records the IP NBSP address of a sender that sends far more requests than the limits allow, at most once a NBSP minute.`,
           ),
           // The line as worded on 2026-10-24 (issue #275, Decision 3).
           approved(
@@ -512,12 +517,13 @@ describe('the Privacy Policy text (Scope 3)', () => {
       '3_days',
       'nightly_backups.',
       'query_strings.',
-      'IP_address.',
+      'IP_address,',
+      'below_says.',
       'query_string.',
       'IP_address',
       'sent_anywhere.',
       'IP_address',
-      'it_nowhere.',
+      'sent_anywhere.',
       'third~party_scripts.',
       'you_chose.',
       'still_exist.',
@@ -529,8 +535,6 @@ describe('the Privacy Policy text (Scope 3)', () => {
       'QA_Tools',
       '14_days',
       'when_published.',
-      'IP_address',
-      'a_minute.',
       'Yandex_360,',
       'iCloud_Mail.',
       'data:_contact@qa-tools.ru.',
@@ -538,39 +542,68 @@ describe('the Privacy Policy text (Scope 3)', () => {
     ]);
   });
 
-  // The first change announced ahead (issue #214, D224): Decision 2's words
-  // with the day it applies, as `Last updated` writes a day, after the rule.
-  it("announces the server log's new line in the owner's words, dated, after the section's rule", () => {
-    const OWNER_WORDS =
-      "From <day>, the server's log records the IP address of a sender that sends far more requests than the limits allow, at most once a minute.";
-    const lines = PRIVACY_PAGE.sections
-      .find((section) => section.label === 'Changes to this policy')
-      ?.lines.map(legalLineText);
+  // The first change announced ahead (issue #214, D224), made on or after
+  // the day it named (issue #215): the first and the last line of `Logs` as
+  // worded on 2026-10-18, the two between unchanged; the dated line that
+  // announced it leaves `Changes to this policy`, whose rule stays.
+  it("states the server log's line on a flooding address byte for byte, on or after the announced day, and announces it no longer", () => {
+    const FIRST_LINE =
+      "The server's log records each request's method, URL and time, but not the sender's IP address, except as the last line below says.";
+    const LAST_LINE =
+      "Limits keep an IP address in memory for up to a minute, or while its connection stays open. When an address sends far more requests than the limits allow, the server's log records that address, at most once a minute. That log stays on the server until the server is next updated and is not backed up or sent anywhere.";
+    const lines =
+      PRIVACY_PAGE.sections.find((section) => section.label === 'Logs')?.lines.map(legalLineText) ??
+      [];
 
-    assert.equal(lines?.length, 3);
-    assert.match(lines?.[0] ?? '', /^Changes that make QA\u00a0Tools keep more data/);
+    assert.equal(lines.length, 4);
 
-    const line = lines?.[1] ?? '';
-    const day = /^From ([^,]+), /.exec(line)?.[1] ?? '';
+    const first = lines[0] ?? '';
+    const last = lines[3] ?? '';
 
-    assert.equal(day, ANNOUNCED_DAY);
-    // The day in the page's own date format, that of `Last updated`.
-    assert.match(`Last updated ${day}`, DATE_LINE);
-    assert.equal(line.replaceAll(NBSP, ' '), OWNER_WORDS.replace('<day>', day));
+    assert.equal(first.replaceAll(NBSP, ' '), FIRST_LINE);
+    assert.equal(last.replaceAll(NBSP, ' '), LAST_LINE);
     // D211's joints, as the page joins them elsewhere: `IP address`, and the
-    // last two words; none in the day.
+    // last two words of each line.
     assert.equal(
-      line,
-      `From ${day}, the server's log records the IP${NBSP}address of a sender that sends far more requests than the limits allow, at most once a${NBSP}minute.`,
+      first,
+      `The server's log records each request's method, URL and time, but not the sender's IP${NBSP}address, except as the last line below${NBSP}says.`,
     );
-    assert.equal(line.split(NBSP).length - 1, 2);
+    assert.equal(
+      last,
+      `Limits keep an IP${NBSP}address in memory for up to a minute, or while its connection stays open. When an address sends far more requests than the limits allow, the server's log records that address, at most once a minute. That log stays on the server until the server is next updated and is not backed up or sent${NBSP}anywhere.`,
+    );
+    assert.equal(first.split(NBSP).length - 1, 2);
+    assert.equal(last.split(NBSP).length - 1, 2);
+
+    // Made on or after the day the announcement named, the page's date that
+    // of the change.
+    const updated = PRIVACY_PAGE.updated.replace(/^Last updated /, '');
+
+    assert.ok(
+      utcDay(updated) >= utcDay(ANNOUNCED_DAY),
+      `${updated} is before ${ANNOUNCED_DAY}, the day announced`,
+    );
+
+    // The announcement leaves with the change: the section keeps its rule and
+    // the change still to come, and names the server's log nowhere.
+    const changes =
+      PRIVACY_PAGE.sections
+        .find((section) => section.label === 'Changes to this policy')
+        ?.lines.map(legalLineText) ?? [];
+
+    assert.equal(changes.length, 2);
+    assert.match(changes[0] ?? '', /^Changes that make QA\u00a0Tools keep more data/);
+    assert.ok(
+      changes.every((line) => !line.includes("server's log") && !line.includes(ANNOUNCED_DAY)),
+      changes.join('\n'),
+    );
   });
 
   // The second change announced ahead (issue #275, D224): Decision 3's words
-  // with the day it applies, after the first announcement. Until that day the
+  // with the day it applies, after the section's rule. Until that day the
   // mail stays where `Where it is stored` says it is, which the section's pin
   // above holds.
-  it("announces the contact address's mail moving to Yandex 360 in the owner's words, on its day, after the first announcement", () => {
+  it("announces the contact address's mail moving to Yandex 360 in the owner's words, on its day, after the section's rule", () => {
     const OWNER_WORDS =
       'From <D>, mail to the contact address is received by Yandex 360, in Russia, instead of Apple iCloud Mail.';
     const changes = PRIVACY_PAGE.sections.find(
@@ -578,20 +611,19 @@ describe('the Privacy Policy text (Scope 3)', () => {
     );
     const lines = changes?.lines.map(legalLineText);
 
-    assert.equal(lines?.length, 3);
+    assert.equal(lines?.length, 2);
     // Plain text, not a mail link: it names the address in words.
-    assert.equal(typeof changes?.lines[2], 'string');
-    assert.match(lines?.[1] ?? '', new RegExp(`^From ${ANNOUNCED_DAY}, the server's log`));
+    assert.equal(typeof changes?.lines[1], 'string');
 
-    const line = lines?.[2] ?? '';
+    const line = lines?.[1] ?? '';
     const day = /^From ([^,]+), /.exec(line)?.[1] ?? '';
 
     assert.equal(day, MAIL_MOVE_DAY);
     // The day in the page's own date format, that of `Last updated`, and after
-    // the first announced day: the section lists its changes in their order.
-    // Its 14 days' notice is held in `legal-facts.test.ts`, against the entry
-    // whose Notice paragraph names it, not against the page's date, which
-    // moves with every later edit of the page.
+    // the day the first announcement named: the section listed its changes in
+    // their order. Its 14 days' notice is held in `legal-facts.test.ts`,
+    // against the entry whose Notice paragraph names it, not against the
+    // page's date, which moves with every later edit of the page.
     assert.match(`Last updated ${day}`, DATE_LINE);
     assert.ok(utcDay(day) > utcDay(ANNOUNCED_DAY), `${day} is not after ${ANNOUNCED_DAY}`);
     assert.equal(line.replaceAll(NBSP, ' '), OWNER_WORDS.replace('<D>', day));
