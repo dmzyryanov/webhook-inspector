@@ -46,10 +46,11 @@ interface SessionDaysProps extends SessionRowActions {
 }
 
 /**
- * The returning visitor's sessions, grouped by day (G3′, frames `626:13`,
- * `626:129`, `626:237`; D199), in the changelog index's style: from 1024 px a
- * 160 px rail holding the date and its count, the rows beside it; below
- * 1024 px the date is a band above its rows, tinted on a phone.
+ * The returning visitor's sessions, grouped by day (row G3′ of the Figma page
+ * `Webhook Inspector · My sessions`, frames `626:13`, `626:129`, `626:237`;
+ * D199), in the changelog index's style: from 1024 px a 160 px rail holding the
+ * date and its count, the rows beside it; below 1024 px the date is a band
+ * above its rows, tinted on a phone.
  */
 export function SessionDays({ rows, linkRefs, privateIds, onRemove, onDelete }: SessionDaysProps) {
   const m = useMessages();
@@ -99,7 +100,10 @@ export function SessionDays({ rows, linkRefs, privateIds, onRemove, onDelete }: 
 
 interface SessionRowItemProps extends SessionRowActions {
   row: SessionRow;
-  /** A private session: the lock in line 1, just before the copy icon (R2, D259). */
+  /**
+   * A private session: the lock in line 1, just before the copy icon (frame R2
+   * of the Figma page `Webhook Inspector · Private sessions (#228)`, D259).
+   */
   isPrivate: boolean;
 }
 
@@ -167,9 +171,10 @@ const SessionRowItem = forwardRef<HTMLAnchorElement, SessionRowItemProps>(functi
 });
 
 /**
- * The mark of a private session (R2, D259): lucide's `LockKeyhole`, a 12 px
- * glyph in the copy icon's 14 px box, muted as it is, named `Private session`.
- * It marks, and does nothing: the row's link stays under it.
+ * The mark of a private session (frame R2 of the Figma page `Webhook Inspector
+ * · Private sessions (#228)`, D259): lucide's `LockKeyhole`, a 12 px glyph in
+ * the copy icon's 14 px box, muted as it is, named `Private session`. It marks,
+ * and does nothing: the row's link stays under it.
  */
 function PrivateMark() {
   const m = useMessages();

@@ -32,8 +32,9 @@ interface NewSessionOptionsProps {
  * Choosing does not close the menu: a window is a radio item, the address
  * and `Private session` checkbox items, each keeping the menu open
  * (`preventDefault` on select). `Private session` is last, below the address,
- * the lock before its words (R1, issue #228, D259). Escape and a click
- * outside close it, and focus returns to the trigger.
+ * the lock before its words (frame R1 of the Figma page `Webhook Inspector ·
+ * Private sessions (#228)`, issue #228, D259). Escape and a click outside close
+ * it, and focus returns to the trigger.
  */
 export function OptionsMenu({ options, onChange, disabled, className }: NewSessionOptionsProps) {
   const m = useMessages();
@@ -336,7 +337,8 @@ export function OptionsSheet({ options, onChange, disabled }: NewSessionOptionsP
 
 /**
  * The trigger's text: both values, the `·` between them, the lock after them
- * for a private session (R1, D259) and the caret.
+ * for a private session (frame R1 of the Figma page `Webhook Inspector ·
+ * Private sessions (#228)`, D259) and the caret.
  */
 function TriggerValues({ options, open }: { options: Options; open: boolean }) {
   const m = useMessages();

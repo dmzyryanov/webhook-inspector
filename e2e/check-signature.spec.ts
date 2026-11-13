@@ -4,7 +4,8 @@ import { createSessionViaApi, receiveUrlOf, requestRow, storedRequestId } from '
 
 /**
  * E2E-12 — checking a webhook's signature in the browser (issue #74, D197;
- * Figma `Webhook Inspector · Check signature`, direction B).
+ * Figma page `Webhook Inspector · Check signature`, direction B, whose frames
+ * B1-B5 and states S1, S2 and S4 name the steps below).
  *
  * `Check signature…` in the request actions checks a header against the HMAC
  * of the body as it arrived, under a secret typed in the page. What only a
@@ -207,9 +208,9 @@ test.describe('E2E-12 — checking a signature', () => {
     await page.keyboard.press('Escape');
     await open();
 
-    // B1 / S2: the secret field takes focus while it is empty, masked; the
-    // first header named `signature` is preselected, and its `sha1=` picks
-    // SHA-1.
+    // Figma frames B1 and S2: the secret field takes focus while it is empty,
+    // masked; the first header named `signature` is preselected, and its
+    // `sha1=` picks SHA-1.
     await expect(secret).toBeFocused();
     await expect(secret).toHaveAttribute('type', 'password');
     await expect(popover).toContainText(
@@ -236,14 +237,15 @@ test.describe('E2E-12 — checking a signature', () => {
       says(`HMAC-SHA256 of the body, ${GITHUB_BODY.length} bytes · hex · X-Hub-Signature-256`),
     );
 
-    // S4: the eye shows the secret and hides it again.
+    // Figma frame S4: the eye shows the secret and hides it again.
     await popover.getByRole('button', { name: 'Show secret' }).click();
     await expect(secret).toHaveAttribute('type', 'text');
     await popover.getByRole('button', { name: 'Hide secret' }).click();
     await expect(secret).toHaveAttribute('type', 'password');
 
-    // B2: another secret - the computed value in the header's form, which
-    // the copy icon writes, and the hint naming the providers it misses.
+    // Figma frame B2: another secret - the computed value in the header's
+    // form, which the copy icon writes, and the hint naming the providers it
+    // misses.
     await secret.fill(WRONG);
 
     const computed = `sha256=${hmac('sha256', GITHUB_BODY, WRONG).toString('hex')}`;
@@ -326,7 +328,7 @@ test.describe('E2E-12 — checking a signature', () => {
     );
     await page.keyboard.press('Escape');
 
-    // S1: no header named signature or hmac - none is chosen.
+    // Figma frame S1: no header named signature or hmac - none is chosen.
     await requestRow(page, unsigned).click();
     await open();
     await expect(header).toHaveValue('');
@@ -369,8 +371,8 @@ test.describe('E2E-12 — checking a signature', () => {
     const sheet = page.getByRole('dialog', { name: 'Check signature' });
     const result = sheet.getByTestId('signature-result');
 
-    // B3: `⋯` lists the item before `Compare with…`; it turns the sheet into
-    // `Check signature`.
+    // Figma frame B3: `⋯` lists the item before `Compare with…`; it turns the
+    // sheet into `Check signature`.
     await more.click();
     await expect(actionsSheet.getByRole('button')).toHaveText([
       'Copy link',
@@ -389,7 +391,7 @@ test.describe('E2E-12 — checking a signature', () => {
     await expect(result).toContainText('Match');
     await expect(result).toContainText(says('hex · X-Hub-Signature-256'));
 
-    // B5: a wrong secret.
+    // Figma frame B5: a wrong secret.
     await secret.fill(WRONG);
     await expect(result).toContainText('No match');
     await expect(sheet.getByTestId('signature-computed')).toHaveText(

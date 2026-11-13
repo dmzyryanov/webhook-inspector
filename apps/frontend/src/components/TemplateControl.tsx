@@ -31,9 +31,9 @@ interface TemplateControlProps {
 
 /**
  * The opt-in under the body of a response, and what it brings (issue #236,
- * D251; Figma page `Webhook Inspector · Response body templates (#236) —
- * approved A`, T1-T12): one control in `ResponseFields`, so the session
- * response editor, a step of the queue and a rule's response match.
+ * D251; frames T1-T12 of the Figma page `Webhook Inspector · Response body
+ * templates (#236) — approved A`): one control in `ResponseFields`, so the
+ * session response editor, a step of the queue and a rule's response match.
  *
  * Unticked - the default - it is the checkbox on the left and the byte
  * counter on the right, on the line `Returned exactly as entered` held before
@@ -182,9 +182,10 @@ interface MenuProps {
 }
 
 /**
- * The list from 768 px (T6): the Actions menu's dropdown under the button,
- * left-aligned 4 px below it, 320 px wide, items 36 px with the label at 13 px
- * and the placeholder on the right in 12 px monospace.
+ * The list from 768 px (frame T6 of the Figma page `Webhook Inspector ·
+ * Response body templates (#236) — approved A`): the Actions menu's dropdown
+ * under the button, left-aligned 4 px below it, 320 px wide, items 36 px with
+ * the label at 13 px and the placeholder on the right in 12 px monospace.
  */
 function PlaceholderMenu({ onInsert, onReturnFocus }: MenuProps) {
   const m = useMessages();
@@ -230,8 +231,9 @@ function PlaceholderMenu({ onInsert, onReturnFocus }: MenuProps) {
 }
 
 /**
- * The list on a phone (T7): a bottom sheet like the Actions sheet, titled
- * `Insert placeholder`, its items 48 px with a 15 px label and the
+ * The list on a phone (frame T7 of the Figma page `Webhook Inspector · Response
+ * body templates (#236) — approved A`): a bottom sheet like the Actions sheet,
+ * titled `Insert placeholder`, its items 48 px with a 15 px label and the
  * placeholder on the right. A tap on the scrim or Escape closes it.
  */
 function PlaceholderSheet({ onInsert, onReturnFocus }: MenuProps) {
@@ -289,7 +291,9 @@ function PlaceholderSheet({ onInsert, onReturnFocus }: MenuProps) {
 
 /**
  * A line with its placeholders in monospace, as the frames draw the hint and
- * the errors (T2, T12): `{{request.id}}`, and a lone `{{` or `}}`.
+ * the errors (frames T2 and T12 of the Figma page `Webhook Inspector · Response
+ * body templates (#236) — approved A`): `{{request.id}}`, and a lone `{{` or
+ * `}}`.
  */
 export function CodeText({ text }: { text: string }) {
   return (
@@ -309,8 +313,10 @@ export function CodeText({ text }: { text: string }) {
 
 /**
  * `Template`, the quiet tag of a response that is one where it is summarised
- * (T13, T14): 11/13 medium, muted, on `--color-panel-note` with radius 4 and
- * 2 × 6 padding - white on the quick switch's grey summary box.
+ * (frames T13 and T14 of the Figma page `Webhook Inspector · Response body
+ * templates (#236) — approved A`): 11/13 medium, muted, on `--color-panel-note`
+ * with radius 4 and 2 × 6 padding - white on the quick switch's grey summary
+ * box.
  */
 export function TemplateTag({ onGrey = false }: { onGrey?: boolean }) {
   const m = useMessages();

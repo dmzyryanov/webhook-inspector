@@ -53,7 +53,8 @@ export const PRIVACY_FOOTER = {
 /**
  * The footer's links to the site's own pages, left of `Contact:`: `About`
  * (issue #131, D211), then `Terms` and `Privacy` (issue #112, D217), as
- * approved in frames F1–F3. From 1024 px they stand 16 px apart,
+ * approved in frames F1–F3 of the Figma page `Webhook Inspector · About page
+ * (#131)`. From 1024 px they stand 16 px apart,
  * and from `Contact:`; below 1024 px each is followed by ` · ` in the
  * paragraph, so that `About · Terms · Privacy · Contact: contact@qa-tools.ru`
  * is kept whole where it fits and breaks only after a dot where it does not,

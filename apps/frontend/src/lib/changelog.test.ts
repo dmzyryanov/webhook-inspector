@@ -1399,7 +1399,11 @@ describe('the sitemap', () => {
   });
 });
 
-/** L2′, with `Status ↗` between `Changelog` and `API docs ↗` since D209 (status-link.test.ts). */
+/**
+ * The header of row L2′ of the Figma page `Webhook Inspector · Changelog`, with
+ * `Status ↗` between `Changelog` and `API docs ↗` since D209
+ * (status-link.test.ts).
+ */
 describe('the header on every page (L2′)', () => {
   const header = read('../components/AppHeader.tsx');
 

@@ -707,12 +707,13 @@ describe('recordOwnAnswer', () => {
 });
 
 /**
- * The state the toast about the viewer's own save or `Run again` is worded
- * from (U6, U9). A capture can take step 1 after the change's event and
- * before its answer, which is then set aside, and a toast worded from the
- * answer would promise both steps beside `Step 2 of 2`. An answer set aside
- * for an event from before the change, whose own event then arrives after
- * it, must not have the toast describe the state before the change - G9, G10.
+ * The state the toast about the viewer's own save or `Run again` is worded from
+ * (frames U6 and U9 of the Figma page `Webhook Inspector · Response queue
+ * (#106) — chosen, review 2`). A capture can take step 1 after the change's
+ * event and before its answer, which is then set aside, and a toast worded from
+ * the answer would promise both steps beside `Step 2 of 2`. An answer set aside
+ * for an event from before the change, whose own event then arrives after it,
+ * must not have the toast describe the state before the change - G9, G10.
  */
 describe('ownChangeState', () => {
   const OLD = steps(500, 501, 502);

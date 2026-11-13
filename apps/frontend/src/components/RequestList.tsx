@@ -238,7 +238,8 @@ export function RequestList({
         </div>
       ) : requests.length === 0 && filtered ? (
         // Never `Waiting for the first request` under a filter: the session
-        // may well hold requests, and none of them match (2G, 2H, D180).
+        // may well hold requests, and none of them match (frames 2G and 2H of
+        // the Figma page `Webhook Inspector · Request list filter`, D180).
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           <p className="max-w-full text-[15px] font-semibold text-ink [overflow-wrap:anywhere]">
             {m.list.noMatch(query.trim())}
@@ -294,7 +295,9 @@ export function RequestList({
             />
           ))}
           {/* 8 px under the last row, so it reads as the list's own note
-              rather than something apart from it (B2, E2, F2, D158). */}
+              rather than something apart from it (frames B2, E2 and F2 of the
+              Figma page `Webhook Inspector · Polish and API docs link`,
+              D158). */}
           <p className="px-4 pt-2 text-[12px] text-ink-muted max-lg:pb-4 md:max-lg:px-5">
             {m.list.newestOnTop}
           </p>
@@ -400,11 +403,13 @@ interface ListHeaderProps {
 
 /**
  * The list's header: `Requests`, the count, the filter's search icon and
- * Delete all (2A, 2D), or, once the icon is activated or while the filter has
- * a value, the filter field in place of the heading and the count, which stay
- * for assistive technology (2B, 2F, D180). The field keeps 8 px from Delete
- * all at every width. Below 1024 px the controls are 40 px touch targets and
- * Delete all follows the count (7B, D157).
+ * Delete all (frames 2A and 2D of the Figma page `Webhook Inspector · Request
+ * list filter`), or, once the icon is activated or while the filter has a
+ * value, the filter field in place of the heading and the count, which stay
+ * for assistive technology (frames 2B and 2F of that page, D180). The field
+ * keeps 8 px from Delete all at every width. Below 1024 px the controls are
+ * 40 px touch targets and Delete all follows the count (frame 7B of the Figma
+ * page `Webhook Inspector · Tablet and phone`, D157).
  *
  * The field also searches headers and bodies, on the server (D191), and its
  * placeholder says so, in the words a phone has room for (frames A4.1 and
@@ -470,7 +475,8 @@ function ListHeader({
       >
         {m.list.heading}
       </h2>
-      {/* On a phone `3 / 1000`: `340 / 1000 requests` needs 115 px and has 101 (2D). */}
+      {/* On a phone `3 / 1000`: `340 / 1000 requests` needs 115 px and has 101 (frame 2D
+          of the Figma page `Webhook Inspector · Request list filter`). */}
       <p
         className={cn(
           'text-[12px] text-ink-muted max-lg:min-w-0 max-lg:flex-1 max-lg:truncate',
@@ -582,7 +588,10 @@ function ListHeader({
   );
 }
 
-/** A shown text with the filter's matches in it highlighted (2C, 2E). */
+/**
+ * A shown text with the filter's matches in it highlighted (frames 2C and 2E
+ * of the Figma page `Webhook Inspector · Request list filter`).
+ */
 function Marked({ text, ranges }: { text: string; ranges: readonly HighlightRange[] }) {
   if (ranges.length === 0) {
     return text;
@@ -625,11 +634,12 @@ interface RequestRowProps {
  * One row. On the desktop it is 57 px with the time and a 30 px delete mark
  * laid over its right edge. Below 1024 px the time moves into the first line
  * and the delete control becomes a 44 px target. On a tablet the row is 64 px
- * and the `×` has a column of its own (7B). On a phone the row is 76 px with
- * the full time ending line 1 and the `×` in the row's bottom-right corner, on
- * line 2, its glyph ending where the time ends: its target starts below line 1,
- * so it never covers the time, and a tap anywhere else opens the request
- * (2A″, #55, D157).
+ * and the `×` has a column of its own (frame 7B of the Figma page `Webhook
+ * Inspector · Tablet and phone`). On a phone the row is 76 px with the full
+ * time ending line 1 and the `×` in the row's bottom-right corner, on line 2,
+ * its glyph ending where the time ends: its target starts below line 1, so it
+ * never covers the time, and a tap anywhere else opens the request (frame 2A″
+ * of the same page, #55, D157).
  */
 function RequestRow({
   request,
@@ -695,7 +705,8 @@ function RequestRow({
           </span>
         </span>
         {/* On a phone line 2 stops 32 px short of the row's content edge,
-            clear of the `×` laid over its end (2A″). */}
+            clear of the `×` laid over its end (frame 2A″ of the Figma page
+            `Webhook Inspector · Tablet and phone`). */}
         <span className="mt-[3px] flex items-baseline gap-2 text-[11px] max-md:mt-4 max-md:pr-8 max-md:leading-[normal] md:max-lg:mt-1.5">
           {/* The status the backend recorded for this request, and never one
               derived from the session configuration: a derived status sitting
@@ -776,7 +787,8 @@ function RequestRow({
 
       {/* Small mark, 30 by 30 hit area (D030), and 44 by 44 below 1024 px
           (D157). On a phone it sits over the bottom-right corner, reaching
-          down over the row's 1 px rule as 2A″ draws it, so its box starts
+          down over the row's 1 px rule as frame 2A″ of the Figma page
+          `Webhook Inspector · Tablet and phone` draws it, so its box starts
           32 px down, below line 1. Deletion is immediate (D029). */}
       <button
         type="button"

@@ -120,8 +120,9 @@ export function switchAddress(pathname: string, chosen: Language): string | null
 
 /**
  * A session id reduced to its first and last four characters, `Au6J…MKss`, as
- * frame `2A` draws it. Enough to recognise which session the address named;
- * the whole id is still in the browser's address bar.
+ * frame `2A` of the Figma page `Webhook Inspector · Not found` draws it. Enough
+ * to recognise which session the address named; the whole id is still in the
+ * browser's address bar.
  */
 export function shortenSessionId(sessionId: string): string {
   return `${sessionId.slice(0, 4)}…${sessionId.slice(-4)}`;

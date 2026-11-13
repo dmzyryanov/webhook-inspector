@@ -173,7 +173,8 @@ describe('the quick switch section (P1, 671:370-671:772)', () => {
       ],
       kept: 2,
     });
-    // A default session (U8).
+    // A default session (frame U8 of the Figma page `Webhook Inspector ·
+    // Response queue (#106) — chosen, review 2`).
     const view = queueSectionView(state(queue([response({ status: 503 })], null), null));
 
     assert.ok(view.kind === 'done');
@@ -200,9 +201,10 @@ describe('the quick switch section (P1, 671:370-671:772)', () => {
 });
 
 /**
- * The one line of chips (N5): what does not fit ends with `→ …` (P1.2). The
- * widths are the frames' own: the 366 px row of the 400 px popover, 4 px
- * gaps, an 11 px arrow and a 10 px ellipsis.
+ * The one line of chips (the chips N5 of the Figma page `Webhook Inspector ·
+ * Response queue (#106) — chosen, review 2`): what does not fit ends with `→ …`
+ * (frame P1.2 of that page). The widths are the frames' own: the 366 px row of
+ * the 400 px popover, 4 px gaps, an 11 px arrow and a 10 px ellipsis.
  */
 describe('the "…" overflow', () => {
   const ROW = { available: 366, gap: 4, arrow: 11, ellipsis: 10 };
@@ -627,10 +629,12 @@ describe('the toasts (U6, U9, E3)', () => {
 });
 
 /**
- * `Run again` and its failure (U8, L1). The message is said only while the
- * section offers `Run again`: otherwise a restart whose answer was lost while
- * its own `session.updated` arrived would leave `Could not start the queue
- * again. Try again.` beside `Step 1 of N` until the next `Run again`.
+ * `Run again` and its failure (frame U8 and the ending L1 of the Figma page
+ * `Webhook Inspector · Response queue (#106) — chosen, review 2`). The message
+ * is said only while the section offers `Run again`: otherwise a restart whose
+ * answer was lost while its own `session.updated` arrived would leave `Could
+ * not start the queue again. Try again.` beside `Step 1 of N` until the next
+ * `Run again`.
  */
 describe('offersRunAgain', () => {
   it('offers Run again, and keeps its failure, only while the queue is used up', () => {

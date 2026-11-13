@@ -69,12 +69,13 @@ type FocusTarget = { kind: 'tile' } | { kind: 'row'; id: string };
 const COLUMN = 'mx-auto w-full max-w-[1024px] px-8 md:max-lg:px-10 max-md:px-4';
 
 /**
- * The home page, in two states (issue #92, D199; Figma page `604:11`): the
- * first visit (F, frames `626:345`, `626:412`, `626:475`) while this browser
- * lists no session, and the returning visitor's (G3′, frames `626:13`,
- * `626:129`, `626:237`) once it lists one, where the sessions take the place
- * of the steps. Which one shows, and the list's rows, days and cut, are
- * decided in `lib/home-view.ts`; the list itself is `lib/session-list.ts`.
+ * The home page, in two states (issue #92, D199; the Figma page `Webhook
+ * Inspector · My sessions`, `604:11`): the first visit (row F, frames
+ * `626:345`, `626:412`, `626:475`) while this browser lists no session, and the
+ * returning visitor's (row G3′, frames `626:13`, `626:129`, `626:237`) once it
+ * lists one, where the sessions take the place of the steps. Which one shows,
+ * and the list's rows, days and cut, are decided in `lib/home-view.ts`; the
+ * list itself is `lib/session-list.ts`.
  *
  * The list is read from storage on the first render, so a returning visitor
  * never sees F first: G3′ is drawn at once with `Loading sessions…` until the
@@ -108,7 +109,10 @@ export function LandingPage() {
   const [createFailure, setCreateFailure] = useState<{ error: unknown } | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [deletion, setDeletion] = useState<Deletion | null>(null);
-  /** A private session `Remove from list` warns about first (R3, D259). */
+  /**
+   * A private session `Remove from list` warns about first (frame R3 of the
+   * Figma page `Webhook Inspector · Private sessions (#228)`, D259).
+   */
   const [removal, setRemoval] = useState<PrivateRemoval | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const tile = useRef<HTMLButtonElement>(null);
@@ -208,7 +212,8 @@ export function LandingPage() {
 
   /**
    * `Remove from list`: at once for a public session; for a private one, whose
-   * key leaves with the entry, after R3's warning, which offers its link with
+   * key leaves with the entry, after the warning of frame R3 of the Figma page
+   * `Webhook Inspector · Private sessions (#228)`, which offers its link with
    * access first (#228's Decision 1).
    */
   function askToRemove(id: string): void {
@@ -459,7 +464,8 @@ interface GenerateUrlTileProps {
 
 /**
  * The page's one action, `+ Generate URL`, as a dashed tile across the column
- * (G3, chosen 2026-10-03): one click to a session with the options shown,
+ * (direction G3 of the Figma page `Webhook Inspector · My sessions`, chosen
+ * 2026-10-03): one click to a session with the options shown,
  * the default session unless one was chosen (D150, D158, amended by D249).
  * Its hint shows from 768 px up, and says a window other than 7 days once one
  * is chosen. Taller on the first visit, where it follows the hero.

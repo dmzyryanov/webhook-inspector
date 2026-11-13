@@ -64,10 +64,11 @@ interface EndpointCardProps {
 /**
  * The receive URL, Copy and the response button. On the desktop they share one
  * 36 px row. Below 1024 px they are 44 px touch targets: in one row on a tablet
- * (7B), and on a phone the response button takes a full-width row of its own
- * under the URL and Copy (2A). Below 1024 px the URL is shortened in the middle
- * when it does not fit, so that the end of the session id stays readable; Copy
- * always copies the whole URL (D157).
+ * (frame 7B of the Figma page `Webhook Inspector · Tablet and phone`), and on a
+ * phone the response button takes a full-width row of its own under the URL
+ * and Copy (frame 2A of the same page). Below 1024 px the URL is shortened in
+ * the middle when it does not fit, so that the end of the session id stays
+ * readable; Copy always copies the whole URL (D157).
  */
 export function EndpointCard({
   sessionId,
@@ -112,9 +113,11 @@ export function EndpointCard({
     >
       {/* On a phone the retention line sits under the label, the two lines
           set close as the frames draw them: both do not fit on one line at
-          320 px (E2, E5, D158). A tablet keeps them on one line (F2). A
-          session that keeps no address adds `IP NOT STORED`: after the line
-          and a `·` from 768 px, on a line of its own below (D249). */}
+          320 px (frames E2 and E5 of the Figma page `Webhook Inspector ·
+          Polish and API docs link`, D158). A tablet keeps them on one line
+          (frame F2 of that page). A session that keeps no address adds
+          `IP NOT STORED`: after the line and a `·` from 768 px, on a line of
+          its own below (D249). */}
       <div className="flex items-center justify-between max-md:flex-col max-md:items-start max-md:leading-[normal]">
         <p className="text-[10px] font-semibold tracking-[0.04em] text-ink-muted">
           {m.endpoint.receiveUrl}
@@ -129,9 +132,10 @@ export function EndpointCard({
         */}
         <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-ink-muted">
           {sessionExpiryLine(rule, m)}
-          {/* A private session ends the line with `🔒 PRIVATE` in ink (R4,
-              D259): after `IP NOT STORED` on its line below 768 px, or on a
-              line of its own there when the address is stored. */}
+          {/* A private session ends the line with `🔒 PRIVATE` in ink (frame
+              R4 of the Figma page `Webhook Inspector · Private sessions
+              (#228)`, D259): after `IP NOT STORED` on its line below 768 px,
+              or on a line of its own there when the address is stored. */}
           {addressMarker === null && accessKey === null ? null : (
             <>
               <span className="max-md:hidden"> · </span>
@@ -304,7 +308,8 @@ export function EndpointCard({
 }
 
 /**
- * `🔒 PRIVATE` at the end of the card's line (R4, D259): the lock, named
+ * `🔒 PRIVATE` at the end of the card's line (frame R4 of the Figma page
+ * `Webhook Inspector · Private sessions (#228)`, D259): the lock, named
  * `Private session`, and the word, both in ink where the rest is muted, as
  * `IP NOT STORED` states the address.
  */
@@ -331,7 +336,8 @@ interface CopySplitButtonProps {
 }
 
 /**
- * A private session's Copy (R4, D259): a split button at every width. The main
+ * A private session's Copy (frame R4 of the Figma page `Webhook Inspector ·
+ * Private sessions (#228)`, D259): a split button at every width. The main
  * part copies the receive URL, as the plain `Copy` does; `▾` opens `Copy
  * receive URL` - for the sender - and `Copy link with access` - for a
  * colleague - each with its hint: from 768 px a menu right-aligned under the

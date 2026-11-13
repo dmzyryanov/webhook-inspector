@@ -1,3 +1,8 @@
+/**
+ * The Response rules dialog (issue #226, D246). The frames its comments cite
+ * by a bare label - R4 to R6, RT2, RP2 and RP3 - are frames of the Figma page
+ * `Webhook Inspector · Response rules (#134) — A APPROVED 2026-10-19`.
+ */
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   useId,

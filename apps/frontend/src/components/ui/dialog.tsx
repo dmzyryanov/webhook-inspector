@@ -79,7 +79,8 @@ interface DialogHeadingProps {
  * A sheet's title. From 768 px up it is exactly `DialogTitle`, in a wrapper
  * that draws nothing. On a phone it is the sheet's bar: 56 px, the title at
  * 17 px, a 44 px close control, and it stays at the top while the form scrolls
- * under it (frames 5D; and 1B, now removed, D158).
+ * under it (frames 5D, and 1B, now removed, of the Figma page `Webhook
+ * Inspector · Tablet and phone`; D158).
  */
 export function DialogHeading({ children, className, closeDisabled }: DialogHeadingProps) {
   const m = useMessages();
@@ -103,10 +104,10 @@ export function DialogHeading({ children, className, closeDisabled }: DialogHead
 }
 
 /**
- * A sheet's actions, pinned to the bottom of a phone's screen: pushed down
- * when the form is short, stuck to the bottom edge while a long one scrolls
- * (frames 5D, 5E; and 1B, now removed, D158). From 768 px up these classes
- * do nothing.
+ * A sheet's actions, pinned to the bottom of a phone's screen: pushed down when
+ * the form is short, stuck to the bottom edge while a long one scrolls (frames
+ * 5D, 5E, and 1B, now removed, of the Figma page `Webhook Inspector · Tablet
+ * and phone`; D158). From 768 px up these classes do nothing.
  */
 export const SHEET_ACTIONS =
   'max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:mt-auto max-md:border-t ' +

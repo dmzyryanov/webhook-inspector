@@ -58,7 +58,8 @@ export const CodeBlock = memo(function CodeBlock({ block, copyLabel }: CodeBlock
               answer (D134, D149). `pr-3` and the control's column below add up
               to the design's 48 px on the right. */}
           {/* On a phone the box is 12 px in, and a list of pairs 4 px, each
-              pair adding 8 px of its own (3A, 3C). */}
+              pair adding 8 px of its own (frames 3A and 3C of the Figma page
+              `Webhook Inspector · Tablet and phone`). */}
           <div
             data-testid="block-content"
             className={cn(

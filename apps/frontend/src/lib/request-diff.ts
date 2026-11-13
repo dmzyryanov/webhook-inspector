@@ -21,8 +21,9 @@
  *
  * Pure: no DOM, no React. `CompareView.tsx` renders this model.
  *
- * The frames cited below, A2, A3 and A6, are frames of the Figma page
- * `Webhook Inspector · Compare requests`, which draws the comparison.
+ * The frames cited below, A2, A3 and A6, and the shared states D1 to D3, are
+ * frames of the Figma page `Webhook Inspector · Compare requests`, which draws
+ * the comparison.
  */
 import { diffArrays } from 'diff';
 import type { RequestDetails } from '@webhook-inspector/shared';

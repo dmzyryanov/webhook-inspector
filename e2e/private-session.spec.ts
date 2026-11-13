@@ -10,8 +10,8 @@ import { requestRow, storedRequestId } from './helpers.ts';
 
 /**
  * E2E-21 — a private session in the interface (issue #228, D259; Figma page
- * `Webhook Inspector · Private sessions (#228) — L chosen 2026-10-22,
- * review`, R1-R8).
+ * `Webhook Inspector · Private sessions (#228) — L chosen 2026-10-22, review`,
+ * whose frames R1-R8 name the steps below).
  *
  * The key store, the fragment's builder and parser, the field's reading, the
  * list's push-out, the calls' headers and the socket's subprotocols are
@@ -191,7 +191,8 @@ test.describe('E2E-21 — a private session', () => {
 
     const seen = watch(page);
 
-    // R1: the last checkbox of the menu, the lock in the trigger once ticked.
+    // Figma frame R1: the last checkbox of the menu, the lock in the trigger
+    // once ticked.
     await page.goto('/');
     await optionsTrigger(page).click();
 
@@ -230,7 +231,7 @@ test.describe('E2E-21 — a private session', () => {
     expect(await storedKeys(page)).toEqual({ [id]: key });
     await expect(page.locator('body')).not.toContainText(key);
 
-    // R4: the card says PRIVATE, its Copy is split.
+    // Figma frame R4: the card says PRIVATE, its Copy is split.
     await expect(page.getByText(/· PRIVATE$/)).toBeVisible();
     await expect(lock(page)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Copy', exact: true })).toBeVisible();
@@ -382,7 +383,8 @@ test.describe('E2E-21 — a private session', () => {
     await expect(page).toHaveURL(`${origin}/v/${session.id}`);
     await expect(requestsHeading(page)).toBeVisible();
 
-    // R4: Copy's main part copies the receive URL; ▾ holds the link with access.
+    // Figma frame R4: Copy's main part copies the receive URL; ▾ holds the
+    // link with access.
     await page.getByRole('button', { name: 'Copy', exact: true }).click();
     await expect.poll(() => clipboard(page)).toBe(session.receiveUrl);
     await page.getByRole('button', { name: 'Copy options' }).click();
@@ -500,7 +502,8 @@ test.describe('E2E-21 — a private session', () => {
     await expect(strange).toHaveURL(`${origin}/v/${session.id}`);
     expect(await storedKeys(strange)).toEqual({ [session.id]: session.key });
 
-    // R8: a link with access pasted on another session's page opens its own.
+    // Figma frame R8: a link with access pasted on another session's page
+    // opens its own.
     const pasting = await freshContext(browser);
     const paster = await pasting.newPage();
 
@@ -603,7 +606,7 @@ test.describe('E2E-21 — a private session', () => {
       name: 'Remove this private session from the list?',
     });
 
-    // R3: cancelled, nothing changes.
+    // Figma frame R3: cancelled, nothing changes.
     await actions.click();
     await page.getByRole('menuitem', { name: 'Remove from list' }).click();
     await expect(warning).toContainText('Only this browser holds its key.');

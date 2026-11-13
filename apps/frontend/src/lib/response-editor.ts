@@ -125,7 +125,8 @@ export const BODY_FIELD_LABEL = en.editor.bodyLabel;
 export const AUTOMATIC_HEADERS_NOTE = en.editor.automaticHeaders;
 
 /**
- * What a failed change does to the surface that sent it (C8, D8).
+ * What a failed change does to the surface that sent it (frames C8 and D8 of
+ * the Figma page `Webhook Inspector · Editable response settings`).
  *
  * A session that is gone takes the page to `Session not found`, as every other
  * session-scoped failure does (D133). A configuration the backend refused is

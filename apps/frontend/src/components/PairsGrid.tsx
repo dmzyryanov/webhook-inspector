@@ -16,8 +16,9 @@ interface PairsGridProps {
  * row's (D149).
  *
  * On a phone there is no room for two columns: each name sits above its value,
- * muted, and a rule parts one pair from the next (3C, 3D, D157). The tablet
- * keeps the columns.
+ * muted, and a rule parts one pair from the next (frames 3C and 3D of the Figma
+ * page `Webhook Inspector · Tablet and phone`, D157). The tablet keeps the
+ * columns.
  */
 export function PairsGrid({ pairs }: PairsGridProps) {
   return (

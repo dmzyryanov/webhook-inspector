@@ -1,8 +1,9 @@
 /*
  * The header and the footer band of the static pages, /changelog (D184),
  * /about (D211), /terms and /privacy (D217), as the application draws them:
- * `AppHeader.tsx` (B′ of D209) and `AppFooter.tsx` (D177, with `About` since
- * D211 and `Terms` and `Privacy` since D217). The HTML is written by
+ * `AppHeader.tsx` (direction B′ of the Figma page `Webhook Inspector · Status
+ * page link (#99)`, D209) and `AppFooter.tsx` (D177, with `About` since D211
+ * and `Terms` and `Privacy` since D217). The HTML is written by
  * `scripts/site-chrome.mjs`. These pages are not the application, so they
  * carry their own styles rather than its Tailwind build; the values are the
  * application's tokens (src/index.css). Widths follow the application's
@@ -235,9 +236,10 @@ main {
 
   /*
    * One block in the paragraph's flow: on a line of its own, or after the
-   * line's last words, where it fits whole, as frames F2 and F3 draw it;
-   * narrower than itself, as at 320 px, it breaks after a dot and never
-   * inside a link or the contact (D217).
+   * line's last words, where it fits whole, as frames F2 and F3 of the Figma
+   * page `Webhook Inspector · About page (#131)` draw it; narrower than itself,
+   * as at 320 px, it breaks after a dot and never inside a link or the contact
+   * (D217).
    */
   .site-footer .footer-end {
     display: inline-block;

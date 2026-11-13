@@ -1,3 +1,9 @@
+/**
+ * The Response queue dialog (issue #106, D205). The frames its comments cite
+ * by a bare label - U3 to U5, D1, E1 to E3, T2, M3 and M4, and the step list
+ * V1 with its K2b markers - are frames of the Figma page `Webhook Inspector ·
+ * Response queue (#106) — chosen, review 2`.
+ */
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { MAX_QUEUE_STEPS, type SessionResponseState } from '@webhook-inspector/shared';

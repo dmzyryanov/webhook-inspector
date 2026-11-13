@@ -64,20 +64,21 @@ const LINK = `${LINK_SHAPE} text-link`;
 const DANGER_LINK = `${LINK_SHAPE} text-danger`;
 
 /**
- * The Response queue section at the bottom of the quick switch, below its
- * own line, in Default and Custom alike (P1, D205; collapsible since issue
- * #142, D206).
+ * The Response queue section at the bottom of the quick switch, below its own
+ * line, in Default and Custom alike (placement P1 of the Figma page `Webhook
+ * Inspector · Response queue (#106) — chosen, review 2`, D205; collapsible
+ * since issue #142, D206).
  *
  * Its heading row - the title, the state on the right and a chevron - is one
  * button that collapses and expands the section. Collapsed, only that row
  * shows, and its right side tells the state: the example chips while the
  * session has no queue (on a phone, where they sit under the title, the title
  * alone), `Step N of M` while a queue runs, `Done` once every step has
- * answered. Expanded, the section shows as before: example chips with no
- * queue; the next response in chips while it runs; `Done` with `Run again`
- * once used up (L1); and, with a queue, `Remove queue` at the end of the
- * links, which asks once in their place. Open or closed is remembered in this
- * browser (`queue-section-open.ts`): first collapsed, then as it was left.
+ * answered. Expanded, the section shows as before: example chips with no queue;
+ * the next response in chips while it runs; `Done` with `Run again` once used
+ * up (the ending L1 of that page); and, with a queue, `Remove queue` at the end
+ * of the links, which asks once in their place. Open or closed is remembered in
+ * this browser (`queue-section-open.ts`): first collapsed, then as it was left.
  *
  * It follows every capture, clear and queue change the page learns of, so it
  * moves while it is open, collapsed or not.
@@ -236,7 +237,9 @@ export function ResponseQueueSection({
       <div id={BODY_ID} hidden={!open}>
         {!open ? null : view.kind === 'none' ? (
           <>
-            {/* On a phone the chips sit under the title (M1). */}
+            {/* On a phone the chips sit under the title (frame M1 of the Figma
+                page `Webhook Inspector · Response queue (#106) — chosen, review
+                2`). */}
             <ExampleChips className="mt-2 hidden max-md:flex" />
             <p className="mt-1.5 text-[12px] leading-[17px] text-ink-muted max-md:text-[13px] max-md:leading-[19px]">
               {m.queue.noQueue}
@@ -258,8 +261,10 @@ export function ResponseQueueSection({
                 other's: `Remove queue` would become the question's `Remove`
                 with focus still on it. */}
             {removal.asking ? (
-              // The question in place of the links, as the dialog's footer
-              // asks it (E3); a failed removal says so in its place.
+              // The question in place of the links, as the dialog's footer asks
+              // it (frame E3 of the Figma page `Webhook Inspector · Response
+              // queue (#106) — chosen, review 2`); a failed removal says so in
+              // its place.
               <div key="asking" className="mt-2 flex items-center gap-3.5 max-md:mt-3">
                 {/* `text-pretty`: a failure that wraps keeps `Try again.`
                     together rather than leave `again.` alone on a line. */}
@@ -369,7 +374,11 @@ export function Chevron({ open }: { open: boolean }) {
   );
 }
 
-/** `201 → 404 · 2 s → 503`, the grey example beside the title (P1.1, U2). */
+/**
+ * `201 → 404 · 2 s → 503`, the grey example beside the title (frames P1.1 and
+ * U2 of the Figma page `Webhook Inspector · Response queue (#106) — chosen,
+ * review 2`).
+ */
 function ExampleChips({ className }: { className?: string }) {
   const m = useMessages();
 
@@ -422,12 +431,13 @@ function Chip({ chip }: { chip: QueueChip }) {
 const GAP = 4;
 
 /**
- * The chips on one line (N5): as many as fit, and an arrow and `…` after the
- * last one when the rest does not (P1.2). The chips are measured in a hidden
- * copy of the row and the decision is `fitQueueChips`, so a narrower popover,
- * a phone's sheet or a larger font cuts the row where it would overflow. It
- * is mounted only while the section is expanded, so it measures a row that
- * is drawn.
+ * The chips on one line (the chips N5 of the Figma page `Webhook Inspector ·
+ * Response queue (#106) — chosen, review 2`): as many as fit, and an arrow and
+ * `…` after the last one when the rest does not (frame P1.2 of that page). The
+ * chips are measured in a hidden copy of the row and the decision is
+ * `fitQueueChips`, so a narrower popover, a phone's sheet or a larger font cuts
+ * the row where it would overflow. It is mounted only while the section is
+ * expanded, so it measures a row that is drawn.
  */
 function ChipRow({ chips, kept }: { chips: QueueChip[]; kept: number }) {
   const row = useRef<HTMLDivElement>(null);

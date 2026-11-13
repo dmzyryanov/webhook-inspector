@@ -510,7 +510,10 @@ describe('the Russian wording the owner approved (glossary `792:57` and the fram
     assert.equal(en.newSession.hintHours(1), '— expires 1 hour after last use');
   });
 
-  /** Issue #228's design (R1-R8) and the Russian wording its rules give (D259). */
+  /**
+   * Issue #228's design (frames R1-R8 of the Figma page `Webhook Inspector ·
+   * Private sessions (#228)`) and the Russian wording its rules give (D259).
+   */
   it('names a private session’s controls as #228 does, in both languages', () => {
     assert.deepEqual(
       [

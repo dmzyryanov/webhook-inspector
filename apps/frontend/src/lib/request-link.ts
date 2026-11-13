@@ -33,8 +33,9 @@ import type { SessionLayout } from './push-flow.ts';
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The toast a link to a request the session no longer holds shows (S1, S2),
- * in English; the page shows the dictionary's `staleLink` (D222).
+ * The toast a link to a request the session no longer holds shows (frames S1
+ * and S2 of the Figma page `Webhook Inspector · Request actions`), in English;
+ * the page shows the dictionary's `staleLink` (D222).
  */
 export const STALE_LINK_TOAST = en.staleLink;
 
@@ -216,7 +217,8 @@ export const MAX_PASTED_LENGTH = 2_048;
 
 /**
  * What a value pasted into the field of `Session not found` asks to open
- * (R7, R8; #228's Decision 10):
+ * (frames R7 and R8 of the Figma page `Webhook Inspector · Private sessions
+ * (#228)`; #228's Decision 10):
  *
  * - `empty`: nothing but spaces, which does nothing;
  * - `open`: the key alone, for the page's own session, or a link with access

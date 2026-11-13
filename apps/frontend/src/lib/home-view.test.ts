@@ -31,9 +31,10 @@ import {
 import { loadSessionList, SESSION_LIST_KEY, type ListedSession } from './session-list.ts';
 
 /**
- * What the home page shows (issue #92, D199): F or G3′, the rows and their
- * order, the days, the cut after five and `Show all`, the loading and failure
- * states, and every string the list writes.
+ * What the home page shows (issue #92, D199): row F or row G3′ of the Figma
+ * page `Webhook Inspector · My sessions`, the rows and their order, the days,
+ * the cut after five and `Show all`, the loading and failure states, and every
+ * string the list writes.
  */
 
 const ID = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';

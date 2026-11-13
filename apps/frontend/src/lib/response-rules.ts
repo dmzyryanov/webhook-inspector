@@ -1,9 +1,10 @@
 /**
- * The response rules in the interface (issue #226 over #134's API, D246;
- * Figma page `Webhook Inspector · Response rules (#134) — A APPROVED
- * 2026-10-19`, direction A): the quick switch's section under the queue's,
- * the `· N rules` of the endpoint label, the Response rules dialog and its
- * toasts.
+ * The response rules in the interface (issue #226 over #134's API, D246; Figma
+ * page `Webhook Inspector · Response rules (#134) — A APPROVED 2026-10-19`,
+ * direction A): the quick switch's section under the queue's, the `· N rules`
+ * of the endpoint label, the Response rules dialog and its toasts. The frames
+ * its comments cite by a bare label - R2 to R7, RT2, RP2 and RP3 - are frames
+ * of that page; a frame of another page says which.
  *
  * Every one of these is a decision about text or about which rules show,
  * rather than about layout, so it lives here, away from the DOM, where a unit
@@ -116,7 +117,11 @@ export interface RuleSectionRow {
   path: string;
   /** The status and, when it has one, the delay, `404 · 2 s`. */
   answer: string;
-  /** Whether the rule's response is a template: the tag after the answer (issue #236, T13). */
+  /**
+   * Whether the rule's response is a template: the tag after the answer (issue
+   * #236, frame T13 of the Figma page `Webhook Inspector · Response body
+   * templates (#236) — approved A`).
+   */
   template: boolean;
 }
 
@@ -612,8 +617,9 @@ export function rulesErrorsWithRefusal(
 export type RulesFailure = { kind: 'unavailable' } | ({ kind: 'shown' } & ShownRulesFailure);
 
 /**
- * What a failed save or removal says, as the queue dialog's (E2): the
- * session gone moves the page; the server's refusal of a rule, placed at it
+ * What a failed save or removal says, as the queue dialog's (frame E2 of the
+ * Figma page `Webhook Inspector · Response queue (#106) — chosen, review 2`):
+ * the session gone moves the page; the server's refusal of a rule, placed at it
  * (`placeRulesRefusal`), names the rule counted from 1 - and its message when
  * no field of it shows that - and otherwise says its own message after a
  * lead-in, never parsed (D106, D257); a list over 1 MiB offers no retry,
@@ -691,7 +697,10 @@ export function shownRulesFailure(
     : null;
 }
 
-/** What the dialog's footer shows (R4-R6, and the queue's E1-E3). */
+/**
+ * What the dialog's footer shows (R4-R6, and frames E1-E3 of the Figma page
+ * `Webhook Inspector · Response queue (#106) — chosen, review 2`).
+ */
 export interface RulesFooterView {
   /** The row that asks to remove every rule, in place of `Remove all rules`, `Cancel` and `Save rules`. */
   asking: boolean;

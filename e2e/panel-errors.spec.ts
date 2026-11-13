@@ -218,8 +218,9 @@ test('A request the panel cannot draw leaves the rest of the page working', asyn
 
 /**
  * The same on a phone, where the panel is the whole screen under the Back bar
- * (frame 3I): the error state sits under `‹ Requests`, which still returns to
- * the list, and the next request opens normally (D157).
+ * (frame 3I of the Figma page `Webhook Inspector · Tablet and phone`): the
+ * error state sits under `‹ Requests`, which still returns to the list, and the
+ * next request opens normally (D157).
  */
 test('On a phone the error state keeps the Back bar and the list', async ({ page, request }) => {
   const sessionId = await createSessionViaApi(request);

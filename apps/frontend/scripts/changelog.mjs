@@ -583,10 +583,10 @@ function versionDetails(entry, open) {
 }
 
 /**
- * Everything inside `<body>` of `/changelog`: the header, the page (C′) and
- * the footer. Each version is a `<details>`, the newest open, so every line
- * opens without JavaScript; the toolbar needs the page's script and is hidden
- * without it.
+ * Everything inside `<body>` of `/changelog`: the header, the page (row C′ of
+ * the Figma page `Webhook Inspector · Changelog`) and the footer. Each version
+ * is a `<details>`, the newest open, so every line opens without JavaScript;
+ * the toolbar needs the page's script and is hidden without it.
  */
 export function renderChangelogBody(entries) {
   const days = groupByDay(entries).map((day) =>

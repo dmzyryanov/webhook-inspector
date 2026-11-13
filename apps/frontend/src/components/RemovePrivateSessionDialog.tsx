@@ -25,12 +25,13 @@ interface RemovePrivateSessionDialogProps {
 }
 
 /**
- * The warning `Remove from list` gives for a private session (R3, #228's
- * Decisions 1 and 9, D259): only this browser holds its key, so once
- * the entry leaves the list, with its key, the session opens only with its
- * link with access. `Copy link with access` copies that link and keeps the
- * dialog open, saying `Copied` while the copy holds, or the browser's
- * refusal; `Cancel` and `Remove from list` sit on the right.
+ * The warning `Remove from list` gives for a private session (frame R3 of the
+ * Figma page `Webhook Inspector · Private sessions (#228)`, #228's Decisions 1
+ * and 9, D259): only this browser holds its key, so once the entry leaves the
+ * list, with its key, the session opens only with its link with access. `Copy
+ * link with access` copies that link and keeps the dialog open, saying `Copied`
+ * while the copy holds, or the browser's refusal; `Cancel` and `Remove from
+ * list` sit on the right.
  *
  * Below 768 px it follows the phone's `Delete session…` confirmation: a
  * centred dialog whose buttons stack full width, `Remove from list` first,

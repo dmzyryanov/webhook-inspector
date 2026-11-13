@@ -91,9 +91,10 @@ function fact(item) {
 
 /**
  * Everything inside `<body>` of an about page, `/about` unless `page` is
- * another: the header, in the page's language; the page (D1): the eyebrow,
- * the title, the story and the four facts; and the footer band, the page's
- * own `About` its current page.
+ * another: the header, in the page's language; the page (direction D1 of the
+ * Figma page `Webhook Inspector · About page (#131)`): the eyebrow, the title,
+ * the story and the four facts; and the footer band, the page's own `About` its
+ * current page.
  */
 export function renderAboutBody(page = ABOUT_EN) {
   return [

@@ -18,7 +18,8 @@ interface SessionUnavailableProps {
  * `Generate new URL` button that went with it.
  *
  * Below 1024 px the margins close in and the title steps down, so the page
- * never runs wider than the screen (2E, D157).
+ * never runs wider than the screen (frame 2E of the Figma page `Webhook
+ * Inspector · Tablet and phone`, D157).
  *
  * It closes with the footer band every page carries (D177); it has no frame of
  * its own there, and shares the not-found screens' shell.

@@ -83,7 +83,8 @@ test('a session configured on its page answers with the configured status, heade
   await quick.getByRole('button', { name: '201', exact: true }).click();
   await quick.getByRole('button', { name: '2 s', exact: true }).click();
 
-  // ...carried into the full editor, which alone sets headers and a body (D2).
+  // ...carried into the full editor, which alone sets headers and a body (frame
+  // D2 of the Figma page `Webhook Inspector · Editable response settings`).
   await quick.getByRole('button', { name: 'Edit headers and body…' }).click();
 
   const editor = page.getByRole('dialog', { name: 'Session response settings' });
@@ -277,8 +278,10 @@ async function checkTypedFields(
       expect((await toggle.boundingBox())?.height, sectionAt).toBe(44);
     }
 
-    // The Response rules section under it, drawn as it is (issue #226, R2,
-    // RT1, RP1): its own line, collapsed the first time, named by its title.
+    // The Response rules section under it, drawn as it is (issue #226, frames
+    // R2, RT1 and RP1 of the Figma page `Webhook Inspector · Response rules
+    // (#134) — A APPROVED 2026-10-19`): its own line, collapsed the first time,
+    // named by its title.
     const rulesSection = quick.getByRole('region', { name: 'Response rules' });
     const rulesToggle = rulesSection.getByRole('button', { name: /^Response rules/ });
     const rulesAt = `the Response rules section at ${layout.width} px`;
@@ -712,7 +715,10 @@ async function saveQueueWhileLocked(
  * The second half of E2E-02 (issue #36, D150-D153): the response of the running
  * session is changed from the endpoint card, with no new session, and every
  * change is observed where it matters - in what the sender receives next, and
- * in a second viewer that only its own socket can have told (D152).
+ * in a second viewer that only its own socket can have told (D152). The steps
+ * below name the frames of the Figma page `Webhook Inspector · Editable
+ * response settings` they check: C1 to C8, the quick switch, and D1 to D8, the
+ * full editor.
  *
  * Inside this journey rather than a fourth one (D108): its subject is the
  * configured response, and it continues from the session this journey created.
@@ -745,13 +751,13 @@ async function changeTheRunningResponse(
 
     await expect(button).toHaveText(`Custom · 201 · ${DELAY_MS} ms`);
 
-    // C1-C3: the quick switch. 500 and no delay, applied.
+    // Figma frames C1-C3: the quick switch. 500 and no delay, applied.
     await button.click();
 
     const quick = page.getByRole('dialog', { name: 'Session response', exact: true });
 
     await expect(quick).toBeVisible();
-    // C6: 204 is unavailable while a body is set, and says why.
+    // Figma frame C6: 204 is unavailable while a body is set, and says why.
     await expect(quick.getByRole('button', { name: '204', exact: true })).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -788,7 +794,8 @@ async function changeTheRunningResponse(
     expect(await failed.text()).toBe(BODY);
     await expect(requestRow(page, storedRequestId(failed))).toBeVisible();
 
-    // D1-D3: the full editor, reached from the quick switch's link.
+    // Figma frames D1-D3: the full editor, reached from the quick switch's
+    // link.
     await button.click();
     await quick.getByRole('button', { name: 'Edit headers and body…' }).click();
 
@@ -815,8 +822,9 @@ async function changeTheRunningResponse(
     await expect.poll(updatesSeen).toBe(2);
     await expect(observerButton).toHaveText('Custom · 500');
 
-    // C7/C8 and D7/D8: nothing closes a surface while its change is in flight,
-    // so a failure is shown with the choice and the edits still in place.
+    // Figma frames C7/C8 and D7/D8: nothing closes a surface while its change
+    // is in flight, so a failure is shown with the choice and the edits still
+    // in place.
     await failWhileHeld(page, async () => {
       await button.click();
       await quick.getByRole('button', { name: '404', exact: true }).click();
@@ -872,7 +880,7 @@ async function changeTheRunningResponse(
     await expect(editor).toBeHidden();
     await expect(button).toHaveText('Custom · 500');
 
-    // C4: Default keeps the custom response...
+    // Figma frame C4: Default keeps the custom response...
     await button.click();
     await quick.getByRole('radio', { name: 'Default' }).click();
     await expect(quick).toContainText(
@@ -1515,10 +1523,11 @@ async function setUpResponseRules(
     );
   const sessionPath = new URL(page.url()).pathname;
 
-  // First the list's worst case at 320 px (#233, frame N1): rule 20 and a
-  // long IPv6 sender beside a 404 and 1018.4 KB, the list's answer rewritten
-  // for that one row. Only the address may be cut; the marker, the size, the
-  // time and the `×` keep theirs (D157).
+  // First the list's worst case at 320 px (#233, frame N1 of the Figma page
+  // `Webhook Inspector · Rule marker in the request list (#233) — approved A`):
+  // rule 20 and a long IPv6 sender beside a 404 and 1018.4 KB, the list's
+  // answer rewritten for that one row. Only the address may be cut; the marker,
+  // the size, the time and the `×` keep theirs (D157).
   const listRoute = '**/api/sessions/*/requests';
 
   await page.route(listRoute, async (route) => {
@@ -1615,7 +1624,8 @@ const TEMPLATE_BODY =
 
 /**
  * Chooses an item of `Insert placeholder ▾`: the dropdown from 768 px, the
- * bottom sheet below (T6, T7).
+ * bottom sheet below (frames T6 and T7 of the Figma page `Webhook Inspector ·
+ * Response body templates (#236) — approved A`).
  */
 async function insertPlaceholder(scope: Locator, page: Page, item: string): Promise<void> {
   await scope.getByRole('button', { name: 'Insert placeholder' }).click();
@@ -1629,7 +1639,9 @@ async function insertPlaceholder(scope: Locator, page: Page, item: string): Prom
 
 /**
  * E2E-02's response templates (issue #236 over D251): the opt-in under the
- * body, in the session response editor, a queue step and a rule's response.
+ * body, in the session response editor, a queue step and a rule's response. The
+ * steps below name the frames of the Figma page `Webhook Inspector · Response
+ * body templates (#236) — approved A` they check: T1, T2, T7 and T13.
  *
  * In the editor the box is unticked, with no menu and no hint; ticked, the
  * body is built by typing and `Insert placeholder ▾` - each item inserted at
@@ -1671,8 +1683,8 @@ test('a response made a template in the editor, a queue step and a rule fills in
   const save = editor.getByRole('button', { name: 'Save response' });
   const hint = 'Placeholders like {{request.id}} are replaced with values of the captured request.';
 
-  // Off by default: no menu, no hint, no check - `{{` is text (T1). The box
-  // took the line of `Returned exactly as entered`.
+  // Off by default: no menu, no hint, no check - `{{` is text (Figma frame
+  // T1). The box took the line of `Returned exactly as entered`.
   await expect(box).not.toBeChecked();
   await expect(editor.getByRole('button', { name: 'Insert placeholder' })).toHaveCount(0);
   await expect(editor).not.toContainText(hint);
@@ -1681,7 +1693,8 @@ test('a response made a template in the editor, a queue step and a rule fills in
   await expect(body).toHaveAttribute('aria-invalid', 'false');
   await expect(save).toBeEnabled();
 
-  // Ticked, the menu and the hint appear (T2), and the same text is checked.
+  // Ticked, the menu and the hint appear (Figma frame T2), and the same text
+  // is checked.
   await box.check();
   await expect(editor.getByTestId('template-hint')).toHaveText(hint);
   await expect(body).toHaveAttribute('aria-invalid', 'true');
@@ -1737,7 +1750,8 @@ test('a response made a template in the editor, a queue step and a rule fills in
   await expect(editor.getByRole('button', { name: 'Insert placeholder' })).toBeFocused();
   await expect(editor).toBeVisible();
 
-  // On a phone the list is a bottom sheet (T7), inserting where the caret was.
+  // On a phone the list is a bottom sheet (Figma frame T7), inserting where
+  // the caret was.
   await page.setViewportSize({ width: 375, height: 812 });
   await editor.getByRole('button', { name: 'Insert placeholder' }).click();
 
@@ -1766,7 +1780,8 @@ test('a response made a template in the editor, a queue step and a rule fills in
     'Saved. Requests captured from now on get this response.',
   );
 
-  // The quick switch marks it, right of `Edit headers and body…` (T13).
+  // The quick switch marks it, right of `Edit headers and body…` (Figma
+  // frame T13).
   const summaryTag = quick
     .getByRole('button', { name: 'Edit headers and body…' })
     .locator('xpath=..')

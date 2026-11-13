@@ -1,7 +1,9 @@
 /**
  * The quick switch under the endpoint-card button: Default or Custom, a status
  * and a delay, and Apply (frames C1-C8 of the Figma page `Webhook Inspector ·
- * Editable response settings`, D150).
+ * Editable response settings`, D150). The frames its comments cite by a bare
+ * label are of that page: C1 to C8, the quick switch, and D2, the full editor's
+ * form.
  *
  * Headers and body are not edited here - they "stay as they are", and the link
  * beside that sentence opens the full editor. So a custom change sent from here

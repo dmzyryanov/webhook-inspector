@@ -68,16 +68,20 @@ export interface PanelComparison {
 
 /**
  * Below 1024 px the panel is the whole screen under the Back bar: full-bleed,
- * with no frame of its own (3A, 7C, D157). It keeps a floor, so that a phone
- * or tablet held in landscape still has room for the tab area to scroll in;
- * the page scrolls to reach the rest of it.
+ * with no frame of its own (frames 3A and 7C of the Figma page `Webhook
+ * Inspector · Tablet and phone`, D157). It keeps a floor, so that a phone or
+ * tablet held in landscape still has room for the tab area to scroll in; the
+ * page scrolls to reach the rest of it.
  */
 const NARROW_PANEL = 'max-lg:min-h-[420px] max-lg:rounded-none max-lg:border-0';
 
 /** A phone's `Request` / `Response` tab: half the row, underlined across it. */
 const EXCHANGE_TAB = 'max-md:flex-1 max-md:after:inset-x-0';
 
-/** The view panels' padding: 16 px on a phone, 24 px on a tablet (3A, 7C). */
+/**
+ * The view panels' padding: 16 px on a phone, 24 px on a tablet (frames 3A and
+ * 7C of the Figma page `Webhook Inspector · Tablet and phone`).
+ */
 const VIEW_PANEL = 'max-md:px-4 max-md:pb-4 max-md:pt-3 md:max-lg:px-6 md:max-lg:pt-4';
 
 /**
@@ -172,13 +176,16 @@ export function RequestDetail({
             {/* Tabs with an underline indicator, in the same idiom as the strip
               below them - never a button pair and never a segmented switch. On
               a phone the two halves share the width equally, and the underline
-              spans the whole half rather than running past the label (3A, E3,
-              E4, D158).
+              spans the whole half rather than running past the label (frame 3A
+              of the Figma page `Webhook Inspector · Tablet and phone`, and
+              frames E3 and E4 of the Figma page `Webhook Inspector · Polish and
+              API docs link`, D158).
 
               The row ends in `Actions ▾`, the menu of every per-request
               action, from 768 px up; it is outside every half, so it is there
-              on both (C1-C3, D182). It sits beside the tab list rather than in
-              it, since a `tablist` owns tabs only, and the row carries the
+              on both (frames C1-C3 of the Figma page `Webhook Inspector ·
+              Request actions`, D182). It sits beside the tab list rather than
+              in it, since a `tablist` owns tabs only, and the row carries the
               border the two share. On a tablet the row's right padding is
               12 px, so the chevron ends where the view strip does. */}
             <div className="flex border-b border-line-tabs md:pr-3">
@@ -505,9 +512,12 @@ function ResponseHalf({ response, httpVersion }: ResponseHalfProps) {
             lines.stateLine
           ) : (
             // The step of the response queue that answered, or the response
-            // rule, as a tag inside the line, before its time (U7, M5, D205;
-            // R8, RP4, D246). A rule's path may be 1 KiB long: the tag wraps
-            // anywhere rather than push the panel sideways.
+            // rule, as a tag inside the line, before its time (frames U7 and M5
+            // of the Figma page `Webhook Inspector · Response queue (#106) —
+            // chosen, review 2`, D205; frames R8 and RP4 of the Figma page
+            // `Webhook Inspector · Response rules (#134) — A APPROVED
+            // 2026-10-19`, D246). A rule's path may be 1 KiB long: the tag
+            // wraps anywhere rather than push the panel sideways.
             <>
               {lines.stateParts.lead}
               {' · '}

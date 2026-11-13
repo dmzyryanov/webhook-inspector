@@ -223,7 +223,9 @@ describe('the queue section line in index.css', () => {
       /\bborder-line-section\b/.test(readFileSync(new URL(file, SRC), 'utf8')),
     );
 
-    // The Response rules section under the queue's is drawn as it is (issue #226, R2).
+    // The Response rules section under the queue's is drawn as it is (issue
+    // #226, frame R2 of the Figma page `Webhook Inspector · Response rules
+    // (#134) — A APPROVED 2026-10-19`).
     assert.deepEqual(users.sort(), [
       'components/ResponseQueueSection.tsx',
       'components/ResponseRulesSection.tsx',

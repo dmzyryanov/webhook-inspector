@@ -101,8 +101,9 @@ export function useComparison({
   /**
    * Loads the request chosen to compare with (D186), with the existing detail
    * call and nothing else. Only the answer to the latest choice is applied. A
-   * request the server no longer has is gone (D4); a closed session takes the
-   * page over, as any other session-scoped call does.
+   * request the server no longer has is gone (frame D4 of the Figma page
+   * `Webhook Inspector · Compare requests`); a closed session takes the page
+   * over, as any other session-scoped call does.
    */
   const loadChosen = useCallback(
     async (id: string): Promise<void> => {

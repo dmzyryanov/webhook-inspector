@@ -185,10 +185,11 @@ function useRequestActions({
 
 /**
  * `Actions ▾` at the end of the `Request` · `Response` row, on both halves,
- * from 768 px up (C1-C3, D182): link-coloured, Inter Medium 13 with a
- * chevron, ending 20 px from the panel's edge on the desktop; 14 px with a
- * target of the row's full height below 1024 px, ending where the view strip's
- * padding does. On a phone the Back bar's `⋯` takes its place.
+ * from 768 px up (frames C1-C3 of the Figma page `Webhook Inspector · Request
+ * actions`, D182): link-coloured, Inter Medium 13 with a chevron, ending 20 px
+ * from the panel's edge on the desktop; 14 px with a target of the row's full
+ * height below 1024 px, ending where the view strip's padding does. On a phone
+ * the Back bar's `⋯` takes its place.
  *
  * A WAI-ARIA menu button, from Radix: Enter, Space or Down open it on its
  * first item, the arrows move, Enter chooses, and Escape - or a choice -
@@ -224,7 +225,8 @@ export function RequestActionsMenu({ signature, ...props }: RequestActionsProps)
   return (
     <Popover.Root open={checking} onOpenChange={setChecking}>
       <DropdownMenu.Root>
-        {/* The popover hangs from `Actions` too, in the menu's place (B1). */}
+        {/* The popover hangs from `Actions` too, in the menu's place (frame B1
+            of the Figma page `Webhook Inspector · Check signature`). */}
         <Popover.Anchor asChild>
           <DropdownMenu.Trigger
             ref={trigger}
@@ -305,7 +307,8 @@ interface SignaturePopoverProps {
 }
 
 /**
- * `Check signature…` from 768 px up (B1, B2, B4, D197): a 400 px popover under
+ * `Check signature…` from 768 px up (frames B1, B2 and B4 of the Figma page
+ * `Webhook Inspector · Check signature`, D197): a 400 px popover under
  * `Actions`, 4 px below the row, its right edge 4 px inside the trigger's on
  * the desktop and on the chevron's end on a tablet - where its controls are
  * 44 px and its `×` a 44 × 44 target. Non-modal: the page stays live, and a
@@ -390,8 +393,9 @@ const KEEPS_FOCUS = [
  * Where the popover sits against the trigger's box, which is the row's full
  * height with 8 px (desktop) or 12 px (tablet) of padding beside the label:
  * 4 px under the row, and its right edge 4 px inside the box on the desktop
- * (B1: 16 px from the panel's edge) and on the chevron's end on a tablet (B4:
- * 24 px from the screen's).
+ * (frame B1 of the Figma page `Webhook Inspector · Check signature`: 16 px from
+ * the panel's edge) and on the chevron's end on a tablet (frame B4: 24 px from
+ * the screen's).
  */
 const POPOVER_SIDE_OFFSET = 4;
 const POPOVER_ALIGN_OFFSET_DESKTOP = 4;
@@ -401,10 +405,11 @@ const POPOVER_ALIGN_OFFSET_TABLET = 12;
  * Where the menu sits against the trigger's box, which is the row's full
  * height with the label centred in it and 8 px (desktop) or 12 px (tablet) of
  * padding beside it. The menu starts 8 px under the label - its 16 px chevron
- * - so above the box's bottom edge, and its right edge is on the chevron's
- * end, not on the padding's (C2's `Menu / Actions`, 8 px under `Actions ▾`
- * with the right edges on one line). The tablet has no frame of the open menu
- * and follows the same two rules.
+ * - so above the box's bottom edge, and its right edge is on the chevron's end,
+ * not on the padding's (the layer `Menu / Actions` of frame C2 of the Figma
+ * page `Webhook Inspector · Request actions`, 8 px under `Actions ▾` with the
+ * right edges on one line). The tablet has no frame of the open menu and
+ * follows the same two rules.
  */
 const MENU_SIDE_OFFSET = -6;
 const MENU_ALIGN_OFFSET_DESKTOP = 8;
@@ -422,14 +427,16 @@ interface RequestActionsSheetProps extends Omit<RequestActionsProps, 'details'> 
 }
 
 /**
- * The phone's `⋯`, a 44 × 44 target at the end of the Back bar, and the
- * bottom sheet it opens (C4, D182): `Request actions` over a scrim, 48 px
- * rows at 15 px. A tap on the scrim, Escape or a choice closes it, and focus
- * returns to `⋯`. A modal Radix dialog: the page under the scrim is out of
- * reach of Tab and of assistive technology while it is open.
+ * The phone's `⋯`, a 44 × 44 target at the end of the Back bar, and the bottom
+ * sheet it opens (frame C4 of the Figma page `Webhook Inspector · Request
+ * actions`, D182): `Request actions` over a scrim, 48 px rows at 15 px. A tap
+ * on the scrim, Escape or a choice closes it, and focus returns to `⋯`. A modal
+ * Radix dialog: the page under the scrim is out of reach of Tab and of
+ * assistive technology while it is open.
  *
  * `Check signature…` is the one choice that does not close it: the same
- * sheet becomes `Check signature` (B3, B5, D197), and closes the same way.
+ * sheet becomes `Check signature` (frames B3 and B5 of the Figma page `Webhook
+ * Inspector · Check signature`, D197), and closes the same way.
  *
  * From 768 px up it is not rendered, so a sheet open when the window widens
  * closes with it, and `Actions ▾` is there instead.

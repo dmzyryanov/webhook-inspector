@@ -24,8 +24,9 @@ export const DEFAULT_ALGORITHM: SignatureAlgorithm = 'SHA-256';
 export type SignatureEncoding = 'hex' | 'Base64';
 
 /**
- * The text the check shows in fixed places (Figma B1-B5, S1, S2), in English;
- * the check draws the dictionary's `signature` (D222).
+ * The text the check shows in fixed places (frames B1-B5, S1 and S2 of the
+ * Figma page `Webhook Inspector · Check signature`), in English; the check
+ * draws the dictionary's `signature` (D222).
  */
 export const SIGNATURE_TEXT = {
   warning: en.signature.warning,

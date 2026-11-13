@@ -5,7 +5,8 @@
  * them. Pure, so it is unit-tested; `LandingPage` draws what this decides
  * (D025, D061).
  *
- * The states (Figma page `604:11`, approved 2026-10-03):
+ * The states (rows of the Figma page `Webhook Inspector · My sessions`,
+ * `604:11`, approved 2026-10-03):
  *
  * - **First visit (F)** while the list is empty, storage unavailable
  *   included, and once the status read has dropped every session in it.
