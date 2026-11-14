@@ -66,7 +66,11 @@ describe('formatResponseButtonLabel', () => {
     assert.equal(formatResponseButtonLabel(custom({ status: 204 })), 'Custom · 204');
   });
 
-  it('adds the delay segment only when there is a delay (C1, C3)', () => {
+  /**
+   * The label of frames C1 and C3 of the Figma page `Webhook Inspector ·
+   * Editable response settings`.
+   */
+  it('adds the delay segment only when there is a delay', () => {
     assert.equal(
       formatResponseButtonLabel(custom({ status: 201, delayMs: 500 })),
       'Custom · 201 · 500 ms',
@@ -119,7 +123,11 @@ describe('the mode and the kept custom response (D151)', () => {
 });
 
 describe('describeKeptResponse', () => {
-  it('says every part of the kept response, as C4 draws it', () => {
+  /**
+   * As frame C4 of the Figma page `Webhook Inspector · Editable response
+   * settings` draws it.
+   */
+  it('says every part of the kept response', () => {
     assert.equal(
       describeKeptResponse(
         custom({ status: 201, delayMs: 500, headers: [['x-trace-id', 'abc']], body: '{}' }),
@@ -146,7 +154,8 @@ describe('describeKeptResponse', () => {
     );
   });
 
-  it('puts it in the sentence that says it comes back (C4)', () => {
+  /** Frame C4 of the Figma page `Webhook Inspector · Editable response settings`. */
+  it('puts it in the sentence that says it comes back', () => {
     assert.equal(
       formatKeptNote(custom({ status: 201, delayMs: 500, headers: [['a', '1']], body: '{}' })),
       'Your custom response stays saved — 201 · 500 ms · 1 header · body — and comes back when you switch to Custom.',
@@ -155,7 +164,11 @@ describe('describeKeptResponse', () => {
 });
 
 describe('the toasts', () => {
-  it('states what a quick change configured, as C3 words it', () => {
+  /**
+   * In the words of frame C3 of the Figma page `Webhook Inspector · Editable
+   * response settings`.
+   */
+  it('states what a quick change configured', () => {
     assert.equal(
       formatAppliedToast(custom({ status: 500 })),
       'Response is now 500, no delay. Requests captured from now on get it.',
@@ -1350,7 +1363,11 @@ describe('staysOpen', () => {
     assert.equal(staysOpen(true, false), true);
   });
 
-  it('ignores a request to close while a change is being saved (C8, D8)', () => {
+  /**
+   * Frames C8 and D8 of the Figma page `Webhook Inspector · Editable response
+   * settings`.
+   */
+  it('ignores a request to close while a change is being saved', () => {
     assert.equal(staysOpen(false, true), true);
     assert.equal(staysOpen(true, true), true);
   });

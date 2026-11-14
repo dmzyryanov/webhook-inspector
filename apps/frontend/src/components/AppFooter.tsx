@@ -12,7 +12,7 @@ import { LanguageSwitch } from './LanguageSwitch.tsx';
  * A of the Figma page `Webhook Inspector · Privacy footer`, frames A1–A12,
  * with `About` before `Contact:` since issue #131 (D211) and `Terms` and
  * `Privacy` after it since issue #112 (D217), frames F1–F3 of `Webhook
- * Inspector · About page (#131)`.
+ * Inspector · About page (#131) — D1 approved, D2 and D3 not chosen`.
  *
  * A white band under a 1 px line, 8 px above and below the text and the
  * header's side padding: 28 px on the desktop, 24 on a tablet, 16 on a phone.

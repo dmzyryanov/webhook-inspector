@@ -8,10 +8,10 @@ import type { PastedAccess } from './request-link.ts';
 /**
  * The check behind `Open` on `Session not found` (issue #228, D259 point 6):
  * the sentence of frame R7 of the Figma page `Webhook Inspector · Private
- * sessions (#228)` only for a value that is no key or link and for a session
- * the server says is missing or gone; another failure told apart, since the key
- * may be right; one check at a time; and no answer heeded once the field has
- * left the page.
+ * sessions (#228) — L chosen 2026-10-22, review` only for a value that is no
+ * key or link and for a session the server says is missing or gone; another
+ * failure told apart, since the key may be right; one check at a time; and no
+ * answer heeded once the field has left the page.
  */
 
 const SESSION_ID = 'G4t2kM8qVYp3Xn6wRz9BcH1LdF7SaJ0eU5iKcN2mQxA';
@@ -72,7 +72,11 @@ describe('createAccessPaste', () => {
     assert.equal(held.calls.length, 0);
   });
 
-  it("says R7's sentence for a value that is no key or link, asking no one", async () => {
+  /**
+   * The sentence of frame R7 of the Figma page `Webhook Inspector · Private
+   * sessions (#228) — L chosen 2026-10-22, review`.
+   */
+  it('says that nothing opened for a value that is no key or link, asking no one', async () => {
     const held = heldRead();
     const paste = createAccessPaste(held.read);
 
@@ -110,8 +114,13 @@ describe('createAccessPaste', () => {
     assert.deepEqual(held.calls, [[SESSION_ID, KEY]]);
   });
 
-  /** A wrong key is answered as a missing session (D245 point 6), and an expired one as `Session not found` (D133). */
-  it("says R7's sentence only when the server says the session is missing or gone", async () => {
+  /**
+   * A wrong key is answered as a missing session (D245 point 6), and an expired
+   * one as `Session not found` (D133); the sentence is frame R7's, of the Figma
+   * page `Webhook Inspector · Private sessions (#228) — L chosen 2026-10-22,
+   * review`.
+   */
+  it('says that nothing opened only when the server says the session is missing or gone', async () => {
     for (const error of [
       new ApiError(404, ErrorCode.SESSION_NOT_FOUND, 'Session not found'),
       new ApiError(410, ErrorCode.SESSION_EXPIRED, 'Session expired'),

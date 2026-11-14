@@ -598,7 +598,11 @@ describe('formatOpenPosition', () => {
 describe('countArrivedSince and formatArrivedBadge', () => {
   const known = new Set(['c', 'b', 'a']);
 
-  it('counts the requests the list gained after the request was opened (6C)', () => {
+  /**
+   * Frame 6C of the Figma page `Webhook Inspector · Tablet and phone`, a
+   * request arriving while one is open.
+   */
+  it('counts the requests the list gained after the request was opened', () => {
     assert.equal(countArrivedSince([{ id: 'c' }, { id: 'b' }, { id: 'a' }], known), 0);
     assert.equal(countArrivedSince([{ id: 'd' }, { id: 'c' }, { id: 'b' }, { id: 'a' }], known), 1);
     assert.equal(formatArrivedBadge(1), '1 new');

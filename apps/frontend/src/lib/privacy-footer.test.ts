@@ -67,7 +67,7 @@ describe('the privacy footer', () => {
     );
     // The whole footer as it reads below 1024 px, `About · Terms · Privacy`
     // before `Contact:` (D211, D217; frames F1–F3 of the Figma page `Webhook
-    // Inspector · About page (#131)`).
+    // Inspector · About page (#131) — D1 approved, D2 and D3 not chosen`).
     assert.equal(
       PRIVACY_FOOTER_TEXT,
       'Captured requests \u2014 headers, body and the sender\u0027s IP \u2014 are kept until you ' +

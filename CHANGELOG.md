@@ -126,6 +126,15 @@ The rules (issue #97, D184):
   published text names an issue, a decision, a repository path or an
   infrastructure object.
 
+## 1.19.44
+
+2026-11-15
+
+**Nothing changes on this site; the names of the web page's tests that cited a
+design drawing by a short label now say in words what they check, and the
+comments that named a drawing's page by a shortened title give its full one.**
+Every page looks and works exactly as before. (#468)
+
 ## 1.19.43
 
 2026-11-13

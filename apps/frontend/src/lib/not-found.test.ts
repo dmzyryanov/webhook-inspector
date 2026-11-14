@@ -391,7 +391,11 @@ describe('requestTarget', () => {
 });
 
 describe('sessionNotFoundView', () => {
-  it('matches frame 2A', () => {
+  /**
+   * Frame 2A of the Figma page `Webhook Inspector · Not found`, an address
+   * shaped like a session (D147).
+   */
+  it('words the screen of an address shaped like a session, from its title to the way home', () => {
     assert.deepEqual(
       sessionNotFoundView({
         pathname: `/v/${VALID_ID}`,
@@ -483,7 +487,11 @@ describe('sessionNotFoundView', () => {
 });
 
 describe('pageNotFoundView', () => {
-  it('matches frame 2B', () => {
+  /**
+   * Frame 2B of the Figma page `Webhook Inspector · Not found`, any other
+   * address (D147).
+   */
+  it('words the screen of any other address, from its title to the way home', () => {
     assert.deepEqual(pageNotFoundView({ pathname: '/pricing', search: '', host: HOST }), {
       title: 'Page not found',
       request: ['GET /pricing HTTP/1.1', 'Host: qa-tools.ru'],

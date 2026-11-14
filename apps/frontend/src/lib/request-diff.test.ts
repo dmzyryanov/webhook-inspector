@@ -240,7 +240,8 @@ describe('the opening view', () => {
   });
 });
 
-describe('identical requests (D1)', () => {
+/** Frame D1 of the Figma page `Webhook Inspector · Compare requests`, identical. */
+describe('identical requests', () => {
   const comparison = compareRequests(request(), request({ id: 'other' }));
 
   it('differ in no view, each folded whole', () => {
@@ -412,7 +413,11 @@ describe('inlineRanges: the changed characters', () => {
   });
 });
 
-describe('the whole-body limits (D2, D3)', () => {
+/**
+ * Frames D2 and D3 of the Figma page `Webhook Inspector · Compare requests`:
+ * above 256 KB or too many changes, and binary.
+ */
+describe('the whole-body limits', () => {
   it('compares binary bodies and a non-UTF-8 Raw only as a whole, with both sizes', () => {
     const open = request({ bodyBase64: btoa('\x89PNG\x00\xff\xfe\r\n') });
     const chosen = request({ bodyBase64: btoa('\x89PNG\x00\xff\xfe\r\n') });

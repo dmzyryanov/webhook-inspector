@@ -366,11 +366,12 @@ function SizeOf({
 }
 
 /**
- * The one column of lines (Figma frame A2): unchanged lines plain, removed
- * lines on `#fcecec` with `−`, added lines on `#e8f5ee` with `+`, the changed
- * characters underlined in a darker tone, and folded runs as
- * `N unchanged lines · Show`. Every line wraps; the box never scrolls (D149).
- * `Show` opens that fold in place, for as long as the view is shown.
+ * The one column of lines (frame A2 of the Figma page `Webhook Inspector ·
+ * Compare requests`): unchanged lines plain, removed lines on `#fcecec` with
+ * `−`, added lines on `#e8f5ee` with `+`, the changed characters underlined in
+ * a darker tone, and folded runs as `N unchanged lines · Show`. Every line
+ * wraps; the box never scrolls (D149). `Show` opens that fold in place, for as
+ * long as the view is shown.
  */
 const DiffBox = memo(function DiffBox({ rows }: { rows: readonly DiffRow[] }) {
   const m = useMessages();
@@ -439,8 +440,8 @@ function DiffLineRow({ row }: { row: Exclude<DiffRow, { kind: 'fold' }> }) {
       </span>
       {/* At least one line tall, so an empty line - the blank line between a
           raw request's head and its body, an empty line in a body - keeps its
-          row, as the plain views draw it and as Figma frame A3 draws the Raw
-          comparison. */}
+          row, as the plain views draw it and as frame A3 of the Figma page
+          `Webhook Inspector · Compare requests` draws the Raw comparison. */}
       <span
         data-testid="diff-text"
         className="min-h-5 min-w-0 flex-1 whitespace-pre-wrap text-ink-body wrap-anywhere"

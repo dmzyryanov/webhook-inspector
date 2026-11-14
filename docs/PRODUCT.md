@@ -270,9 +270,10 @@ Since v0.50.0 (issue #131, D211), `https://qa-tools.ru/about` says who runs
 QA Tools, how it is made, who pays for it and what happens to the data people
 send, for a visitor — a company's tester or security reviewer among them —
 deciding whether to send it their traffic (Figma page `Webhook Inspector ·
-About page (#131)`, direction D1). Every page links to it as `About` in the
-footer band; the header is unchanged. The page is static: it reads in full
-without JavaScript and loads nothing from another site.
+About page (#131) — D1 approved, D2 and D3 not chosen`, direction D1). Every
+page links to it as `About` in the footer band; the header is unchanged. The
+page is static: it reads in full without JavaScript and loads nothing from
+another site.
 
 Under the eyebrow `ABOUT QA TOOLS` and the title `Made by a tester, for
 testers`, a story of three paragraphs in the owner's words: a software tester
@@ -546,7 +547,7 @@ No session name or other input is required.
 - **The menu** (from 768 px, under the tile, right-aligned, in the style of the request's `Actions` menu) and **the bottom sheet** (below 768 px, in the style of the request's actions sheet) hold `EXPIRES AFTER LAST USE` (`ИСТЕКАЕТ ПОСЛЕ ПРОСТОЯ`; the sheet's heading `Expires after last use`) with the three windows, the chosen one ticked, then the checkbox `Store the sender's IP` (`Сохранять IP отправителя`), ticked by default, with the hint `Off: requests show “IP not stored”` (`Без галочки в запросах будет «IP не сохраняется»`), whose quoted part never breaks. Choosing does not close them; a click or tap outside, Escape or a swipe down on the sheet does, and focus returns to the trigger. Both are named for the keyboard and assistive technology: the trigger `New session options: 7 days · IP stored`, the windows as radio items, the IP as a checkbox.
 - **The choice lasts until the page is left**: it is kept in the page and nowhere else, so every visit, and a reload, starts at the defaults. While a creation is in flight the tile and the trigger are disabled, and a double click creates one session.
 - **What it sends** (D104, D242, D243): the defaults send `POST /api/sessions` with no body and no `Content-Type`, as before; a choice sends only the keys that differ from the default, as JSON — `{"expiresAfterIdleSeconds":3600}`, `{"storeSourceIp":false}` or both. The failure line under the tile (below) works the same with any choice; below 768 px it comes 12 px under the options line.
-- **Private session** (v1.15.0, issue #228, D259; Figma `Webhook Inspector · Private sessions (#228)`, R1). The menu's and the sheet's last checkbox, below `Store the sender's IP`, the lock before its words: `Private session` — `Opens only with its link with access` (`Приватная сессия` — `Открывается только по ссылке с доступом`), unticked on every visit, a reload included (decision 6). Ticked, the trigger shows the lock after its values, `7 days · IP stored · 🔒 ▾`, the values keeping their tone, and is named `New session options: 7 days · IP stored · Private session`; the creation sends `"private": true` beside the other chosen keys, with no `Authorization`, so the server draws the key and answers it once (D253). The page keeps that key in this browser (below) and opens the session as any other, with no key shown.
+- **Private session** (v1.15.0, issue #228, D259; Figma `Webhook Inspector · Private sessions (#228) — L chosen 2026-10-22, review`, R1). The menu's and the sheet's last checkbox, below `Store the sender's IP`, the lock before its words: `Private session` — `Opens only with its link with access` (`Приватная сессия` — `Открывается только по ссылке с доступом`), unticked on every visit, a reload included (decision 6). Ticked, the trigger shows the lock after its values, `7 days · IP stored · 🔒 ▾`, the values keeping their tone, and is named `New session options: 7 days · IP stored · Private session`; the creation sends `"private": true` beside the other chosen keys, with no `Authorization`, so the server draws the key and answers it once (D253). The page keeps that key in this browser (below) and opens the session as any other, with no key shown.
 
 A fixed lifetime (`expiresInSeconds`), a window under 1 hour, changing a session's options after it is created, remembering the last choice and showing a session's options in the list below are not part of it.
 

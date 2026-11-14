@@ -1,8 +1,9 @@
 /**
  * The check behind `Open` in the field of `Session not found` (frames R6-R8 of
- * the Figma page `Webhook Inspector · Private sessions (#228)`, issue #228,
- * D259 point 6), kept here rather than in the component because this is the
- * part of the frontend that is unit-tested (D025, D061).
+ * the Figma page `Webhook Inspector · Private sessions (#228) — L chosen
+ * 2026-10-22, review`, issue #228, D259 point 6), kept here rather than in the
+ * component because this is the part of the frontend that is unit-tested
+ * (D025, D061).
  *
  * The field asks the server once, `GET /api/sessions/<id>` with the key, and
  * only the answer that the session is missing or gone - `404` / `1001` or

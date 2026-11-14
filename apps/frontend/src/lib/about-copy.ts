@@ -4,10 +4,10 @@ import { mailtoOf, OPERATOR, type Operator } from './operator.ts';
 /**
  * The text of `/about` (issue #131, D211): who runs QA Tools, how it is made,
  * who pays for it and what happens to the data people send. The wording was
- * approved with direction D1 of the Figma page `Webhook Inspector
- * · About page (#131)` on 2026-10-08, the `Security reviews` line as the legal
- * pages' `Contact` line on 2026-10-11 (issue #163, D224), and
- * `about-copy.test.ts` pins every text byte for byte.
+ * approved with direction D1 of the Figma page `Webhook Inspector · About page
+ * (#131) — D1 approved, D2 and D3 not chosen` on 2026-10-08, the `Security
+ * reviews` line as the legal pages' `Contact` line on 2026-10-11 (issue #163,
+ * D224), and `about-copy.test.ts` pins every text byte for byte.
  *
  * `\u00a0` is a no-break space and `\u2011` a no-break hyphen: they keep a
  * phrase whole, so that no line of the page ends with a single word (the

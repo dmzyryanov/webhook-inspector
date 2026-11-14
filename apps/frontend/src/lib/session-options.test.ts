@@ -240,8 +240,9 @@ describe('the trigger', () => {
   });
 
   /**
-   * Frame R1 of the Figma page `Webhook Inspector · Private sessions (#228)`:
-   * the values keep their tone, and the lock follows them.
+   * Frame R1 of the Figma page `Webhook Inspector · Private sessions (#228) — L
+   * chosen 2026-10-22, review`: the values keep their tone, and the lock
+   * follows them.
    */
   it('shows the lock after the values for a private session, the values keeping their tone', () => {
     assert.deepEqual(triggerValues(options(WEEK, true, true)), {

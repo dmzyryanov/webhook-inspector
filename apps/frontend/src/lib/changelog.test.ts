@@ -1404,7 +1404,7 @@ describe('the sitemap', () => {
  * `Status ↗` between `Changelog` and `API docs ↗` since D209
  * (status-link.test.ts).
  */
-describe('the header on every page (L2′)', () => {
+describe('the header on every page', () => {
   const header = read('../components/AppHeader.tsx');
 
   it('points Changelog at the page nginx serves, in the same tab', () => {

@@ -94,8 +94,17 @@ function state(
   };
 }
 
-describe('the quick switch section (P1, 671:370-671:772)', () => {
-  it('shows the example and nothing of a queue while the session has none (P1.1)', () => {
+/**
+ * The section at the bottom of the quick switch: placement P1 of the Figma
+ * page `Webhook Inspector · Response queue (#106) — chosen, review 2`, drawn on
+ * its own in frames `671:370` to `671:772`.
+ */
+describe('the queue’s section in the quick switch', () => {
+  /**
+   * Frame P1.1 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`.
+   */
+  it('shows the example and nothing of a queue while the session has none', () => {
     assert.deepEqual(queueSectionView(state(null)), { kind: 'none' });
     // A backend from before 0.46.0 sends no queue at all.
     assert.deepEqual(queueSectionView({ response: null, customResponse: null } as never), {
@@ -103,7 +112,11 @@ describe('the quick switch section (P1, 671:370-671:772)', () => {
     });
   });
 
-  it('frames step 1, the rest grey and the session response dashed (P1.2, 671:370)', () => {
+  /**
+   * Frames P1.2 and `671:370` of the Figma page `Webhook Inspector · Response
+   * queue (#106) — chosen, review 2`.
+   */
+  it('frames step 1, the rest grey and the session response dashed', () => {
     assert.deepEqual(queueSectionView(state(queue(SEVEN, 1))), {
       kind: 'running',
       counter: 'Step 1 of 7',
@@ -122,7 +135,11 @@ describe('the quick switch section (P1, 671:370-671:772)', () => {
     });
   });
 
-  it('puts the step answered last, with ✓, before the next one from step 2 on (P1.4, 671:476)', () => {
+  /**
+   * Frames P1.4 and `671:476` of the Figma page `Webhook Inspector · Response
+   * queue (#106) — chosen, review 2`.
+   */
+  it('puts the step answered last, with ✓, before the next one from step 2 on', () => {
     const view = queueSectionView(state(queue(SEVEN, 2)));
 
     assert.equal(view.kind, 'running');
@@ -163,7 +180,11 @@ describe('the quick switch section (P1, 671:370-671:772)', () => {
     });
   });
 
-  it('frames the session response as the next once every step has answered (L1, 671:772)', () => {
+  /**
+   * The ending L1 of the Figma page `Webhook Inspector · Response queue (#106)
+   * — chosen, review 2`, frame `671:772`.
+   */
+  it('frames the session response as the next once every step has answered', () => {
     assert.deepEqual(queueSectionView(state(queue(SEVEN, null))), {
       kind: 'done',
       lead: 'Every step answered — the session response comes next',
@@ -246,7 +267,11 @@ describe('the "…" overflow', () => {
   });
 });
 
-describe('the endpoint label (U6, U7, U9)', () => {
+/**
+ * The endpoint label as frames U6, U7 and U9 of the Figma page `Webhook
+ * Inspector · Response queue (#106) — chosen, review 2` draw it.
+ */
+describe('the endpoint label with a queue', () => {
   it('adds the steps left and drops the suffix when none is left', () => {
     assert.equal(formatResponseButtonLabel(CUSTOM_200, queue(SEVEN, 2)), 'Custom · 200 · 6 queued');
     assert.equal(
@@ -298,7 +323,11 @@ describe('chip and row labels', () => {
     );
   });
 
-  it('describes a timeline row by its code, its status name and its delay (D1, T2)', () => {
+  /**
+   * The row as frames D1 and T2 of the Figma page `Webhook Inspector ·
+   * Response queue (#106) — chosen, review 2` draw it.
+   */
+  it('describes a timeline row by its code, its status name and its delay', () => {
     const form = formFromResponse(response({ status: 503, delayMs: 2000 }));
 
     assert.deepEqual(describeQueueStepRow(form, {}), {
@@ -310,7 +339,11 @@ describe('chip and row labels', () => {
     assert.equal(describeQueueStepRow(formFromResponse(response({ status: 299 })), {}).name, null);
   });
 
-  it('marks a step in error in the list (E1)', () => {
+  /**
+   * Frame E1 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`, a step with an error.
+   */
+  it('marks a step in error in the list', () => {
     const form: ResponseForm = { ...DEFAULT_RESPONSE_FORM, status: '600' };
 
     assert.deepEqual(describeQueueStepRow(form, { status: 'x' }), {
@@ -332,7 +365,11 @@ describe('chip and row labels', () => {
   });
 });
 
-describe('the dialog: add, duplicate, remove (U4, U5)', () => {
+/**
+ * Frames U4 and U5 of the Figma page `Webhook Inspector · Response queue (#106)
+ * — chosen, review 2`.
+ */
+describe('the dialog: add, duplicate, remove', () => {
   const FORM_503 = formFromResponse(response({ status: 503, headers: [['Retry-After', '2']] }));
 
   it('adds a step as a copy of the session response, custom or default', () => {
@@ -385,7 +422,11 @@ describe('the dialog: add, duplicate, remove (U4, U5)', () => {
     assert.equal(initialQueueSelection(state(null)), null);
   });
 
-  it('offers Remove queue only while the session has a saved queue, not for unsaved steps (U3, U4)', () => {
+  /**
+   * Frames U3 and U4 of the Figma page `Webhook Inspector · Response queue
+   * (#106) — chosen, review 2`.
+   */
+  it('offers Remove queue only while the session has a saved queue, not for unsaved steps', () => {
     assert.equal(canRemoveQueue(state(null)), false);
     assert.equal(canRemoveQueue(state(queue(SEVEN, 1))), true);
     assert.equal(canRemoveQueue(state(queue(SEVEN, null))), true);
@@ -399,7 +440,11 @@ describe('the dialog: add, duplicate, remove (U4, U5)', () => {
     );
   });
 
-  it('stops asking to remove the queue once the queue is gone, removed by another viewer meanwhile (E3)', () => {
+  /**
+   * Frame E3 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`, removing the queue.
+   */
+  it('stops asking to remove the queue once the queue is gone, removed by another viewer meanwhile', () => {
     assert.equal(asksToRemoveQueue(true, state(queue(SEVEN, 3))), true);
     assert.equal(asksToRemoveQueue(true, state(queue(SEVEN, null))), true);
     assert.equal(asksToRemoveQueue(false, state(queue(SEVEN, 3))), false);
@@ -463,8 +508,16 @@ describe('a template kept through the queue dialog (D251, criterion 10)', () => 
   });
 });
 
-describe('the dialog: Save (E1)', () => {
-  it('is unavailable with no steps, and says nothing then (U3)', () => {
+/**
+ * Frame E1 of the Figma page `Webhook Inspector · Response queue (#106) —
+ * chosen, review 2`, a step with an error.
+ */
+describe('the dialog: Save', () => {
+  /**
+   * Frame U3 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`.
+   */
+  it('is unavailable with no steps, and says nothing then', () => {
     assert.deepEqual(evaluateQueue([]), {
       errors: [],
       broken: [],
@@ -515,8 +568,16 @@ describe('the dialog: Save (E1)', () => {
   });
 });
 
-describe('the timeline markers (V1, K2b)', () => {
-  it('shows an untouched queue as it runs: answered, next, ahead (D1)', () => {
+/**
+ * The step list as the timeline V1 with the K2b markers, of the Figma page
+ * `Webhook Inspector · Response queue (#106) — chosen, review 2`.
+ */
+describe('the timeline markers', () => {
+  /**
+   * Frame D1 of the Figma page `Webhook Inspector · Response queue (#106) —
+   * chosen, review 2`, the dialog reopened mid-run.
+   */
+  it('shows an untouched queue as it runs: answered, next, ahead', () => {
     assert.deepEqual(queueStepMarkers(null, state(queue(SEVEN, 2)), 7), [
       'answered',
       'next',
@@ -543,7 +604,11 @@ describe('the timeline markers (V1, K2b)', () => {
     assert.deepEqual(queueStepMarkers(null, state(null), 0), []);
   });
 
-  it('says where a step stands beside its number (U4, U5, D1)', () => {
+  /**
+   * Frames U4, U5 and D1 of the Figma page `Webhook Inspector · Response queue
+   * (#106) — chosen, review 2`.
+   */
+  it('says where a step stands beside its number', () => {
     assert.equal(describeStepPlace(0, 'next'), 'answers the next request');
     assert.equal(describeStepPlace(1, 'next'), 'next — answers the next request');
     assert.equal(describeStepPlace(1, 'ahead'), 'answers the request after step 1');
@@ -551,7 +616,11 @@ describe('the timeline markers (V1, K2b)', () => {
   });
 });
 
-describe('the toasts (U6, U9, E3)', () => {
+/**
+ * Frames U6, U9 and E3 of the Figma page `Webhook Inspector · Response queue
+ * (#106) — chosen, review 2`.
+ */
+describe('the queue’s toasts', () => {
   it('says what the next requests get after a save, then which session response', () => {
     const twoOf503 = queue([response({ status: 503 }), response({ status: 503 })], 1);
 
@@ -691,7 +760,11 @@ describe('following the queue as requests arrive (D205)', () => {
   });
 });
 
-describe('a failed save or removal (E2)', () => {
+/**
+ * Frame E2 of the Figma page `Webhook Inspector · Response queue (#106) —
+ * chosen, review 2`, saving failed.
+ */
+describe('a failed save or removal', () => {
   it('keeps the steps and asks for another try', () => {
     assert.deepEqual(describeQueueFailure(new Error('network'), 'save'), {
       kind: 'shown',
@@ -890,7 +963,11 @@ describe('a failed save or removal (E2)', () => {
     assert.equal(failureAfterEdit(failure), failure);
   });
 
-  it('asks once in the footer, says a step in error outside it, and drops the row with the queue gone (E1, E3)', () => {
+  /**
+   * Frames E1 and E3 of the Figma page `Webhook Inspector · Response queue
+   * (#106) — chosen, review 2`.
+   */
+  it('asks once in the footer, says a step in error outside it, and drops the row with the queue gone', () => {
     const held = state(queue(SEVEN, 3));
 
     assert.deepEqual(

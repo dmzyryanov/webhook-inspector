@@ -134,7 +134,8 @@ export interface TriggerValues {
   chosen: boolean;
   /**
    * The lock after the values, for a private session (frame R1 of the Figma
-   * page `Webhook Inspector · Private sessions (#228)`).
+   * page `Webhook Inspector · Private sessions (#228) — L chosen 2026-10-22,
+   * review`).
    */
   private: boolean;
 }

@@ -247,7 +247,11 @@ describe('afterLinkedOpening', () => {
 });
 
 describe('STALE_LINK_TOAST', () => {
-  it('is the wording the approved frames S1 and S2 draw', () => {
+  /**
+   * Frames S1 and S2 of the Figma page `Webhook Inspector · Request actions`,
+   * a stale link on the desktop and on a phone.
+   */
+  it('is the wording the approved frames draw', () => {
     assert.equal(STALE_LINK_TOAST, 'The linked request is no longer in this session.');
   });
 });
@@ -429,7 +433,12 @@ describe('readSessionLink', () => {
   });
 });
 
-describe('readPastedAccess: the field of Session not found (R7, R8)', () => {
+/**
+ * Frames R7 and R8 of the Figma page `Webhook Inspector · Private sessions
+ * (#228) — L chosen 2026-10-22, review`: the field open, a wrong key, and a
+ * link with access pasted.
+ */
+describe('readPastedAccess: the field of Session not found', () => {
   const HERE = 'pR7vX2aLq9Wm4Tz8Hc1Ny68d3Kf5Gs0Jx2Ve7Up4RtE';
 
   it('does nothing for an empty value or spaces', () => {

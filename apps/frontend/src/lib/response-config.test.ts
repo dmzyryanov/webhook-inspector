@@ -87,7 +87,11 @@ describe('status', () => {
 });
 
 describe('a status that forbids a body', () => {
-  it('rejects a body configured with 204, 205 or 304, on the body, naming the status (D5)', () => {
+  /**
+   * In the words of frame D5 of the Figma page `Webhook Inspector · Editable
+   * response settings`.
+   */
+  it('rejects a body configured with 204, 205 or 304, on the body, naming the status', () => {
     for (const status of ['204', '205', '304']) {
       assert.equal(
         rejected({ status, body: '{"a":1}' }).errors.body,

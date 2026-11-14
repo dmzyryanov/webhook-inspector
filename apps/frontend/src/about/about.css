@@ -1,9 +1,10 @@
 /*
  * The about page, /about (issue #131, D211): direction D1 of the Figma page
- * `Webhook Inspector · About page (#131)`, frames D1-1 (1440, `748:12`), D1-2
- * (768, `748:83`) and D1-3 (375, `748:148`). A page of its own with no
- * script: `about/index.html` links this stylesheet, which brings Inter from
- * the bundle and the header and the footer band every static page shares.
+ * `Webhook Inspector · About page (#131) — D1 approved, D2 and D3 not chosen`,
+ * frames D1-1 (1440, `748:12`), D1-2 (768, `748:83`) and D1-3 (375,
+ * `748:148`). A page of its own with no script: `about/index.html` links this
+ * stylesheet, which brings Inter from the bundle and the header and the footer
+ * band every static page shares.
  * The values are the application's tokens (src/index.css) and the frames'
  * own; the facts are drawn as the home page's `How it works` rows are (D199).
  * Widths follow the application's breakpoints: the desktop from 1024 px, a

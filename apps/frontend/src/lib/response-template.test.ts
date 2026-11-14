@@ -218,7 +218,11 @@ describe('the placeholder list (#236, criterion 2)', () => {
 });
 
 describe('the editor’s check of a template (#236, criterion 3)', () => {
-  it('names an unknown placeholder as it was typed, in both languages (T12)', () => {
+  /**
+   * Frame T12 of the Figma page `Webhook Inspector · Response body templates
+   * (#236) — approved A`, the placeholder error.
+   */
+  it('names an unknown placeholder as it was typed, in both languages', () => {
     assert.equal(
       templateError('{"id": "{{request.foo}}", "received": true}'),
       'Unknown placeholder {{request.foo}}.',
@@ -594,7 +598,11 @@ describe('the marks of a template (#236, criterion 4)', () => {
     assert.equal(isTemplate(undefined), false);
   });
 
-  it('gives a queue step’s chip a · Template part, after its delay, in both languages (T13)', () => {
+  /**
+   * Frame T13 of the Figma page `Webhook Inspector · Response body templates
+   * (#236) — approved A`, the marks in the quick switch.
+   */
+  it('gives a queue step’s chip a · Template part, after its delay, in both languages', () => {
     assert.equal(
       formatSectionStepChip({ status: 201, delayMs: 0, template: true }),
       '201 · Template',
@@ -650,7 +658,11 @@ describe('the marks of a template (#236, criterion 4)', () => {
     ]);
   });
 
-  it('marks a rule whose response is a template, its answer as before (T13)', () => {
+  /**
+   * Frame T13 of the Figma page `Webhook Inspector · Response body templates
+   * (#236) — approved A`, the marks in the quick switch.
+   */
+  it('marks a rule whose response is a template, its answer as before', () => {
     const view = rulesSectionView(
       stateWith({
         rules: [

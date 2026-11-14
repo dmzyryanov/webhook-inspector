@@ -111,7 +111,8 @@ export function LandingPage() {
   const [deletion, setDeletion] = useState<Deletion | null>(null);
   /**
    * A private session `Remove from list` warns about first (frame R3 of the
-   * Figma page `Webhook Inspector · Private sessions (#228)`, D259).
+   * Figma page `Webhook Inspector · Private sessions (#228) — L chosen
+   * 2026-10-22, review`, D259).
    */
   const [removal, setRemoval] = useState<PrivateRemoval | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
