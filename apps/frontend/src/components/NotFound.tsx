@@ -80,7 +80,7 @@ export function PageNotFound() {
  * (D245 point 6), so it shows this very screen, in every state: nothing on it
  * tells the two apart. Both offer the field that opens a session with a link
  * with access or its key (frames R6-R8 of the Figma page `Webhook Inspector ·
- * Private sessions (#228)`, D259).
+ * Private sessions (#228) — L chosen 2026-10-22, review`, D259).
  */
 export function SessionNotFound({
   sessionId,

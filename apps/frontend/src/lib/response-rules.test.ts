@@ -114,14 +114,23 @@ describe('the rules a session holds', () => {
   });
 });
 
-describe('the quick switch section (R2, R3, R7)', () => {
+/**
+ * Frames R2, R3 and R7 of the Figma page `Webhook Inspector · Response rules
+ * (#134) — A APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not
+ * chosen`.
+ */
+describe('the rules’ section in the quick switch', () => {
   it('shows the examples and no rule while the session has none', () => {
     assert.deepEqual(rulesSectionView(stateOf([])), { kind: 'none' });
     assert.deepEqual(rulesSectionView(stateOf(undefined)), { kind: 'none' });
     assert.deepEqual(RULE_EXAMPLE_CHIPS, ['POST /orders', 'GET /status']);
   });
 
-  it('lists the rules in order - number, method, path, status and delay - and what every other request gets (R7)', () => {
+  /**
+   * Frame R7 of the Figma page `Webhook Inspector · Response rules (#134) — A
+   * APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not chosen`.
+   */
+  it('lists the rules in order - number, method, path, status and delay - and what every other request gets', () => {
     const view = rulesSectionView(stateOf([ORDERS, STATUS, ITEMS]));
 
     assert.equal(view.kind, 'rules');
@@ -208,7 +217,12 @@ describe('the dialog: the form a rule opens on, and what Save sends', () => {
     }
   });
 
-  it('sends the whole list in its order, none included (R4)', () => {
+  /**
+   * Frame R4 of the Figma page `Webhook Inspector · Response rules (#134) — A
+   * APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not chosen`,
+   * the dialog empty.
+   */
+  it('sends the whole list in its order, none included', () => {
     const forms = [ORDERS, STATUS, ITEMS].map(formFromRule);
     const evaluation = evaluateRules(forms);
 
@@ -326,7 +340,11 @@ describe('a template kept through the rules dialog (D251, criterion 10)', () => 
   });
 });
 
-describe('the dialog: the order (R6)', () => {
+/**
+ * Frame R6 of the Figma page `Webhook Inspector · Response rules (#134) — A
+ * APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not chosen`.
+ */
+describe('the dialog: the order', () => {
   it('moves a rule to another place, the nearest end for a place outside, nothing from no rule', () => {
     const list = ['a', 'b', 'c', 'd'];
 
@@ -700,7 +718,12 @@ describe('the dialog: the checks, as the API makes them (D246 point 4)', () => {
   });
 });
 
-describe('the dialog: a row of the list (R5, R6, RP2)', () => {
+/**
+ * Frames R5, R6 and RP2 of the Figma page `Webhook Inspector · Response rules
+ * (#134) — A APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not
+ * chosen`.
+ */
+describe('the dialog: a row of the list', () => {
   it('says the method, the path, the status, its name and the delay', () => {
     const row = describeRuleRow(formFromRule(ITEMS), { response: {} });
 
@@ -1021,7 +1044,12 @@ describe('the toasts and the Response tab’s tag', () => {
     }
   });
 
-  it('names the rule a request recorded, as it was then, and nothing where none answered (R8)', () => {
+  /**
+   * Frame R8 of the Figma page `Webhook Inspector · Response rules (#134) — A
+   * APPROVED 2026-10-19: path, tablet, phone; bordered rows B1–B3 not chosen`,
+   * the Response tab naming the rule that answered.
+   */
+  it('names the rule a request recorded, as it was then, and nothing where none answered', () => {
     assert.equal(
       formatRecordedRule({ index: 1, method: 'POST', path: '/orders' }),
       'Rule 1 · POST /orders',

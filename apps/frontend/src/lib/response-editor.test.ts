@@ -159,7 +159,8 @@ describe('a template kept through the editor (D251, criterion 10)', () => {
 });
 
 describe('initialEditorDraft', () => {
-  it('opens a custom session straight into its form (D2)', () => {
+  /** Frame D2 of the Figma page `Webhook Inspector · Editable response settings`, the form. */
+  it('opens a custom session straight into its form', () => {
     assert.deepEqual(initialEditorDraft(answering(KEPT)), {
       mode: 'custom',
       form: formFromResponse(KEPT),
@@ -176,7 +177,8 @@ describe('initialEditorDraft', () => {
     );
   });
 
-  it('carries over what the quick switch had chosen (D2)', () => {
+  /** Frame D2 of the Figma page `Webhook Inspector · Editable response settings`, the form. */
+  it('carries over what the quick switch had chosen', () => {
     const draft = initialEditorDraft(answering(KEPT), {
       mode: 'custom',
       statusText: '500',
@@ -206,7 +208,11 @@ describe('evaluateEditorDraft', () => {
     });
   });
 
-  it("reports the validator's errors, in its wording, and cannot save (D4)", () => {
+  /**
+   * Frame D4 of the Figma page `Webhook Inspector · Editable response
+   * settings`, the validation errors.
+   */
+  it("reports the validator's errors, in its wording, and cannot save", () => {
     const form = {
       ...formFromResponse(KEPT),
       status: '99',
@@ -331,7 +337,11 @@ describe('the body field and the automatic headers note (D179)', () => {
   });
 });
 
-describe('the counters (D2)', () => {
+/**
+ * The counters of the form of frame D2 of the Figma page `Webhook Inspector ·
+ * Editable response settings`.
+ */
+describe('the body and header counters', () => {
   it('counts the body in UTF-8 bytes against the limit, grouped as the design writes it', () => {
     assert.equal(formatBodyCounter('{"error":"boom"}'), '16 / 65,536 bytes');
     // Five characters, eight bytes.
@@ -373,7 +383,11 @@ describe('describeChangeFailure', () => {
     });
   });
 
-  it('keeps the choice and asks for another try on anything else (C8, D8)', () => {
+  /**
+   * Frames C8 and D8 of the Figma page `Webhook Inspector · Editable response
+   * settings`: the apply and the save that failed, the choice kept.
+   */
+  it('keeps the choice and asks for another try on anything else', () => {
     for (const error of [
       new TypeError('Failed to fetch'),
       new ApiError(500, ErrorCode.INTERNAL_ERROR, 'x'),

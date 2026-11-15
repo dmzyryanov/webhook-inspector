@@ -218,7 +218,7 @@ export const MAX_PASTED_LENGTH = 2_048;
 /**
  * What a value pasted into the field of `Session not found` asks to open
  * (frames R7 and R8 of the Figma page `Webhook Inspector · Private sessions
- * (#228)`; #228's Decision 10):
+ * (#228) — L chosen 2026-10-22, review`; #228's Decision 10):
  *
  * - `empty`: nothing but spaces, which does nothing;
  * - `open`: the key alone, for the page's own session, or a link with access

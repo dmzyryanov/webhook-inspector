@@ -33,8 +33,8 @@ interface NewSessionOptionsProps {
  * and `Private session` checkbox items, each keeping the menu open
  * (`preventDefault` on select). `Private session` is last, below the address,
  * the lock before its words (frame R1 of the Figma page `Webhook Inspector ·
- * Private sessions (#228)`, issue #228, D259). Escape and a click outside close
- * it, and focus returns to the trigger.
+ * Private sessions (#228) — L chosen 2026-10-22, review`, issue #228, D259).
+ * Escape and a click outside close it, and focus returns to the trigger.
  */
 export function OptionsMenu({ options, onChange, disabled, className }: NewSessionOptionsProps) {
   const m = useMessages();

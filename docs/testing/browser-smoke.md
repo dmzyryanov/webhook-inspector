@@ -980,11 +980,11 @@ no-break spaces of its second sentence into plain ones. Three tests:
 ### E2E-15 — the about page at `/about` and `/ru/about` (`e2e/about.spec.ts`)
 
 Issue #131, D211; issue #170, D255; Figma `Webhook Inspector · About page
-(#131)`, frames D1-1 to D1-3, which carry the Russian text too. The pages are
-static HTML written at build time from `about-copy.ts` and `about-copy-ru.ts`,
-whose texts `about-copy.test.ts` and `about-copy-ru.test.ts` pin byte for
-byte; the dev server serves them as nginx does (`about-page.test.ts` reads
-`nginx.conf`). Four tests:
+(#131) — D1 approved, D2 and D3 not chosen`, frames D1-1 to D1-3, which carry
+the Russian text too. The pages are static HTML written at build time from
+`about-copy.ts` and `about-copy-ru.ts`, whose texts `about-copy.test.ts` and
+`about-copy-ru.test.ts` pin byte for byte; the dev server serves them as nginx
+does (`about-page.test.ts` reads `nginx.conf`). Four tests:
 
 - **the page**: `/about` and `/about/` answer `200` HTML with
   `Cache-Control: no-cache`, no `X-Robots-Tag`, the title `About QA Tools` and

@@ -134,8 +134,9 @@ export function EndpointCard({
           {sessionExpiryLine(rule, m)}
           {/* A private session ends the line with `🔒 PRIVATE` in ink (frame
               R4 of the Figma page `Webhook Inspector · Private sessions
-              (#228)`, D259): after `IP NOT STORED` on its line below 768 px,
-              or on a line of its own there when the address is stored. */}
+              (#228) — L chosen 2026-10-22, review`, D259): after `IP NOT
+              STORED` on its line below 768 px, or on a line of its own there
+              when the address is stored. */}
           {addressMarker === null && accessKey === null ? null : (
             <>
               <span className="max-md:hidden"> · </span>

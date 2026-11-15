@@ -1215,7 +1215,8 @@ describe('a move link pasted over a session page during its first list load (#36
   });
 });
 
-describe('the arrival toast (T)', () => {
+/** The toast T of the Figma page `Webhook Inspector · Move banner (#321)` (D276). */
+describe('the arrival toast', () => {
   it('says how many sessions came and how many of them are private, in both languages', () => {
     const toast = (
       sessions: number,

@@ -39,7 +39,11 @@ function keeping(kept: ResponseConfig | null): SessionResponseState {
   return { response: null, customResponse: kept, queue: null, rules: [] };
 }
 
-describe('the chips (C1)', () => {
+/**
+ * The chips of frame C1 of the Figma page `Webhook Inspector · Editable
+ * response settings`, the quick switch open.
+ */
+describe('the status and delay chips', () => {
   it('offers the design status and delay chips, in order', () => {
     assert.deepEqual(STATUS_CHIPS, [200, 201, 204, 400, 404, 500, 503]);
     assert.deepEqual(
@@ -56,7 +60,8 @@ describe('the chips (C1)', () => {
 });
 
 describe('initialQuickDraft', () => {
-  it('opens on the session as it is: mode, status chip and delay chip (C1)', () => {
+  /** As frame C1 of the Figma page `Webhook Inspector · Editable response settings` opens. */
+  it('opens on the session as it is: mode, status chip and delay chip', () => {
     assert.deepEqual(initialQuickDraft(answering(custom())), {
       mode: 'custom',
       status: { kind: 'chip', value: 201 },
@@ -72,7 +77,11 @@ describe('initialQuickDraft', () => {
     });
   });
 
-  it('opens a default session on Default, with the kept status and delay behind Custom (C4)', () => {
+  /**
+   * Frame C4 of the Figma page `Webhook Inspector · Editable response
+   * settings`: Default picked, the custom response kept.
+   */
+  it('opens a default session on Default, with the kept status and delay behind Custom', () => {
     assert.deepEqual(initialQuickDraft(keeping(custom())), {
       mode: 'default',
       status: { kind: 'chip', value: 201 },
@@ -90,7 +99,8 @@ describe('initialQuickDraft', () => {
 });
 
 describe('evaluateQuickDraft', () => {
-  it('has nothing to apply while nothing is chosen (C1)', () => {
+  /** Frame C1 of the Figma page `Webhook Inspector · Editable response settings`. */
+  it('has nothing to apply while nothing is chosen', () => {
     const state = answering(custom());
     const evaluation = evaluateQuickDraft(initialQuickDraft(state), state);
 
@@ -101,7 +111,8 @@ describe('evaluateQuickDraft', () => {
     assert.equal(evaluation.request, null);
   });
 
-  it('describes 500 and no delay picked, and sends the kept headers and body (C2)', () => {
+  /** Frame C2 of the Figma page `Webhook Inspector · Editable response settings`. */
+  it('describes 500 and no delay picked, and sends the kept headers and body', () => {
     const state = answering(custom());
     const draft: QuickDraft = {
       mode: 'custom',
@@ -151,7 +162,8 @@ describe('evaluateQuickDraft', () => {
     );
   });
 
-  it('sends the mode alone when Default is picked, keeping the custom response (C4)', () => {
+  /** Frame C4 of the Figma page `Webhook Inspector · Editable response settings`. */
+  it('sends the mode alone when Default is picked, keeping the custom response', () => {
     const state = answering(custom());
     const evaluation = evaluateQuickDraft({ ...initialQuickDraft(state), mode: 'default' }, state);
 
@@ -184,7 +196,8 @@ describe('evaluateQuickDraft', () => {
     assert.equal(evaluation.request, null);
   });
 
-  it('refuses a typed status out of range, and accepts a typed delay (C5)', () => {
+  /** Frame C5 of the Figma page `Webhook Inspector · Editable response settings`. */
+  it('refuses a typed status out of range, and accepts a typed delay', () => {
     const state = answering(custom());
     const evaluation = evaluateQuickDraft(
       {
@@ -258,8 +271,11 @@ describe('evaluateQuickDraft', () => {
     }
   });
 
-  /** 204, 205 and 304 while a body is set are an error. */
-  it('refuses a typed 205 or 304 while a body is set, under its field (C6)', () => {
+  /**
+   * 204, 205 and 304 while a body is set are an error (frame C6 of the Figma
+   * page `Webhook Inspector · Editable response settings`).
+   */
+  it('refuses a typed 205 or 304 while a body is set, under its field', () => {
     const state = answering(custom());
 
     for (const status of ['204', '205', '304']) {
@@ -405,7 +421,11 @@ describe('evaluateQuickDraft', () => {
 });
 
 describe('statusUnavailableReason', () => {
-  it('makes 204 unavailable while a body is kept, with the reason C6 shows on hover', () => {
+  /**
+   * The reason is the one frame C6 of the Figma page `Webhook Inspector ·
+   * Editable response settings` shows on hover.
+   */
+  it('makes 204 unavailable while a body is kept, with the reason shown on hover', () => {
     assert.equal(
       statusUnavailableReason(204, custom()),
       '204 needs an empty body — clear the body first.',
@@ -427,7 +447,11 @@ describe('statusUnavailableReason', () => {
 });
 
 describe('describeUntouched', () => {
-  it('says headers and body stay, and why 204 is unavailable, as C1 does', () => {
+  /**
+   * In the words of frame C1 of the Figma page `Webhook Inspector · Editable
+   * response settings`.
+   */
+  it('says headers and body stay, and why 204 is unavailable', () => {
     assert.equal(
       describeUntouched(custom()),
       'Headers (1) and body stay as they are. 204 needs an empty body.',
@@ -444,7 +468,11 @@ describe('describeUntouched', () => {
 });
 
 describe('carryQuickDraft', () => {
-  it('hands the full editor the mode and both fields as text (D2)', () => {
+  /**
+   * For the form of frame D2 of the Figma page `Webhook Inspector · Editable
+   * response settings`.
+   */
+  it('hands the full editor the mode and both fields as text', () => {
     assert.deepEqual(
       carryQuickDraft({
         mode: 'custom',

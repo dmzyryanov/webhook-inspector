@@ -102,7 +102,8 @@ interface SessionRowItemProps extends SessionRowActions {
   row: SessionRow;
   /**
    * A private session: the lock in line 1, just before the copy icon (frame R2
-   * of the Figma page `Webhook Inspector · Private sessions (#228)`, D259).
+   * of the Figma page `Webhook Inspector · Private sessions (#228) — L chosen
+   * 2026-10-22, review`, D259).
    */
   isPrivate: boolean;
 }

@@ -237,9 +237,9 @@ main {
   /*
    * One block in the paragraph's flow: on a line of its own, or after the
    * line's last words, where it fits whole, as frames F2 and F3 of the Figma
-   * page `Webhook Inspector · About page (#131)` draw it; narrower than itself,
-   * as at 320 px, it breaks after a dot and never inside a link or the contact
-   * (D217).
+   * page `Webhook Inspector · About page (#131) — D1 approved, D2 and D3 not
+   * chosen` draw it; narrower than itself, as at 320 px, it breaks after a dot
+   * and never inside a link or the contact (D217).
    */
   .site-footer .footer-end {
     display: inline-block;

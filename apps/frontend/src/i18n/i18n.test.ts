@@ -512,7 +512,8 @@ describe('the Russian wording the owner approved (glossary `792:57` and the fram
 
   /**
    * Issue #228's design (frames R1-R8 of the Figma page `Webhook Inspector ·
-   * Private sessions (#228)`) and the Russian wording its rules give (D259).
+   * Private sessions (#228) — L chosen 2026-10-22, review`) and the Russian
+   * wording its rules give (D259).
    */
   it('names a private session’s controls as #228 does, in both languages', () => {
     assert.deepEqual(
@@ -595,7 +596,11 @@ describe('the Russian wording the owner approved (glossary `792:57` and the fram
     );
   });
 
-  it('words the move banner and its toast as the issue gives them (issue #321, C1 and T)', () => {
+  /**
+   * Direction C1 and the toast T of the Figma page `Webhook Inspector · Move
+   * banner (#321)` (D276).
+   */
+  it('words the move banner and its toast as the issue gives them (issue #321)', () => {
     assert.equal(
       en.move.notice('webhook.qa-tools.ru', '9 Mar 2027'),
       'Webhook Inspector is moving to webhook.qa-tools.ru on 9 Mar 2027',
